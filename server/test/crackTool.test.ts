@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { finalizeStroke, MIN_STROKE_PX, pickDamage } from '../public/viewer/crackTool.js';
+import { polylineLength } from '../public/viewer/geometry.js';
 
 type Pt = [number, number];
 
@@ -46,6 +47,13 @@ describe('finalizeStroke', () => {
     expect(damage?.geometry.dwg).toBeNull();
     expect(damage?.lengthDwg).toBeNull();
     expect(damage?.geometry.world).toEqual([[0, -5], [10, -5]]);
+  });
+
+  it('제자리에서 떨린 획은 단순화 후 길이가 10px 미만이면 버린다', () => {
+    const stroke: Pt[] = [];
+    for (let i = 0; i < 120; i++) stroke.push([100 + (i / 119) * 4, 100 + (i % 2 === 0 ? 0.3 : -0.3)]);
+    expect(polylineLength(stroke)).toBeGreaterThan(MIN_STROKE_PX);
+    expect(finalizeStroke(stroke, mapper, options)).toBeNull();
   });
 });
 

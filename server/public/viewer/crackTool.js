@@ -9,10 +9,12 @@ export const PICK_RADIUS_PX = 12;
 const TOOL_NAME = 'mangdo-finger-draw';
 
 export function finalizeStroke(clientPoints, mapper, { now, newId }) {
-  if (clientPoints.length < 2 || polylineLength(clientPoints) < MIN_STROKE_PX) return null;
+  if (clientPoints.length < 2) return null;
   // 화면과 world는 닮은꼴 변환이므로 화면 1.5px로 단순화하면 world에서도 같은 비율의 허용 오차가 된다.
+  // 펜을 가만히 대고 있을 때 들어오는 미세 떨림(240Hz 좌표 샘플)은 원본 길이는 10px을 넘길 수 있으므로,
+  // 단순화한 뒤의 길이로 판정해야 실제로 움직이지 않은 획을 걸러낼 수 있다.
   const simplified = simplifyPolyline(clientPoints, SIMPLIFY_TOLERANCE_PX);
-  if (simplified.length < 2) return null;
+  if (simplified.length < 2 || polylineLength(simplified) < MIN_STROKE_PX) return null;
 
   const world = simplified.map(([x, y]) => mapper.clientToWorld(x, y));
   if (world.some((p) => p === null)) return null;
@@ -46,6 +48,7 @@ export function pickDamage(damages, clientPoint, mapper, radiusPx = PICK_RADIUS_
 export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDraft, onStroke, onTap }) {
   let activePointerId = null;
   let points = [];
+  const swallowedPointers = new Set();
 
   function toCanvas(event) {
     const rect = viewer.canvas.getBoundingClientRect();
@@ -70,10 +73,12 @@ export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDra
   function onPointerDown(event) {
     if (activePointerId !== null) {
       // 펜으로 그리는 중 닿은 손바닥·다른 손가락은 무시한다 (팜 리젝션).
+      swallowedPointers.add(event.pointerId);
       swallow(event);
       return;
     }
     if (!inViewer(event) || !wantsDrawing(event)) return;
+    swallowedPointers.add(event.pointerId);
     swallow(event);
     activePointerId = event.pointerId;
     points = [toCanvas(event)];
@@ -90,7 +95,10 @@ export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDra
   }
 
   function onPointerEnd(event) {
-    if (activePointerId === null) return;
+    // 펜이 눌리기 전부터 이미 뷰어(Hammer 포인터 입력)가 받은 접촉은 up·cancel도 뷰어로 보내야
+    // Hammer에 지워지지 않은 포인터가 남지 않는다.
+    if (!swallowedPointers.has(event.pointerId)) return;
+    swallowedPointers.delete(event.pointerId);
     swallow(event);
     if (event.pointerId !== activePointerId) return;
     activePointerId = null;
@@ -153,6 +161,12 @@ export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDra
     }
   };
   tool.handleSingleTap = (event) => onTap([event.canvasX, event.canvasY]);
+  // PC 마우스 클릭은 뷰어 도구에 handleSingleTap이 아니라 handleSingleClick으로 들어온다.
+  tool.handleSingleClick = (event, button) => {
+    if (button !== 0) return false;
+    const point = typeof event.canvasX === 'number' ? [event.canvasX, event.canvasY] : toCanvas(event);
+    return onTap(point);
+  };
   viewer.toolController.registerTool(tool);
   viewer.toolController.activateTool(TOOL_NAME);
 }
