@@ -68,6 +68,10 @@ export function createSyncer({ drawingId, save, storage, onStatus }) {
       } catch {
         // 백업 실패(저장 공간 부족 등)는 서버 저장을 막지 않는다.
       }
+      if (retryDelay !== null && !inFlight) {
+        onStatus('pending');
+        return;
+      }
       onStatus('saving');
       if (!inFlight) schedule(SAVE_DELAY_MS);
     },

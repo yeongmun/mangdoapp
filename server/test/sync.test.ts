@@ -5,6 +5,7 @@ import {
   createSyncer,
   nextRetryDelay,
   RETRY_MAX_MS,
+  RETRY_START_MS,
   SAVE_DELAY_MS,
 } from '../public/viewer/sync.js';
 
@@ -154,5 +155,36 @@ describe('createSyncer', () => {
     await vi.advanceTimersByTimeAsync(SAVE_DELAY_MS);
     expect(save).toHaveBeenCalledTimes(1);
     expect(syncer.readBackup()).toBeNull();
+  });
+
+  it('재시도 대기 중에 바뀐 내용은 재시도 간격을 줄이지 않고 다음 재시도에 저장한다', async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(undefined);
+    const statuses: string[] = [];
+    const storage = memoryStorage();
+    const syncer = createSyncer({ drawingId: ID, save, storage, onStatus: (s: string) => statuses.push(s) });
+
+    syncer.change(doc('2026-09-10T01:00:00.000Z', 1));
+    await vi.advanceTimersByTimeAsync(SAVE_DELAY_MS);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(statuses.at(-1)).toBe('pending');
+
+    const later = doc('2026-09-10T01:00:02.000Z', 2);
+    await vi.advanceTimersByTimeAsync(1000);
+    syncer.change(later);
+    expect(statuses.at(-1)).toBe('pending');
+    expect(JSON.parse(storage.map.get(backupKey(ID))!)).toEqual(later);
+
+    await vi.advanceTimersByTimeAsync(SAVE_DELAY_MS);
+    expect(save).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(RETRY_START_MS - 1000 - SAVE_DELAY_MS - 1);
+    expect(save).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(later);
+    expect(statuses.at(-1)).toBe('saved');
   });
 });
