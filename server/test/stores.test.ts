@@ -1,10 +1,10 @@
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DamagesStore } from '../src/damagesStore.js';
 import { DrawingsStore, isDrawingId, newDrawingId, type DrawingRecord } from '../src/drawingsStore.js';
-import { readJsonFile, writeJsonFileAtomic } from '../src/jsonFile.js';
+import { readJsonFile, renameWithRetry, writeJsonFileAtomic } from '../src/jsonFile.js';
 
 let dir: string;
 
@@ -52,6 +52,45 @@ describe('jsonFile', () => {
     const file = join(dir, 'broken.json');
     await writeFile(file, '{', 'utf8');
     await expect(readJsonFile(file)).rejects.toThrow();
+  });
+});
+
+describe('renameWithRetry', () => {
+  function codeError(code: string) {
+    return Object.assign(new Error(code), { code });
+  }
+
+  function recordWait() {
+    const waits: number[] = [];
+    return { waits, wait: async (ms: number) => void waits.push(ms) };
+  }
+
+  it('EPERM이면 50ms, 100ms 기다리며 다시 시도해 성공한다', async () => {
+    const rename = vi
+      .fn()
+      .mockRejectedValueOnce(codeError('EPERM'))
+      .mockRejectedValueOnce(codeError('EPERM'))
+      .mockResolvedValueOnce(undefined);
+    const { waits, wait } = recordWait();
+    await expect(renameWithRetry('a.tmp', 'a.json', { rename, wait })).resolves.toBeUndefined();
+    expect(rename).toHaveBeenCalledTimes(3);
+    expect(rename).toHaveBeenLastCalledWith('a.tmp', 'a.json');
+    expect(waits).toEqual([50, 100]);
+  });
+
+  it('재시도 대상이 아닌 오류(ENOENT)는 바로 던진다', async () => {
+    const rename = vi.fn().mockRejectedValue(codeError('ENOENT'));
+    const { waits, wait } = recordWait();
+    await expect(renameWithRetry('a.tmp', 'a.json', { rename, wait })).rejects.toThrow('ENOENT');
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+  });
+
+  it('EBUSY가 계속되면 5번 시도한 뒤 마지막 오류를 던진다', async () => {
+    const rename = vi.fn().mockRejectedValue(codeError('EBUSY'));
+    const { wait } = recordWait();
+    await expect(renameWithRetry('a.tmp', 'a.json', { rename, wait })).rejects.toThrow('EBUSY');
+    expect(rename).toHaveBeenCalledTimes(5);
   });
 });
 

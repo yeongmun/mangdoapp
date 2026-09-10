@@ -4,7 +4,7 @@ import { defaultBucketKey, loadConfig } from '../src/config.js';
 const base = {
   APS_CLIENT_ID: 'AbC123',
   APS_CLIENT_SECRET: 'secret',
-  APP_ACCESS_KEY: 'key-1234567890',
+  APP_ACCESS_KEY: 'key-1234567890abcdefgh',
 };
 
 describe('loadConfig', () => {
@@ -23,7 +23,7 @@ describe('loadConfig', () => {
     expect(config).toEqual({
       apsClientId: 'AbC123',
       apsClientSecret: 'secret',
-      appAccessKey: 'key-1234567890',
+      appAccessKey: 'key-1234567890abcdefgh',
       bucketKey: defaultBucketKey('AbC123'),
       port: 3000,
       dataDir: '/data',
@@ -38,6 +38,16 @@ describe('loadConfig', () => {
 
   it('PORT가 양의 정수가 아니면 거부한다', () => {
     expect(() => loadConfig({ ...base, PORT: 'abc' }, '/data')).toThrow('PORT 값이 올바르지 않습니다: abc');
+  });
+
+  it('APP_ACCESS_KEY는 영문·숫자·-·_ 20자 이상만 허용한다', () => {
+    const message = 'APP_ACCESS_KEY는 영문·숫자·-·_ 로만 20자 이상이어야 합니다.';
+    for (const key of ['short-key', 'has$dollar-abcdefghijkl', 'has#hash-abcdefghijklmn', '한글접근키한글접근키한글접근키한글접근키']) {
+      expect(() => loadConfig({ ...base, APP_ACCESS_KEY: key }, '/data')).toThrow(message);
+    }
+    expect(loadConfig({ ...base, APP_ACCESS_KEY: 'abcdefghij_KLMNOPQRS-0123' }, '/data').appAccessKey).toBe(
+      'abcdefghij_KLMNOPQRS-0123',
+    );
   });
 });
 

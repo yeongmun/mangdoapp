@@ -34,7 +34,13 @@ async function main(): Promise<void> {
     publicDir: join(serverRoot, 'public'),
   });
 
-  app.listen(config.port, () => {
+  // Express 5는 listen 오류(EADDRINUSE 등)를 콜백 인자로 넘긴다.
+  app.listen(config.port, (error?: Error) => {
+    if (error) {
+      console.error(`[server] 포트 ${config.port}을(를) 열 수 없습니다: ${error.message}`);
+      console.error('  - 다른 프로그램이 이 포트를 쓰고 있다면 server/.env에 PORT=3001 처럼 다른 포트를 지정하세요.');
+      process.exit(1);
+    }
     console.log(`[server] http://localhost:${config.port} 에서 실행 중 (버킷: ${config.bucketKey})`);
   });
 }
