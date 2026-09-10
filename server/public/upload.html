@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>망도 도면 업로드</title>
+    <style>
+      :root { font-family: system-ui, -apple-system, 'Malgun Gothic', sans-serif; color: #1a1a1a; background: #f4f5f7; }
+      main { max-width: 960px; margin: 32px auto; padding: 0 16px; }
+      h1 { font-size: 22px; margin: 0 0 16px; }
+      h2 { font-size: 17px; margin: 0; }
+      .card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+      label { margin-right: 8px; }
+      input[type='password'] { padding: 6px 8px; width: 260px; }
+      button { padding: 6px 14px; border-radius: 6px; border: 1px solid #c7c9cf; background: #fff; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button[type='submit'] { background: #1e66f5; border-color: #1e66f5; color: #fff; }
+      .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eceef1; vertical-align: top; font-size: 14px; }
+      .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
+      .badge.pending { background: #8a8f98; }
+      .badge.inprogress { background: #1e66f5; }
+      .badge.success { background: #2e7d32; }
+      .badge.failed { background: #d32f2f; }
+      .error { color: #d32f2f; }
+      .small { font-size: 12px; margin-top: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>망도 도면 업로드</h1>
+
+      <section class="card">
+        <label for="accessKey">접근키</label>
+        <input id="accessKey" type="password" autocomplete="off" />
+        <button id="saveKey" type="button">저장</button>
+      </section>
+
+      <section class="card">
+        <form id="uploadForm">
+          <input id="file" type="file" accept=".dwg" required />
+          <button id="uploadButton" type="submit">업로드</button>
+        </form>
+        <p id="message" role="status"></p>
+      </section>
+
+      <section class="card">
+        <div class="list-header">
+          <h2>도면 목록</h2>
+          <button id="refresh" type="button">새로고침</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>도면</th><th>상태</th><th>진행률</th><th>업로드 시각</th><th></th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p id="empty" hidden>업로드한 도면이 없습니다.</p>
+      </section>
+    </main>
+    <script type="module" src="upload.js"></script>
+  </body>
+</html>
