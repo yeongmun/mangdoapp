@@ -17,6 +17,14 @@ describe('applyMatrixToPoint', () => {
   it('축척과 이동을 적용한다', () => {
     expect(applyMatrixToPoint(matrix(2, 100, 50), [3, 4])).toEqual([106, 58]);
   });
+
+  it('w가 0이면 null', () => {
+    const m = matrix(2, 100, 50);
+    m.elements[3] = 0;
+    m.elements[7] = 0;
+    m.elements[15] = 0;
+    expect(applyMatrixToPoint(m, [3, 4])).toBeNull();
+  });
 });
 
 describe('matricesEqual', () => {
@@ -54,6 +62,28 @@ describe('resolvePageToModelMatrix', () => {
     expect(resolvePageToModelMatrix(model)).toEqual({
       matrix: null,
       reason: '뷰포트 2개의 좌표 변환이 서로 다릅니다.',
+    });
+  });
+
+  it('pageToModelTransform에 NaN이 있으면 변환 불가', () => {
+    const m = matrix(3, 1, 1);
+    m.elements[12] = NaN;
+    expect(resolvePageToModelMatrix(fakeModel({ pageToModelTransform: m }))).toEqual({
+      matrix: null,
+      reason: '좌표 변환 행렬에 유효하지 않은 값이 있습니다.',
+    });
+  });
+
+  it('뷰포트 행렬에 NaN이 있으면 서로 같아 보여도 변환 불가', () => {
+    const nan = () => {
+      const m = matrix(2, 10, 20);
+      m.elements[0] = NaN;
+      return m;
+    };
+    const model = fakeModel({ viewports: [{}, {}] }, { 0: nan(), 1: nan() });
+    expect(resolvePageToModelMatrix(model)).toEqual({
+      matrix: null,
+      reason: '좌표 변환 행렬에 유효하지 않은 값이 있습니다.',
     });
   });
 });

@@ -8,6 +8,10 @@ export const MIN_STROKE_PX = 10;
 export const PICK_RADIUS_PX = 12;
 const TOOL_NAME = 'mangdo-finger-draw';
 
+function isFinitePoint(p) {
+  return Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+}
+
 export function finalizeStroke(clientPoints, mapper, { now, newId }) {
   if (clientPoints.length < 2) return null;
   // 화면과 world는 닮은꼴 변환이므로 화면 1.5px로 단순화하면 world에서도 같은 비율의 허용 오차가 된다.
@@ -17,10 +21,10 @@ export function finalizeStroke(clientPoints, mapper, { now, newId }) {
   if (simplified.length < 2 || polylineLength(simplified) < MIN_STROKE_PX) return null;
 
   const world = simplified.map(([x, y]) => mapper.clientToWorld(x, y));
-  if (world.some((p) => p === null)) return null;
+  if (!world.every(isFinitePoint)) return null;
 
   const dwgPoints = world.map((p) => mapper.worldToDwg(p));
-  const dwg = dwgPoints.every((p) => p !== null) ? dwgPoints : null;
+  const dwg = dwgPoints.every(isFinitePoint) ? dwgPoints : null;
 
   return {
     id: newId(),

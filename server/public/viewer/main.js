@@ -1,4 +1,4 @@
-import { addDamage, canUndo, createEditor, removeDamage, undo } from './damageDoc.js';
+import { addDamage, canUndo, createEditor, removeDamage, undo, validateDamageDoc } from './damageDoc.js';
 import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeStroke, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
@@ -7,8 +7,16 @@ import { chooseInitialDoc, createSyncer } from './sync.js';
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
 const accessKey = new URLSearchParams(location.hash.slice(1)).get('key') ?? '';
-const STATUS_LABELS = { saved: '저장됨', saving: '저장 중', pending: '저장 대기' };
+const STATUS_LABELS = { saved: '저장됨', saving: '저장 중', pending: '저장 대기', error: '저장 실패' };
 
+function errorMessage(status, body) {
+  if (status === 401) return '접근키를 확인하세요.';
+  if (body.error === undefined || body.error === null) return `요청에 실패했습니다 (${status}).`;
+  return Array.isArray(body.details) ? `${body.error} (${body.details.join(' / ')})` : body.error;
+}
+
+// 응답 오류는 status와 retryable(4xx는 다시 보내도 같으므로 false)을 붙여 던진다.
+// fetch 자체가 실패한 네트워크 오류에는 retryable이 없으므로 재시도 대상이다.
 async function api(path, options = {}) {
   const res = await fetch(`/api${path}`, {
     ...options,
@@ -16,9 +24,17 @@ async function api(path, options = {}) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(res.status === 401 ? '접근키를 확인하세요.' : body.error ?? `요청에 실패했습니다 (${res.status}).`);
+    throw Object.assign(new Error(errorMessage(res.status, body)), {
+      status: res.status,
+      retryable: !(res.status >= 400 && res.status < 500),
+    });
   }
   return body;
+}
+
+// 앱(React Native WebView)으로 메시지를 보낸다. 브라우저에서 직접 열면 아무것도 하지 않는다.
+function postToApp(message) {
+  window.ReactNativeWebView?.postMessage(JSON.stringify(message));
 }
 
 function showError(message) {
@@ -113,14 +129,34 @@ async function start() {
   const syncer = createSyncer({
     drawingId,
     storage: safeStorage(),
-    save: (d) => api(`/drawings/${drawingId}/damages`, { method: 'PUT', body: JSON.stringify(d) }),
-    onStatus: (status) => {
+    save: (d) => {
+      const errors = validateDamageDoc(d, drawingId);
+      if (errors.length > 0) {
+        throw Object.assign(new Error(`손상 데이터 형식 오류: ${errors.join(' / ')}`), { retryable: false });
+      }
+      const body = JSON.stringify(d);
+      // keepalive는 페이지가 닫혀도 요청을 끝까지 보내지만 본문 크기 제한(약 64KB)이 있다.
+      return api(`/drawings/${drawingId}/damages`, { method: 'PUT', body, keepalive: body.length < 60000 });
+    },
+    onStatus: (status, detail) => {
       $('saveStatus').textContent = STATUS_LABELS[status];
       $('saveStatus').className = `status ${status}`;
+      if (status === 'error') {
+        $('saveError').textContent = `저장 실패: ${detail}`;
+        $('saveError').hidden = false;
+      } else {
+        $('saveError').hidden = true;
+      }
     },
   });
+  window.mangdoFlush = async () => {
+    const saved = await syncer.flushNow();
+    postToApp({ type: 'flushResult', saved });
+  };
 
-  const initial = chooseInitialDoc(serverDoc, syncer.readBackup());
+  const backup = syncer.readBackup();
+  const usableBackup = backup && validateDamageDoc(backup, drawingId).length === 0 ? backup : null;
+  const initial = chooseInitialDoc(serverDoc, usableBackup);
   let editor = createEditor(initial.doc);
   let selectedId = null;
   let fingerDraw = false;
@@ -212,6 +248,7 @@ async function start() {
   refresh();
   $('loading').hidden = true;
   $('toolbar').hidden = false;
+  postToApp({ type: 'ready' });
 }
 
 $('retry').addEventListener('click', () => location.reload());

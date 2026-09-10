@@ -49,6 +49,19 @@ describe('finalizeStroke', () => {
     expect(damage?.geometry.world).toEqual([[0, -5], [10, -5]]);
   });
 
+  it('world 좌표에 유한하지 않은 값이 있으면 버린다', () => {
+    const nanWorld = { ...mapper, clientToWorld: (): Pt => [NaN, 0] };
+    expect(finalizeStroke([[0, 50], [100, 50]], nanWorld, options)).toBeNull();
+  });
+
+  it('DWG 좌표에 유한하지 않은 값이 있으면 dwg와 lengthDwg는 null', () => {
+    const nanDwg = { ...mapper, worldToDwg: (): Pt => [NaN, 1] };
+    const damage = finalizeStroke([[0, 50], [100, 50]], nanDwg, options);
+    expect(damage?.geometry.dwg).toBeNull();
+    expect(damage?.lengthDwg).toBeNull();
+    expect(damage?.geometry.world).toEqual([[0, -5], [10, -5]]);
+  });
+
   it('제자리에서 떨린 획은 단순화 후 길이가 10px 미만이면 버린다', () => {
     const stroke: Pt[] = [];
     for (let i = 0; i < 120; i++) stroke.push([100 + (i / 119) * 4, 100 + (i % 2 === 0 ? 0.3 : -0.3)]);

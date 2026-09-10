@@ -142,6 +142,80 @@ describe('createSyncer', () => {
     expect(save).toHaveBeenCalledTimes(1);
   });
 
+  it('flushNow는 진행 중인 저장을 기다린 뒤 남은 변경까지 저장하고 true를 돌려준다', async () => {
+    let resolveFirst: () => void = () => undefined;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValue(undefined);
+    const syncer = createSyncer({ drawingId: ID, save, storage: memoryStorage(), onStatus: () => undefined });
+
+    const a = doc('2026-09-10T01:00:00.000Z', 1);
+    const b = doc('2026-09-10T01:00:02.000Z', 2);
+    syncer.change(a);
+    await vi.advanceTimersByTimeAsync(SAVE_DELAY_MS);
+    expect(save).toHaveBeenCalledTimes(1);
+    syncer.change(b);
+
+    const result = syncer.flushNow();
+    resolveFirst();
+    expect(await result).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(b);
+  });
+
+  it('flushNow는 저장에 실패하면 false를 돌려준다', async () => {
+    const save = vi.fn().mockRejectedValue(new Error('offline'));
+    const syncer = createSyncer({ drawingId: ID, save, storage: memoryStorage(), onStatus: () => undefined });
+    syncer.change(doc('2026-09-10T01:00:00.000Z', 1));
+    expect(await syncer.flushNow()).toBe(false);
+  });
+
+  it('변경이 없으면 flushNow는 true', async () => {
+    const save = vi.fn(async () => undefined);
+    const syncer = createSyncer({ drawingId: ID, save, storage: memoryStorage(), onStatus: () => undefined });
+    expect(await syncer.flushNow()).toBe(true);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('재시도할 수 없는 오류는 저장 실패로 표시하고 재시도하지 않는다', async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('형식 오류'), { retryable: false }))
+      .mockResolvedValue(undefined);
+    const calls: unknown[][] = [];
+    const syncer = createSyncer({
+      drawingId: ID,
+      save,
+      storage: memoryStorage(),
+      onStatus: (...args: unknown[]) => calls.push(args),
+    });
+
+    syncer.change(doc('2026-09-10T01:00:00.000Z', 1));
+    await vi.advanceTimersByTimeAsync(SAVE_DELAY_MS);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(calls.at(-1)?.[0]).toBe('error');
+    expect(calls.at(-1)?.[1]).toBe('형식 오류');
+
+    await vi.advanceTimersByTimeAsync(RETRY_MAX_MS);
+    expect(save).toHaveBeenCalledTimes(1);
+
+    syncer.change(doc('2026-09-10T01:01:05.000Z', 2));
+    expect(calls.at(-1)?.[0]).toBe('saving');
+    await vi.advanceTimersByTimeAsync(SAVE_DELAY_MS);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(calls.at(-1)?.[0]).toBe('saved');
+  });
+
+  it('재시도할 수 없는 오류로 저장하지 못하면 flushNow도 false', async () => {
+    const save = vi.fn().mockRejectedValue(Object.assign(new Error('형식 오류'), { retryable: false }));
+    const syncer = createSyncer({ drawingId: ID, save, storage: memoryStorage(), onStatus: () => undefined });
+    syncer.change(doc('2026-09-10T01:00:00.000Z', 1));
+    expect(await syncer.flushNow()).toBe(false);
+    await vi.advanceTimersByTimeAsync(RETRY_MAX_MS);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
   it('저장소가 예외를 던져도 저장은 계속되고, 깨진 백업은 null', async () => {
     const save = vi.fn(async () => undefined);
     const broken = {

@@ -20,24 +20,31 @@ export function chooseInitialDoc(serverDoc, backupDoc) {
   return backupIsNewer ? { doc: backupDoc, needsUpload: true } : { doc: serverDoc, needsUpload: false };
 }
 
+// save가 retryable === false인 오류를 던지면(형식 오류·4xx) 재시도하지 않고 'error' 상태로 멈춘다.
+// 다음 change()나 flushNow()에서 다시 저장을 시도한다.
 export function createSyncer({ drawingId, save, storage, onStatus }) {
   let latest = null;
   let dirty = false;
-  let inFlight = false;
+  let inFlightPromise = null;
   let timer = null;
   let retryDelay = null;
 
+  function clearTimer() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
   function schedule(ms) {
-    if (timer !== null) clearTimeout(timer);
+    clearTimer();
     timer = setTimeout(() => {
       timer = null;
       void flush();
     }, ms);
   }
 
-  async function flush() {
-    if (inFlight || !dirty) return;
-    inFlight = true;
+  async function attemptSave() {
     dirty = false;
     const doc = latest;
     onStatus('saving');
@@ -49,14 +56,26 @@ export function createSyncer({ drawingId, save, storage, onStatus }) {
       } else {
         onStatus('saved');
       }
-    } catch {
+    } catch (err) {
       dirty = true;
+      if (err?.retryable === false) {
+        retryDelay = null;
+        onStatus('error', err.message);
+        return;
+      }
       retryDelay = nextRetryDelay(retryDelay);
       onStatus('pending');
       schedule(retryDelay);
-    } finally {
-      inFlight = false;
     }
+  }
+
+  function flush() {
+    if (inFlightPromise !== null || !dirty) return Promise.resolve();
+    // finally 콜백이 먼저 실행되므로, 이 promise를 기다린 쪽이 깨어날 때는 inFlightPromise가 이미 null이다.
+    inFlightPromise = attemptSave().finally(() => {
+      inFlightPromise = null;
+    });
+    return inFlightPromise;
   }
 
   return {
@@ -68,20 +87,23 @@ export function createSyncer({ drawingId, save, storage, onStatus }) {
       } catch {
         // 백업 실패(저장 공간 부족 등)는 서버 저장을 막지 않는다.
       }
-      if (retryDelay !== null && !inFlight) {
+      if (retryDelay !== null && inFlightPromise === null) {
         onStatus('pending');
         return;
       }
       onStatus('saving');
-      if (!inFlight) schedule(SAVE_DELAY_MS);
+      if (inFlightPromise === null) schedule(SAVE_DELAY_MS);
     },
 
+    // 대기 없이 저장하고, 남은 변경이 없으면 true, 서버에 저장하지 못한 변경이 남으면 false.
     async flushNow() {
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
+      clearTimer();
+      if (inFlightPromise !== null) await inFlightPromise;
+      // 진행 중이던 저장이 끝나며 다음 저장이나 재시도를 예약했을 수 있다.
+      clearTimer();
       await flush();
+      // 저장에 실패하면 attemptSave가 dirty를 다시 true로 돌리므로 dirty만 보면 된다.
+      return !dirty;
     },
 
     readBackup() {

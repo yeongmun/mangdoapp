@@ -9,11 +9,26 @@ export function matricesEqual(a, b, epsilon = 1e-9) {
   return true;
 }
 
+export function isFiniteMatrix(matrix) {
+  const elements = matrix?.elements;
+  if (elements === null || elements === undefined || elements.length !== 16) return false;
+  for (let i = 0; i < 16; i++) {
+    if (!Number.isFinite(elements[i])) return false;
+  }
+  return true;
+}
+
+const INVALID_MATRIX_REASON = '좌표 변환 행렬에 유효하지 않은 값이 있습니다.';
+
 // THREE.Matrix4 / LmvMatrix4의 elements는 열 우선 배열이다. z = 0인 2D 점에 적용한다.
+// 결과가 유한한 좌표가 아니면 null (w = 0 등).
 export function applyMatrixToPoint(matrix, [x, y]) {
   const e = matrix.elements;
   const w = e[3] * x + e[7] * y + e[15];
-  return [(e[0] * x + e[4] * y + e[12]) / w, (e[1] * x + e[5] * y + e[13]) / w];
+  if (!Number.isFinite(w) || w === 0) return null;
+  const px = (e[0] * x + e[4] * y + e[12]) / w;
+  const py = (e[1] * x + e[5] * y + e[13]) / w;
+  return Number.isFinite(px) && Number.isFinite(py) ? [px, py] : null;
 }
 
 // 뷰어의 model.getPageToModelTransform(vpId)는 뷰포트마다 행렬을 준다. 펜으로 찍은 임의의 점이 어느
@@ -21,6 +36,7 @@ export function applyMatrixToPoint(matrix, [x, y]) {
 export function resolvePageToModelMatrix(model) {
   const data = model.getData();
   if (data.pageToModelTransform) {
+    if (!isFiniteMatrix(data.pageToModelTransform)) return { matrix: null, reason: INVALID_MATRIX_REASON };
     return { matrix: data.pageToModelTransform, reason: '도면 전체 변환(pageToModelTransform)을 사용합니다.' };
   }
   const viewports = Array.isArray(data.viewports) ? data.viewports : [];
@@ -29,6 +45,8 @@ export function resolvePageToModelMatrix(model) {
     if (viewport) matrices.push(model.getPageToModelTransform(vpId));
   });
   if (matrices.length === 0) return { matrix: null, reason: '뷰포트 정보가 없습니다.' };
+  // NaN끼리의 비교는 matricesEqual에서 "같다"로 통과하므로 먼저 걸러낸다.
+  if (!matrices.every(isFiniteMatrix)) return { matrix: null, reason: INVALID_MATRIX_REASON };
   if (!matrices.every((m) => matricesEqual(m, matrices[0]))) {
     return { matrix: null, reason: `뷰포트 ${matrices.length}개의 좌표 변환이 서로 다릅니다.` };
   }
