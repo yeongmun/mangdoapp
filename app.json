@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "망도 손상조사",
+    "slug": "mangdo-app",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.mangdoapp"
+    },
+    "android": {
+      "package": "com.yourcompany.mangdoapp"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-status-bar"
+    ]
+  }
+}
