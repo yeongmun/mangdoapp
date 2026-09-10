@@ -98,7 +98,8 @@ export function createSyncer({ drawingId, save, storage, onStatus }) {
     // 대기 없이 저장하고, 남은 변경이 없으면 true, 서버에 저장하지 못한 변경이 남으면 false.
     async flushNow() {
       clearTimer();
-      if (inFlightPromise !== null) await inFlightPromise;
+      // 동시에 호출된 다른 flushNow가 먼저 깨어나 다음 저장을 시작했을 수 있으므로 저장이 없을 때까지 기다린다.
+      while (inFlightPromise !== null) await inFlightPromise;
       // 진행 중이던 저장이 끝나며 다음 저장이나 재시도를 예약했을 수 있다.
       clearTimer();
       await flush();

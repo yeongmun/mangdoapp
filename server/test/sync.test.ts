@@ -164,6 +164,32 @@ describe('createSyncer', () => {
     expect(save).toHaveBeenLastCalledWith(b);
   });
 
+  it('flushNow를 동시에 호출해도 모두 마지막 저장이 끝난 뒤에 결과를 돌려준다', async () => {
+    let resolveFirst: () => void = () => undefined;
+    let resolveSecond: () => void = () => undefined;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { resolveSecond = resolve; }));
+    const syncer = createSyncer({ drawingId: ID, save, storage: memoryStorage(), onStatus: () => undefined });
+
+    syncer.change(doc('2026-09-10T01:00:00.000Z', 1));
+    await vi.advanceTimersByTimeAsync(SAVE_DELAY_MS);
+    syncer.change(doc('2026-09-10T01:00:02.000Z', 2));
+
+    const done: string[] = [];
+    const first = syncer.flushNow().then((saved: boolean) => { done.push('first'); return saved; });
+    const second = syncer.flushNow().then((saved: boolean) => { done.push('second'); return saved; });
+    resolveFirst();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(done).toEqual([]);
+
+    resolveSecond();
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+  });
+
   it('flushNow는 저장에 실패하면 false를 돌려준다', async () => {
     const save = vi.fn().mockRejectedValue(new Error('offline'));
     const syncer = createSyncer({ drawingId: ID, save, storage: memoryStorage(), onStatus: () => undefined });
