@@ -56,12 +56,20 @@ async function onTunnelOutput(chunk: Buffer): Promise<void> {
   if (!url) return;
   announced = true;
 
-  const current = await readFile(envLocalPath, 'utf8').catch(() => '');
-  await writeFile(
-    envLocalPath,
-    upsertEnvVars(current, { EXPO_PUBLIC_API_URL: url, EXPO_PUBLIC_ACCESS_KEY: config.appAccessKey }),
-    'utf8',
-  );
+  try {
+    const current = await readFile(envLocalPath, 'utf8').catch(() => '');
+    await writeFile(
+      envLocalPath,
+      upsertEnvVars(current, { EXPO_PUBLIC_API_URL: url, EXPO_PUBLIC_ACCESS_KEY: config.appAccessKey }),
+      'utf8',
+    );
+  } catch (err) {
+    console.error(`[dev] .env.local을 쓰지 못했습니다: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[dev] 터널 주소: ${url}`);
+    console.error('[dev] 루트 .env.local에 EXPO_PUBLIC_API_URL과 EXPO_PUBLIC_ACCESS_KEY를 직접 적은 뒤 Expo를 시작하세요.');
+    return;
+  }
+
   console.log('');
   console.log(`[dev] 터널 주소: ${url}`);
   console.log(`[dev] PC 업로드 페이지: http://localhost:${config.port}/upload.html`);
