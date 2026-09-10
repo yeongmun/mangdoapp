@@ -19,6 +19,8 @@ expo-env.d.ts
 # ENV - API 키는 절대 커밋하지 않기
 .env
 .env.*
+!.env.example
+server/data/
 
 # macOS
 .DS_Store

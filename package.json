@@ -7,7 +7,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "server": "npm --prefix server run dev",
+    "server:test": "npm --prefix server test"
   },
   "dependencies": {
     "expo": "^57.0.21",
