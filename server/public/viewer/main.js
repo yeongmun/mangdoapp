@@ -183,7 +183,7 @@ async function start() {
     if (!world) return;
     const dwg = mapper.worldToDwg(world);
     const dwgText = dwg ? `X ${dwg[0].toFixed(3)}  Y ${dwg[1].toFixed(3)}` : '변환 불가';
-    $('coordPanel').textContent = `뷰어  X ${world[0].toFixed(3)}  Y ${world[1].toFixed(3)}\nDWG   ${dwgText}`;
+    $('coordPanel').textContent = `뷰어  X ${world[0].toFixed(6)}  Y ${world[1].toFixed(6)}\nDWG   ${dwgText}`;
     $('coordPanel').hidden = false;
   }
 
