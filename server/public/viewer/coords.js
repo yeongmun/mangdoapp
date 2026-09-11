@@ -31,8 +31,19 @@ export function applyMatrixToPoint(matrix, [x, y]) {
   return Number.isFinite(px) && Number.isFinite(py) ? [px, py] : null;
 }
 
+// 실제로 그려지는 도형 수. line_caps·line_weights 같은 스타일 설정이나 layers 개수는 도형이 아니다.
+const GEOMETRY_METRIC_KEYS = ['arcs', 'circles', 'circ_arcs', 'dots', 'fills', 'plines', 'ptris', 'rasters', 'texts'];
+
+// 뷰어가 도형 통계(geom_metrics)를 주지 않으면 판단할 수 없으므로 도형이 있다고 본다.
+function viewportHasGeometry(viewport) {
+  const metrics = viewport.geom_metrics;
+  if (!metrics || typeof metrics !== 'object') return true;
+  return GEOMETRY_METRIC_KEYS.some((key) => Number(metrics[key]) > 0);
+}
+
 // 뷰어의 model.getPageToModelTransform(vpId)는 뷰포트마다 행렬을 준다. 펜으로 찍은 임의의 점이 어느
-// 뷰포트에 속하는지는 알 수 없으므로, 모든 뷰포트의 행렬이 같을 때만 DWG 좌표로 변환한다.
+// 뷰포트에 속하는지는 알 수 없으므로, 도형이 있는 뷰포트들의 행렬이 모두 같을 때만 DWG 좌표로 변환한다.
+// 도형이 하나도 없는 뷰포트(변환 정보 없는 기본 뷰포트 등)에는 점이 속할 수 없으므로 비교에서 뺀다.
 export function resolvePageToModelMatrix(model) {
   const data = model.getData();
   if (data.pageToModelTransform) {
@@ -40,15 +51,26 @@ export function resolvePageToModelMatrix(model) {
     return { matrix: data.pageToModelTransform, reason: '도면 전체 변환(pageToModelTransform)을 사용합니다.' };
   }
   const viewports = Array.isArray(data.viewports) ? data.viewports : [];
-  const matrices = [];
+  const present = [];
   viewports.forEach((viewport, vpId) => {
-    if (viewport) matrices.push(model.getPageToModelTransform(vpId));
+    if (viewport) present.push({ viewport, vpId });
   });
-  if (matrices.length === 0) return { matrix: null, reason: '뷰포트 정보가 없습니다.' };
+  if (present.length === 0) return { matrix: null, reason: '뷰포트 정보가 없습니다.' };
+  // 모든 뷰포트가 비어 있으면 뺄 근거가 없으므로 전체를 그대로 비교한다.
+  const withGeometry = present.filter(({ viewport }) => viewportHasGeometry(viewport));
+  const candidates = withGeometry.length > 0 ? withGeometry : present;
+  const excluded = present.length - candidates.length;
+  const matrices = candidates.map(({ vpId }) => model.getPageToModelTransform(vpId));
   // NaN끼리의 비교는 matricesEqual에서 "같다"로 통과하므로 먼저 걸러낸다.
   if (!matrices.every(isFiniteMatrix)) return { matrix: null, reason: INVALID_MATRIX_REASON };
   if (!matrices.every((m) => matricesEqual(m, matrices[0]))) {
     return { matrix: null, reason: `뷰포트 ${matrices.length}개의 좌표 변환이 서로 다릅니다.` };
+  }
+  if (excluded > 0) {
+    return {
+      matrix: matrices[0],
+      reason: `도형이 있는 뷰포트 ${matrices.length}개의 변환을 사용합니다 (빈 뷰포트 ${excluded}개 제외).`,
+    };
   }
   return { matrix: matrices[0], reason: `뷰포트 ${matrices.length}개의 변환이 같습니다.` };
 }

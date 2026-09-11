@@ -65,6 +65,37 @@ describe('resolvePageToModelMatrix', () => {
     });
   });
 
+  it('선·도형이 없는 빈 뷰포트는 빼고 남은 뷰포트의 변환을 쓴다 (실제 망도 데이터)', () => {
+    // 사용자 도면(2D View): 0번은 변환 정보·도형이 없는 기본 뷰포트, 1번에 도면 전체가 들어 있다.
+    const emptyMetrics = { arcs: 0, circles: 0, circ_arcs: 0, dots: 0, fills: 0, plines: 0, ptris: 0, rasters: 0, texts: 0, line_caps: 1, line_joins: 1, line_weights: 1 };
+    const drawingMetrics = { arcs: 0, circles: 258, circ_arcs: 556, dots: 74, fills: 0, plines: 8322, ptris: 1211, rasters: 0, texts: 0, layers: 445 };
+    const viewport1 = { elements: [67504.481665, 0, 0, 0, 0, 67504.362184, 0, 0, 0, 0, 1, 0, 95804.04799, -473.70707, 0, 1] };
+    const model = fakeModel(
+      { viewports: [{ geom_metrics: emptyMetrics }, { units: 'inches', transform: [], geom_metrics: drawingMetrics }] },
+      { 0: { elements: [40000, 0, 0, 0, 0, 40000, 0, 0, 0, 0, 1, 0, 2147043647, 0, 0, 1] }, 1: viewport1 },
+    );
+
+    const result = resolvePageToModelMatrix(model);
+
+    expect(result.matrix).toBe(viewport1);
+    expect(result.reason).toBe('도형이 있는 뷰포트 1개의 변환을 사용합니다 (빈 뷰포트 1개 제외).');
+    const [x, y] = applyMatrixToPoint(result.matrix, [2.041, 8.175])!;
+    expect(x).toBeCloseTo(233580.695, 2);
+    expect(y).toBeCloseTo(551374.454, 2);
+  });
+
+  it('도형이 있는 뷰포트끼리 변환이 다르면 여전히 변환 불가', () => {
+    const metrics = { plines: 10 };
+    const model = fakeModel(
+      { viewports: [{ geom_metrics: metrics }, { geom_metrics: metrics }] },
+      { 0: matrix(1, 0, 0), 1: matrix(50, 0, 0) },
+    );
+    expect(resolvePageToModelMatrix(model)).toEqual({
+      matrix: null,
+      reason: '뷰포트 2개의 좌표 변환이 서로 다릅니다.',
+    });
+  });
+
   it('pageToModelTransform에 NaN이 있으면 변환 불가', () => {
     const m = matrix(3, 1, 1);
     m.elements[12] = NaN;
