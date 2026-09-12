@@ -161,7 +161,7 @@ export function createCrackInput({
   function startGesture(point) {
     const selectedRect = getSelectedScreenRect();
     const handle = hitHandle(point, selectedRect);
-    if (handle && selectedRect) {
+    if (handle) {
       gesture =
         handle.kind === 'corner'
           ? { kind: 'resize', index: handle.index, rect: selectedRect }
@@ -232,6 +232,10 @@ export function createCrackInput({
       return;
     }
     if (!inViewer(event) || !wantsDrawing(event)) return;
+    // 손가락 드래그 중 펜이 터치되면 손가락 제스처를 취소하고 펜을 우선한다.
+    if (gesture !== null) {
+      endGesture(toCanvas(event), true);
+    }
     swallow(event);
     swallowedPointers.add(event.pointerId);
     activePointerId = event.pointerId;
@@ -281,6 +285,7 @@ export function createCrackInput({
     const point = [event.canvasX, event.canvasY];
     switch (event.type) {
       case 'dragstart':
+        if (activePointerId !== null) return false;
         startGesture(point);
         return true;
       case 'dragmove':
