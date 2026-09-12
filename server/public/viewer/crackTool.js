@@ -281,11 +281,11 @@ export function createCrackInput({
   tool.names = [TOOL_NAME];
   tool.getPriority = () => 100;
   tool.handleGesture = (event) => {
+    if (activePointerId !== null) return false;
     if (!isFingerDrawEnabled()) return false;
     const point = [event.canvasX, event.canvasY];
     switch (event.type) {
       case 'dragstart':
-        if (activePointerId !== null) return false;
         startGesture(point);
         return true;
       case 'dragmove':
