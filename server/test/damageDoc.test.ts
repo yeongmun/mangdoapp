@@ -14,9 +14,9 @@ import {
 } from '../public/viewer/damageDoc.js';
 
 const DRAWING = 'd_0123456789abcdef0123456789abcdef';
-const T0 = '2026-09-12T00:00:00.000Z';
-const T1 = '2026-09-12T00:00:01.000Z';
-const T2 = '2026-09-12T00:00:02.000Z';
+const T0 = '2026-09-13T00:00:00.000Z';
+const T1 = '2026-09-13T00:00:01.000Z';
+const T2 = '2026-09-13T00:00:02.000Z';
 
 function lineDamage(id: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -24,9 +24,9 @@ function lineDamage(id: string, overrides: Record<string, unknown> = {}) {
     type: 'crack',
     createdAt: T0,
     geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[100, 100], [103, 104]] },
-    measured: { lengthM: 5, areaM2: null },
+    measured: { width: 0.3, length: 5, count: 2 },
     computed: { lengthDwg: 5, areaDwg: null },
-    attrs: { widthMm: 0.3, member: '거더 하부', note: '' },
+    attrs: { note: '', statusText: '' },
     ...overrides,
   };
 }
@@ -41,9 +41,9 @@ function areaDamage(id: string, overrides: Record<string, unknown> = {}) {
       world: [[0, 0], [2, 0], [2, 1], [0, 1]],
       dwg: [[10, 10], [12, 10], [12, 11], [10, 11]],
     },
-    measured: { lengthM: null, areaM2: 1.8 },
+    measured: { width: 1.2, length: 1.5, count: 1 },
     computed: { lengthDwg: null, areaDwg: 2 },
-    attrs: { widthMm: null, member: '', note: '' },
+    attrs: { note: '', statusText: '' },
     ...overrides,
   };
 }
@@ -53,10 +53,10 @@ function docWith(damages: unknown[]) {
 }
 
 describe('createEmptyDoc', () => {
-  it('schemaVersion 2인 빈 문서를 만든다', () => {
-    expect(SCHEMA_VERSION).toBe(2);
+  it('schemaVersion 3인 빈 문서를 만든다', () => {
+    expect(SCHEMA_VERSION).toBe(3);
     expect(createEmptyDoc(DRAWING, T0)).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       drawingId: DRAWING,
       updatedAt: T0,
       damages: [],
@@ -73,9 +73,9 @@ describe('validateDamageDoc', () => {
   it('문서 수준 오류를 알려준다', () => {
     expect(validateDamageDoc(null, DRAWING)).toEqual(['문서가 객체가 아닙니다.']);
     expect(
-      validateDamageDoc({ schemaVersion: 1, drawingId: 'd_other', updatedAt: 'nope', damages: 'x' }, DRAWING),
+      validateDamageDoc({ schemaVersion: 2, drawingId: 'd_other', updatedAt: 'nope', damages: 'x' }, DRAWING),
     ).toEqual([
-      'schemaVersion은 2이어야 합니다.',
+      'schemaVersion은 3이어야 합니다.',
       'drawingId가 주소와 다릅니다.',
       'updatedAt이 올바른 날짜가 아닙니다.',
       'damages는 배열이어야 합니다.',
@@ -91,12 +91,12 @@ describe('validateDamageDoc', () => {
     const broken = lineDamage('a', {
       type: 'nope',
       createdAt: 3,
-      attrs: { widthMm: -1, member: '', note: '' },
+      attrs: { note: 3, statusText: '' },
     });
     const errors = validateDamageDoc(docWith([broken]), DRAWING);
     expect(errors).toContain('damages[0].type이 손상 유형 목록에 없습니다.');
     expect(errors).toContain('damages[0].createdAt이 올바른 날짜가 아닙니다.');
-    expect(errors).toContain('damages[0].attrs.widthMm는 0 이상의 숫자이거나 null이어야 합니다.');
+    expect(errors).toContain('damages[0].attrs.note와 statusText는 문자열이어야 합니다.');
   });
 
   it('선형은 polyline 2점 이상, 면형은 rect 4점이어야 한다', () => {
@@ -107,13 +107,23 @@ describe('validateDamageDoc', () => {
     expect(wrongKind).toContain('damages[0].geometry.kind는 선형 손상이면 polyline이어야 합니다.');
 
     const shortRect = validateDamageDoc(
-      docWith([areaDamage('a', { geometry: { kind: 'rect', world: [[0, 0], [1, 0], [1, 1]], dwg: null }, computed: { lengthDwg: null, areaDwg: null } })]),
+      docWith([
+        areaDamage('a', {
+          geometry: { kind: 'rect', world: [[0, 0], [1, 0], [1, 1]], dwg: null },
+          computed: { lengthDwg: null, areaDwg: null },
+        }),
+      ]),
       DRAWING,
     );
     expect(shortRect).toContain('damages[0].geometry.world는 유효한 점 4개여야 합니다.');
 
     const shortLine = validateDamageDoc(
-      docWith([lineDamage('a', { geometry: { kind: 'polyline', world: [[0, 0]], dwg: null }, computed: { lengthDwg: null, areaDwg: null } })]),
+      docWith([
+        lineDamage('a', {
+          geometry: { kind: 'polyline', world: [[0, 0]], dwg: null },
+          computed: { lengthDwg: null, areaDwg: null },
+        }),
+      ]),
       DRAWING,
     );
     expect(shortLine).toContain('damages[0].geometry.world는 유효한 점 2개 이상이어야 합니다.');
@@ -133,26 +143,38 @@ describe('validateDamageDoc', () => {
     expect(noDwg).toEqual(['damages[0].computed는 dwg가 없으면 모두 null이어야 합니다.']);
   });
 
-  it('물량은 유형의 단위 쪽만 채울 수 있고 0 이상이어야 한다', () => {
-    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { lengthM: null, areaM2: 2 } })]), DRAWING)).toContain(
-      'damages[0].measured.areaM2는 선형 손상에서 null이어야 합니다.',
+  it('가로·세로는 0 이상의 숫자, 개소는 0 이상의 정수이거나 null이어야 한다', () => {
+    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { width: null, length: null, count: null } })]), DRAWING)).toEqual([]);
+    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { width: 0, length: 0, count: 0 } })]), DRAWING)).toEqual([]);
+    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { width: -1, length: 1, count: 1 } })]), DRAWING)).toContain(
+      'damages[0].measured.width는 0 이상의 숫자이거나 null이어야 합니다.',
     );
-    expect(validateDamageDoc(docWith([areaDamage('a', { measured: { lengthM: 3, areaM2: 1 } })]), DRAWING)).toContain(
-      'damages[0].measured.lengthM은 면형 손상에서 null이어야 합니다.',
+    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { width: 1, length: Infinity, count: 1 } })]), DRAWING)).toContain(
+      'damages[0].measured.length는 0 이상의 숫자이거나 null이어야 합니다.',
     );
-    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { lengthM: -1, areaM2: null } })]), DRAWING)).toContain(
-      'damages[0].measured.lengthM은 0 이상의 숫자이거나 null이어야 합니다.',
+    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { width: 1, length: 1, count: 1.5 } })]), DRAWING)).toContain(
+      'damages[0].measured.count는 0 이상의 정수이거나 null이어야 합니다.',
     );
-    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { lengthM: null, areaM2: null } })]), DRAWING)).toEqual([]);
+    expect(validateDamageDoc(docWith([lineDamage('a', { measured: { width: 1, length: 1, count: -2 } })]), DRAWING)).toContain(
+      'damages[0].measured.count는 0 이상의 정수이거나 null이어야 합니다.',
+    );
   });
 
-  it('속성 값 형식을 확인한다', () => {
-    expect(validateDamageDoc(docWith([lineDamage('a', { attrs: { widthMm: -2, member: '', note: '' } })]), DRAWING)).toContain(
-      'damages[0].attrs.widthMm는 0 이상의 숫자이거나 null이어야 합니다.',
+  it('비고와 손상현황은 문자열이어야 한다', () => {
+    expect(validateDamageDoc(docWith([lineDamage('a', { attrs: { note: 3, statusText: '' } })]), DRAWING)).toContain(
+      'damages[0].attrs.note와 statusText는 문자열이어야 합니다.',
     );
-    expect(validateDamageDoc(docWith([lineDamage('a', { attrs: { widthMm: null, member: 3, note: '' } })]), DRAWING)).toContain(
-      'damages[0].attrs.member와 note는 문자열이어야 합니다.',
+    expect(validateDamageDoc(docWith([lineDamage('a', { attrs: { note: '', statusText: null } })]), DRAWING)).toContain(
+      'damages[0].attrs.note와 statusText는 문자열이어야 합니다.',
     );
+  });
+
+  it('손상현황은 기타 유형에서만 채울 수 있다', () => {
+    expect(validateDamageDoc(docWith([lineDamage('a', { attrs: { note: '', statusText: '메모' } })]), DRAWING)).toContain(
+      'damages[0].attrs.statusText는 기타 유형에서만 쓸 수 있습니다.',
+    );
+    const etc = areaDamage('a', { type: 'etc', attrs: { note: '', statusText: '표면 오염' } });
+    expect(validateDamageDoc(docWith([etc]), DRAWING)).toEqual([]);
   });
 
   it('중복 id를 거부한다', () => {
@@ -185,24 +207,114 @@ describe('migrateDoc', () => {
     ],
   };
 
-  it('v1 문서를 v2로 바꾸고 그 결과는 검증을 통과한다', () => {
+  const v2Doc = {
+    schemaVersion: 2,
+    drawingId: DRAWING,
+    updatedAt: T1,
+    damages: [
+      {
+        id: 'v2-crack',
+        type: 'crack',
+        createdAt: T0,
+        geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[100, 100], [103, 104]] },
+        measured: { lengthM: 1.5, areaM2: null },
+        computed: { lengthDwg: 5, areaDwg: null },
+        attrs: { widthMm: 0.2, member: '', note: '재확인' },
+      },
+      {
+        id: 'v2-area',
+        type: 'spalling',
+        createdAt: T0,
+        geometry: {
+          kind: 'rect',
+          world: [[0, 0], [2, 0], [2, 1], [0, 1]],
+          dwg: [[10, 10], [12, 10], [12, 11], [10, 11]],
+        },
+        measured: { lengthM: null, areaM2: 1.8 },
+        computed: { lengthDwg: null, areaDwg: 2 },
+        attrs: { widthMm: null, member: '기둥', note: '사진 있음' },
+      },
+    ],
+  };
+
+  it('v2의 폭·길이를 v3 측정값으로 옮기고 그 결과는 검증을 통과한다', () => {
+    const migrated = migrateDoc(v2Doc, DRAWING);
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.drawingId).toBe(DRAWING);
+    expect(migrated.updatedAt).toBe(T1);
+    expect(migrated.damages[0]).toEqual({
+      id: 'v2-crack',
+      type: 'crack',
+      createdAt: T0,
+      geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[100, 100], [103, 104]] },
+      measured: { width: 0.2, length: 1.5, count: null },
+      computed: { lengthDwg: 5, areaDwg: null },
+      attrs: { note: '재확인', statusText: '' },
+    });
+    expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
+  });
+
+  it('면적과 부재명은 지어내지 않고 비고에 옮겨 적는다', () => {
+    const migrated = migrateDoc(v2Doc, DRAWING);
+    expect(migrated.damages[1].measured).toEqual({ width: null, length: null, count: null });
+    expect(migrated.damages[1].attrs).toEqual({
+      note: '이전 면적 입력값: 1.8㎡\n부재명: 기둥\n사진 있음',
+      statusText: '',
+    });
+  });
+
+  it('비고가 비어 있으면 옮겨 적은 줄만 남는다', () => {
+    const doc = {
+      ...v2Doc,
+      damages: [{ ...v2Doc.damages[1], attrs: { widthMm: null, member: '', note: '' } }],
+    };
+    expect(migrateDoc(doc, DRAWING).damages[0].attrs.note).toBe('이전 면적 입력값: 1.8㎡');
+  });
+
+  it('면형 유형인데 widthMm이 남아있는 v2 손상(손으로 고친 파일 등)은 폭 값을 mm 그대로 옮기지 않는다', () => {
+    // R2: hadArea(=areaM2 존재 여부)로 판단하면 areaM2가 null인 손상된 v2 area 손상의
+    // widthMm(mm)이 그대로 measured.width(m)로 새어 들어간다. 유형을 조회해 판단해야 한다.
+    const corrupted = {
+      ...v2Doc,
+      damages: [
+        {
+          id: 'corrupted-area',
+          type: 'spalling',
+          createdAt: T0,
+          geometry: {
+            kind: 'rect',
+            world: [[0, 0], [2, 0], [2, 1], [0, 1]],
+            dwg: [[10, 10], [12, 10], [12, 11], [10, 11]],
+          },
+          measured: { lengthM: null, areaM2: null },
+          computed: { lengthDwg: null, areaDwg: null },
+          attrs: { widthMm: 5, member: '', note: '' },
+        },
+      ],
+    };
+    const migrated = migrateDoc(corrupted, DRAWING);
+    expect(migrated.damages[0].measured.width).toBeNull();
+    expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
+  });
+
+  it('v1 문서는 v2를 거쳐 v3까지 변환된다', () => {
     const migrated = migrateDoc(v1Doc, DRAWING);
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     expect(migrated.updatedAt).toBe(T1);
     expect(migrated.damages[0]).toEqual({
       id: 'old-1',
       type: 'crack',
       createdAt: T0,
       geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[100, 100], [103, 104]] },
-      measured: { lengthM: null, areaM2: null },
+      measured: { width: null, length: null, count: null },
       computed: { lengthDwg: 5, areaDwg: null },
-      attrs: { widthMm: null, member: '', note: '' },
+      attrs: { note: '', statusText: '' },
     });
     expect(migrated.damages[1].computed).toEqual({ lengthDwg: null, areaDwg: null });
     expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
   });
 
-  it('이미 v2면 그대로 돌려준다', () => {
+  it('이미 v3면 그대로 돌려준다', () => {
     const doc = docWith([areaDamage('a')]);
     expect(migrateDoc(doc, DRAWING)).toBe(doc);
   });
@@ -212,12 +324,13 @@ describe('migrateDoc', () => {
     expect(migrateDoc('x', DRAWING)).toBeNull();
   });
 
-  it('v1 백업은 그대로 검증하면 거부되지만, migrateDoc 후에는 통과한다 (로컬 백업 복구 경로)', () => {
+  it('v1·v2 백업은 그대로 검증하면 거부되지만, migrateDoc 후에는 통과한다 (로컬 백업 복구 경로)', () => {
     // 뷰어는 로컬 백업을 서버 문서와 같은 방식으로 먼저 migrateDoc에 통과시킨 뒤 validateDamageDoc으로 검사해야 한다.
-    // v1 문서를 그대로 validateDamageDoc에 넘기면 schemaVersion 검사만으로 거부되어 백업이 버려진다.
+    // 예전 문서를 그대로 validateDamageDoc에 넘기면 schemaVersion 검사만으로 거부되어 백업이 버려진다.
     expect(validateDamageDoc(v1Doc, DRAWING).length).toBeGreaterThan(0);
-    const migrated = migrateDoc(v1Doc, DRAWING);
-    expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
+    expect(validateDamageDoc(v2Doc, DRAWING).length).toBeGreaterThan(0);
+    expect(validateDamageDoc(migrateDoc(v1Doc, DRAWING), DRAWING)).toEqual([]);
+    expect(validateDamageDoc(migrateDoc(v2Doc, DRAWING), DRAWING)).toEqual([]);
   });
 });
 
@@ -256,10 +369,10 @@ describe('editor', () => {
     let editor = createEditor(createEmptyDoc(DRAWING, T0));
     editor = addDamage(editor, areaDamage('a'), T1);
 
-    editor = updateDamage(editor, 'a', { measured: { areaM2: 3.5 }, attrs: { note: '확인 필요' } }, T2);
+    editor = updateDamage(editor, 'a', { measured: { count: 3 }, attrs: { note: '확인 필요' } }, T2);
 
-    expect(editor.doc.damages[0].measured).toEqual({ lengthM: null, areaM2: 3.5 });
-    expect(editor.doc.damages[0].attrs).toEqual({ widthMm: null, member: '', note: '확인 필요' });
+    expect(editor.doc.damages[0].measured).toEqual({ width: 1.2, length: 1.5, count: 3 });
+    expect(editor.doc.damages[0].attrs).toEqual({ note: '확인 필요', statusText: '' });
     expect(editor.doc.damages[0].geometry).toEqual(areaDamage('a').geometry);
     expect(editor.doc.updatedAt).toBe(T2);
     expect(canUndo(editor)).toBe(true);
@@ -267,6 +380,6 @@ describe('editor', () => {
 
   it('updateDamage는 없는 id면 같은 editor를 돌려준다', () => {
     const editor = createEditor(createEmptyDoc(DRAWING, T0));
-    expect(updateDamage(editor, 'nope', { measured: { areaM2: 1 } }, T1)).toBe(editor);
+    expect(updateDamage(editor, 'nope', { measured: { count: 1 } }, T1)).toBe(editor);
   });
 });
