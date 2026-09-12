@@ -158,7 +158,11 @@ async function start() {
   };
 
   const backup = syncer.readBackup();
-  const usableBackup = backup && validateDamageDoc(backup, drawingId).length === 0 ? backup : null;
+  // 서버 문서와 같은 방식으로 백업도 먼저 v2로 옮긴 뒤 검증한다. v1 백업을 그대로 검증하면
+  // schemaVersion만으로 거부되어, 아직 서버에 못 올린 손상이 조용히 버려진다.
+  const migratedBackup = backup ? (migrateDoc(backup, drawingId) ?? backup) : null;
+  const usableBackup =
+    migratedBackup && validateDamageDoc(migratedBackup, drawingId).length === 0 ? migratedBackup : null;
   const initial = chooseInitialDoc(serverDocV2, usableBackup);
   let editor = createEditor(initial.doc);
   let selectedId = null;

@@ -211,6 +211,14 @@ describe('migrateDoc', () => {
     expect(migrateDoc(null, DRAWING)).toBeNull();
     expect(migrateDoc('x', DRAWING)).toBeNull();
   });
+
+  it('v1 백업은 그대로 검증하면 거부되지만, migrateDoc 후에는 통과한다 (로컬 백업 복구 경로)', () => {
+    // 뷰어는 로컬 백업을 서버 문서와 같은 방식으로 먼저 migrateDoc에 통과시킨 뒤 validateDamageDoc으로 검사해야 한다.
+    // v1 문서를 그대로 validateDamageDoc에 넘기면 schemaVersion 검사만으로 거부되어 백업이 버려진다.
+    expect(validateDamageDoc(v1Doc, DRAWING).length).toBeGreaterThan(0);
+    const migrated = migrateDoc(v1Doc, DRAWING);
+    expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
+  });
 });
 
 describe('editor', () => {
