@@ -297,6 +297,35 @@ describe('migrateDoc', () => {
     expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
   });
 
+  it('유형이 사라져(삭제·이름바뀜) 길이가 measured로 못 들어가면 면적과 같은 방식으로 비고에 옮겨 적는다', () => {
+    // carriedNote는 areaM2는 늘 옮기면서 lengthM은 옮기지 않아 비대칭이었다: isLineType이 아닌
+    // 손상(면형이거나, 이 경우처럼 유형표에 없는 손상)의 lengthM은 measured.length 자리도 못 찾고
+    // 비고에도 안 남아 그대로 사라졌다.
+    const doc = {
+      ...v2Doc,
+      damages: [
+        {
+          id: 'renamed-type',
+          type: 'no_such_type',
+          createdAt: T0,
+          geometry: { kind: 'polyline', world: [[0, 0], [1, 0]], dwg: null },
+          measured: { lengthM: 12, areaM2: null },
+          computed: { lengthDwg: null, areaDwg: null },
+          attrs: { widthMm: null, member: '', note: '' },
+        },
+      ],
+    };
+    const migrated = migrateDoc(doc, DRAWING);
+    expect(migrated.damages[0].measured).toEqual({ width: null, length: null, count: null });
+    expect(migrated.damages[0].attrs).toEqual({ note: '이전 길이 입력값: 12m', statusText: '' });
+  });
+
+  it('선형 유형은 길이가 measured.length로 제대로 들어가므로 비고에 이중으로 남지 않는다', () => {
+    const migrated = migrateDoc(v2Doc, DRAWING);
+    expect(migrated.damages[0].measured.length).toBe(1.5);
+    expect(migrated.damages[0].attrs.note).toBe('재확인');
+  });
+
   it('v1 문서는 v2를 거쳐 v3까지 변환된다', () => {
     const migrated = migrateDoc(v1Doc, DRAWING);
     expect(migrated.schemaVersion).toBe(3);

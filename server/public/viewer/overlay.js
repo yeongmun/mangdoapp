@@ -176,6 +176,10 @@ export function createOverlay(svg, mapper) {
   let selectedId = null;
   let draft = null;
   let frame = 0;
+  // 번호는 damages가 실제로 바뀔 때만(setDamages) 다시 계산해 여기 담아 둔다. CAMERA_CHANGE는
+  // 팬·줌마다 한 번씩(때로는 초당 여러 번) requestRender를 부르므로, render()마다 다시 계산하면
+  // 손상 수에 대해 최악 O(n²)(중앙값 높이가 0일 때) 비용이 매 프레임 반복된다.
+  let numbers = new Map();
 
   ensurePatternDefs(svg);
 
@@ -199,8 +203,7 @@ export function createOverlay(svg, mapper) {
   function render() {
     frame = 0;
     const elements = [];
-    // 번호는 저장하지 않는다. 그릴 때마다 지금 있는 손상 전체로 다시 계산한다.
-    const numbers = computeNumbers(damages);
+    // 번호는 저장하지 않는다. setDamages에서 이미 계산해 둔 값을 그대로 쓴다(아래 numbers 캐시).
     for (const damage of damages) {
       // 크기·회전 조절 중인 손상은 움직이는 draft가 대신 보여준다 — 그대로 두면 손 떼기 전
       // 원래 위치의 사각형·핸들과 draft가 겹쳐 두 개로 보인다.
@@ -224,7 +227,12 @@ export function createOverlay(svg, mapper) {
 
   return {
     setDamages(list) {
-      damages = list;
+      // 참조가 같으면(선택만 바뀌는 등) 목록 자체는 안 바뀐 것이다 — editor의 모든 변경 함수는
+      // 항상 새 배열을 만들므로(damageDoc.js) 참조 비교로 충분하다.
+      if (list !== damages) {
+        damages = list;
+        numbers = computeNumbers(damages);
+      }
       requestRender();
     },
     setSelected(id) {
@@ -236,5 +244,10 @@ export function createOverlay(svg, mapper) {
       requestRender();
     },
     requestRender,
+    // main.js의 속성 패널 요약줄(번호 표시)이 render()와 같은 캐시를 쓰도록 내보낸다 —
+    // 따로 computeNumbers를 다시 부르면 캐시를 둔 의미가 없다.
+    numberOf(id) {
+      return numbers.get(id) ?? null;
+    },
   };
 }

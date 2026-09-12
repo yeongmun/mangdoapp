@@ -5,7 +5,7 @@ import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
-import { computeNumbers, formatQuantity, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
+import { formatQuantity, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
 
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
@@ -105,7 +105,7 @@ async function start() {
   if (!accessKey) throw new Error('접근키가 없습니다. 앱 설정을 확인하세요.');
 
   const [drawings, serverDoc] = await Promise.all([api('/drawings'), api(`/drawings/${drawingId}/damages`)]);
-  const serverDocV2 = migrateDoc(serverDoc, drawingId) ?? serverDoc;
+  const serverDocV3 = migrateDoc(serverDoc, drawingId) ?? serverDoc;
   const drawing = drawings.find((d) => d.id === drawingId);
   if (!drawing) throw new Error('도면을 찾을 수 없습니다.');
   if (drawing.status !== 'success') throw new Error('아직 변환이 끝나지 않은 도면입니다.');
@@ -159,12 +159,12 @@ async function start() {
   };
 
   const backup = syncer.readBackup();
-  // 서버 문서와 같은 방식으로 백업도 먼저 v2로 옮긴 뒤 검증한다. v1 백업을 그대로 검증하면
+  // 서버 문서와 같은 방식으로 백업도 먼저 v3로 옮긴 뒤 검증한다. v1·v2 백업을 그대로 검증하면
   // schemaVersion만으로 거부되어, 아직 서버에 못 올린 손상이 조용히 버려진다.
   const migratedBackup = backup ? (migrateDoc(backup, drawingId) ?? backup) : null;
   const usableBackup =
     migratedBackup && validateDamageDoc(migratedBackup, drawingId).length === 0 ? migratedBackup : null;
-  const initial = chooseInitialDoc(serverDocV2, usableBackup);
+  const initial = chooseInitialDoc(serverDocV3, usableBackup);
   let editor = createEditor(initial.doc);
   let selectedId = null;
   let fingerDraw = false;
@@ -368,7 +368,9 @@ async function start() {
     const damage = selectedDamage();
     if (!damage) return;
     const draft = draftFromInputs(damage);
-    const number = computeNumbers(editor.doc.damages).get(damage.id) ?? null;
+    // overlay가 setDamages에서 이미 계산해 둔 번호를 그대로 읽는다 — 여기서 computeNumbers를
+    // 다시 부르면 같은 값을 두 번 계산하는 셈이라 캐시를 둔 의미가 없다.
+    const number = overlay.numberOf(damage.id);
     const quantity = quantityOf(draft);
     const quantityText = quantity === null ? '-' : `${formatQuantity(quantity)} ${unitOf(draft)}`;
     $('propsSummary').textContent = `번호 ${number ?? '-'} · 손상현황 ${statusTextOf(draft)} · 물량 ${quantityText}`;

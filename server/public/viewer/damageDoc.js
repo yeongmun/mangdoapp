@@ -170,10 +170,15 @@ function migrateV1ToV2(doc, drawingId) {
 
 // v2의 면적·부재명은 v3에 들어갈 칸이 없다. 면적에서 가로·세로를 되돌릴 수 없으므로 지어내지 않고,
 // 조용히 버리지도 않는다. 사용자가 보고 다시 입력할 수 있게 비고에 옮겨 적는다.
-function carriedNote(damage) {
+//
+// 길이(lengthM)는 선형 유형(isLineType)이면 measured.length로 제 칸을 찾아가므로 여기서는 다루지
+// 않는다. isLineType이 아닌데(면형이거나, 유형이 삭제·이름바뀜으로 알 수 없는데) lengthM 값이
+// 남아 있으면 measured.length 자리를 못 찾고 그대로 사라지므로, areaM2와 같은 방식으로 비고에 옮긴다.
+function carriedNote(damage, isLineType) {
   const measured = damage.measured ?? {};
   const attrs = damage.attrs ?? {};
   const lines = [];
+  if (!isLineType && Number.isFinite(measured.lengthM)) lines.push(`이전 길이 입력값: ${measured.lengthM}m`);
   if (Number.isFinite(measured.areaM2)) lines.push(`이전 면적 입력값: ${measured.areaM2}㎡`);
   if (typeof attrs.member === 'string' && attrs.member !== '') lines.push(`부재명: ${attrs.member}`);
   if (typeof attrs.note === 'string' && attrs.note !== '') lines.push(attrs.note);
@@ -205,7 +210,7 @@ function migrateV2ToV3(doc) {
           count: null,
         },
         computed: damage.computed ?? { lengthDwg: null, areaDwg: null },
-        attrs: { note: carriedNote(damage), statusText: '' },
+        attrs: { note: carriedNote(damage, isLineType), statusText: '' },
       };
     }),
   };
