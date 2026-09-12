@@ -135,6 +135,16 @@ describe('resizeRect', () => {
       expect(resized[i][1]).toBeCloseTo(rotated[i][1], 8);
     }
   });
+
+  it('돌려준 사각형은 입력과 같은 점 객체를 쓰지 않는다', () => {
+    const rect: Pt[] = [[0, 0], [4, 0], [4, 2], [0, 2]];
+    const resized = resizeRect(rect, 2, [6, 5]);
+    for (let i = 0; i < 4; i++) {
+      expect(resized[i]).not.toBe(rect[i]);
+    }
+    resized[0][0] = 99;
+    expect(rect[0]).toEqual([0, 0]);
+  });
 });
 
 describe('polygonArea', () => {

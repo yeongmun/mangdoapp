@@ -105,7 +105,7 @@ export function resizeRect(points, cornerIndex, newPoint) {
   const opposite = [fixed[0] + u[0] * width + v[0] * height, fixed[1] + u[1] * width + v[1] * height];
 
   const result = [];
-  result[(cornerIndex + 2) % 4] = fixed;
+  result[(cornerIndex + 2) % 4] = [fixed[0], fixed[1]];
   result[(cornerIndex + 1) % 4] = alongU;
   result[cornerIndex] = opposite;
   result[(cornerIndex + 3) % 4] = alongV;
