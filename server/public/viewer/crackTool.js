@@ -77,7 +77,9 @@ export function finalizeStroke(clientPoints, mapper, options) {
 export function finalizeRect(startClient, endClient, mapper, options) {
   const type = getDamageType(options.typeId);
   if (!type || type.kind !== 'area') return null;
-  if (Math.abs(endClient[0] - startClient[0]) < MIN_RECT_PX && Math.abs(endClient[1] - startClient[1]) < MIN_RECT_PX) {
+  // 두 축 모두 최소 크기를 넘어야 한다. 한 축만 통과시키면(예: 가로 300px·세로 1px) 선에 가까운
+  // 사각형이 만들어지고, resizeRect의 기저(0-폭 방향) 계산이 무너져 다시 키울 수도 없게 된다.
+  if (Math.abs(endClient[0] - startClient[0]) < MIN_RECT_PX || Math.abs(endClient[1] - startClient[1]) < MIN_RECT_PX) {
     return null;
   }
 

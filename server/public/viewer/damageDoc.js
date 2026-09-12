@@ -156,7 +156,7 @@ export function migrateDoc(doc, drawingId) {
     updatedAt: doc.updatedAt,
     damages: damages.map((damage) => ({
       id: damage.id,
-      type: damage.type === 'crack' ? 'crack' : damage.type,
+      type: 'crack',
       createdAt: damage.createdAt,
       geometry: damage.geometry,
       measured: { lengthM: null, areaM2: null },

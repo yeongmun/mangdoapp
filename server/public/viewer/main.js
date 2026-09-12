@@ -272,7 +272,8 @@ async function start() {
     },
     onTransform: (screenRect, status) => {
       if (status === 'preview') {
-        overlay.setDraft({ kind: 'rect', points: screenRect });
+        // activeId를 같이 넘겨, 움직이는 draft 밑에 손 떼기 전 원래 사각형·핸들이 겹쳐 보이지 않게 한다.
+        overlay.setDraft({ kind: 'rect', points: screenRect, activeId: selectedId });
         return;
       }
       overlay.setDraft(null);
@@ -295,6 +296,10 @@ async function start() {
     },
   });
 
+  // 균열류(선형 손상: 균열, 균열/백태) — 폭 입력이 의미 있는 유형. quantityUnit이 'm'인 유형과 같다
+  // (kind: 'line'과 동치), lengthRow를 보여주는 조건과 같은 기준이다.
+  const isCrackLikeType = (type) => type.quantityUnit === 'm';
+
   function openProps() {
     const damage = selectedDamage();
     if (!damage) return;
@@ -302,22 +307,29 @@ async function start() {
     $('propsTitle').textContent = `${type.label} 속성`;
     $('lengthRow').hidden = type.quantityUnit !== 'm';
     $('areaRow').hidden = type.quantityUnit !== 'm2';
+    $('widthRow').hidden = !isCrackLikeType(type);
     $('lengthInput').value = damage.measured.lengthM ?? '';
     $('areaInput').value = damage.measured.areaM2 ?? '';
     $('widthInput').value = damage.attrs.widthMm ?? '';
     $('memberInput').value = damage.attrs.member;
     $('noteInput').value = damage.attrs.note;
-    const computed = type.quantityUnit === 'm' ? damage.computed.lengthDwg : damage.computed.areaDwg;
-    $('computedHint').textContent =
-      computed === null ? '참고값 없음 (DWG 좌표 변환 불가)' : `참고: 도면에서 계산한 값 ${computed.toFixed(1)} (도면 단위)`;
+    // 참고값은 도면 단위(9장 미확정)가 정해질 때까지 숨긴다. 도면 단위를 모르는 채 그대로 보여주면
+    // (예: mm 도면의 1.8㎡가 1800000.0으로) 실제 크기와 자릿수가 크게 달라 보여 오히려 오해를 준다.
+    $('computedHint').hidden = true;
     $('propsPanel').hidden = false;
   }
 
-  function numberOrNull(value) {
+  // 빈 입력은 null(측정 안 함)로 본다. 그 외에는 0 이상의 유한한 숫자여야 하며, 아니면 거부한다.
+  function parseAmount(value) {
     const text = value.trim();
-    if (text === '') return null;
+    if (text === '') return { ok: true, value: null };
     const parsed = Number(text);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    return Number.isFinite(parsed) && parsed >= 0 ? { ok: true, value: parsed } : { ok: false, value: null };
+  }
+
+  function showSaveError(message) {
+    $('saveError').textContent = message;
+    $('saveError').hidden = false;
   }
 
   $('props').addEventListener('click', openProps);
@@ -328,17 +340,23 @@ async function start() {
     const damage = selectedDamage();
     if (!damage) return;
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
+    const length = type.quantityUnit === 'm' ? parseAmount($('lengthInput').value) : { ok: true, value: null };
+    const area = type.quantityUnit === 'm2' ? parseAmount($('areaInput').value) : { ok: true, value: null };
+    const width = isCrackLikeType(type) ? parseAmount($('widthInput').value) : { ok: true, value: null };
+    if (!length.ok || !area.ok || !width.ok) {
+      // 범위를 벗어난 값을 조용히 null로 바꿔 저장하면(예: -3 입력) 사용자가 적은 값이 사라진 채
+      // 패널이 닫혀 저장된 것처럼 보인다. 대신 패널을 열어둔 채 알리고 다시 고치게 한다.
+      showSaveError('저장하지 못했습니다: 0 이상의 숫자를 입력하세요.');
+      return;
+    }
     apply(
       updateDamage(
         editor,
         damage.id,
         {
-          measured: {
-            lengthM: type.quantityUnit === 'm' ? numberOrNull($('lengthInput').value) : null,
-            areaM2: type.quantityUnit === 'm2' ? numberOrNull($('areaInput').value) : null,
-          },
+          measured: { lengthM: length.value, areaM2: area.value },
           attrs: {
-            widthMm: numberOrNull($('widthInput').value),
+            widthMm: width.value,
             member: $('memberInput').value.trim(),
             note: $('noteInput').value.trim(),
           },
@@ -346,6 +364,7 @@ async function start() {
         nowIso(),
       ),
     );
+    $('saveError').hidden = true;
     $('propsPanel').hidden = true;
   });
 

@@ -55,12 +55,18 @@ export function polylineLength(points) {
 
 // 면형 손상은 회전 가능한 사각형을 네 꼭짓점으로 저장한다. 아래 함수들은 그 네 점을 다룬다.
 
+// 꼭짓점 순서를 드래그 방향과 무관하게 정한다(min/max 기준) — 그래야 첫 변(0→1)이 항상
+// 시각적으로 위쪽 변이 되어, 그 바깥에 그리는 회전 핸들이 사각형 아래쪽으로 어긋나지 않는다.
 export function rectFromDrag(start, end) {
+  const minX = Math.min(start[0], end[0]);
+  const maxX = Math.max(start[0], end[0]);
+  const minY = Math.min(start[1], end[1]);
+  const maxY = Math.max(start[1], end[1]);
   return [
-    [start[0], start[1]],
-    [end[0], start[1]],
-    [end[0], end[1]],
-    [start[0], end[1]],
+    [minX, minY],
+    [maxX, minY],
+    [maxX, maxY],
+    [minX, maxY],
   ];
 }
 

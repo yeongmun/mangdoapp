@@ -76,6 +76,13 @@ describe('finalizeRect', () => {
     expect(finalizeRect([0, 0], [9, 9], mapper, areaOptions)).toBeNull();
   });
 
+  it('한 축만 최소 크기를 넘는 사각형(선에 가까운 드래그)도 버린다', () => {
+    // 가로만 300px, 세로는 1px — 예전에는 둘 다 미달일 때만 버렸으므로 이런 드래그가 통과됐다.
+    // 세로 폭이 0에 가까우면 resizeRect의 기저 벡터가 무너져 다시 키울 수도 없는 사각형이 남는다.
+    expect(finalizeRect([0, 0], [300, 1], mapper, areaOptions)).toBeNull();
+    expect(finalizeRect([0, 0], [1, 300], mapper, areaOptions)).toBeNull();
+  });
+
   it('선형 유형으로는 만들지 않는다', () => {
     expect(finalizeRect([0, 0], [20, 10], mapper, options)).toBeNull();
   });

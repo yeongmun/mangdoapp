@@ -180,7 +180,12 @@ export function createOverlay(svg, mapper) {
   function render() {
     frame = 0;
     const elements = [];
-    for (const damage of damages) renderDamage(damage, elements);
+    for (const damage of damages) {
+      // 크기·회전 조절 중인 손상은 움직이는 draft가 대신 보여준다 — 그대로 두면 손 떼기 전
+      // 원래 위치의 사각형·핸들과 draft가 겹쳐 두 개로 보인다.
+      if (draft && draft.activeId != null && damage.id === draft.activeId) continue;
+      renderDamage(damage, elements);
+    }
     if (draft && draft.points.length > 1) {
       elements.push(
         draft.kind === 'rect'
