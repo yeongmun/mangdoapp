@@ -49,7 +49,7 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       }
       leavingRef.current = false;
       Alert.alert(
-        '저장되지 않은 균열이 있습니다',
+        '저장되지 않은 손상이 있습니다',
         '서버에 저장하지 못했습니다. 이 기기에 임시 보관되지만, PC 서버를 다시 시작하면 복구할 수 없습니다.',
         [
           { text: '계속 편집', style: 'cancel' },
