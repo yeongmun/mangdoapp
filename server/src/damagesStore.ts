@@ -18,7 +18,7 @@ export class DamagesStore {
   async get(drawingId: string): Promise<DamageDoc> {
     const saved = await readJsonFile<DamageDoc>(this.pathFor(drawingId));
     if (!saved) return createEmptyDoc(drawingId, NEVER_SAVED);
-    // 예전에 저장된 v1 문서는 읽을 때 v2로 바꿔서 돌려준다. 저장은 항상 v2로 한다.
+    // 예전에 저장된 v1·v2 문서는 읽을 때 v3로 바꿔서 돌려준다. 저장은 항상 v3로 한다.
     return (migrateDoc(saved, drawingId) as DamageDoc | null) ?? createEmptyDoc(drawingId, NEVER_SAVED);
   }
 
