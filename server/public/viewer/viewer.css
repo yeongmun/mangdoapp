@@ -73,6 +73,40 @@ body {
 .status.pending { background: #d32f2f; }
 .status.error { background: #8e0000; }
 
+#damageType {
+  font-size: 15px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  border: 1px solid #c7c9cf;
+  background: #fff;
+  max-width: 130px;
+}
+
+#propsPanel {
+  position: absolute;
+  right: 12px;
+  top: calc(12px + env(safe-area-inset-top));
+  z-index: 12;
+  width: 240px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-size: 14px;
+}
+
+#propsPanel h2 { font-size: 15px; margin: 0 0 8px; }
+#propsPanel label { display: block; margin-bottom: 8px; }
+#propsPanel input { width: 100%; font-size: 15px; padding: 6px 8px; box-sizing: border-box; }
+#propsPanel .row { display: flex; gap: 8px; }
+#propsPanel button { flex: 1; font-size: 15px; padding: 9px 0; border-radius: 8px; border: 1px solid #c7c9cf; background: #fff; }
+#propsSave { background: #1e66f5; border-color: #1e66f5; color: #fff; }
+#computedHint { margin: 0 0 8px; color: #8a8f98; font-size: 12px; }
+
+/* 위의 #propsPanel label 규칙이 브라우저 기본 [hidden]을 이기므로, 패널 안의 숨김은 여기서 다시 정한다.
+   칸이 늘어도 규칙을 고칠 필요가 없도록 자손 전체에 적용한다. */
+#propsPanel[hidden], #propsPanel [hidden] { display: none; }
+
 #coordPanel,
 #warning,
 #saveError {
