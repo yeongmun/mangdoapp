@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { polylineLength } from '../public/viewer/geometry.js';
-import { finalizeRect, finalizeStroke, MIN_RECT_PX, MIN_STROKE_PX, pickDamage } from '../public/viewer/crackTool.js';
+import { finalizeRect, finalizeStroke, hitHandle, MIN_RECT_PX, MIN_STROKE_PX, pickDamage } from '../public/viewer/crackTool.js';
 
 type Pt = [number, number];
 
@@ -115,5 +115,27 @@ describe('pickDamage', () => {
 
   it('아무것도 없으면 null', () => {
     expect(pickDamage([], [0, 0], mapper)).toBeNull();
+  });
+});
+
+describe('hitHandle', () => {
+  const rect: Pt[] = [[0, 0], [40, 0], [40, 20], [0, 20]];
+
+  it('모서리 핸들을 누르면 그 번호를 돌려준다', () => {
+    expect(hitHandle([0, 0], rect)).toEqual({ kind: 'corner', index: 0 });
+    expect(hitHandle([40, 20], rect)).toEqual({ kind: 'corner', index: 2 });
+  });
+
+  it('회전 핸들을 누르면 rotate', () => {
+    expect(hitHandle([20, -28], rect)).toEqual({ kind: 'rotate' });
+  });
+
+  it('핸들에서 멀면 null', () => {
+    expect(hitHandle([20, 10], rect)).toBeNull();
+    expect(hitHandle([200, 200], rect)).toBeNull();
+  });
+
+  it('사각형이 없으면 null', () => {
+    expect(hitHandle([0, 0], null)).toBeNull();
   });
 });

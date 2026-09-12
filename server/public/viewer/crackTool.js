@@ -2,12 +2,17 @@
 // "손가락 그리기"를 켜면 한 손가락 드래그와 마우스 드래그로 그리고, 두 손가락 핀치·회전은 뷰어에 넘긴다.
 
 import { getDamageType } from './damageTypes.js';
+import { HANDLE_SIZE_PX, rectHandlePositions } from './overlay.js';
 import {
+  angleOf,
   distanceToPolyline,
   pointInPolygon,
   polygonArea,
   polylineLength,
+  rectCenter,
   rectFromDrag,
+  resizeRect,
+  rotatePoints,
   simplifyPolyline,
 } from './geometry.js';
 
@@ -15,7 +20,7 @@ export const SIMPLIFY_TOLERANCE_PX = 1.5;
 export const MIN_STROKE_PX = 10;
 export const MIN_RECT_PX = 10;
 export const PICK_RADIUS_PX = 12;
-const TOOL_NAME = 'mangdo-finger-draw';
+export const TOOL_NAME = 'mangdo-finger-draw';
 
 function isFinitePoint(point) {
   return Array.isArray(point) && Number.isFinite(point[0]) && Number.isFinite(point[1]);
@@ -104,10 +109,34 @@ export function pickDamage(damages, clientPoint, mapper, radiusPx = PICK_RADIUS_
   return bestId;
 }
 
-export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDraft, onStroke, onTap }) {
+export function hitHandle(clientPoint, screenRect, sizePx = HANDLE_SIZE_PX) {
+  if (!screenRect) return null;
+  const { corners, rotate } = rectHandlePositions(screenRect);
+  const near = (point) => Math.hypot(clientPoint[0] - point[0], clientPoint[1] - point[1]) <= sizePx;
+  for (let index = 0; index < corners.length; index++) {
+    if (near(corners[index])) return { kind: 'corner', index };
+  }
+  return near(rotate) ? { kind: 'rotate' } : null;
+}
+
+export function createCrackInput({
+  viewer,
+  container,
+  isFingerDrawEnabled,
+  getActiveTypeKind,
+  getSelectedScreenRect,
+  onDraft,
+  onStroke,
+  onRect,
+  onTransform,
+  onTap,
+}) {
   let activePointerId = null;
   let points = [];
   const swallowedPointers = new Set();
+  // 지금 진행 중인 동작: null | { kind: 'stroke' } | { kind: 'rect', start }
+  //   | { kind: 'resize', index, rect } | { kind: 'rotate', rect, center, startAngle }
+  let gesture = null;
 
   function toCanvas(event) {
     const rect = viewer.canvas.getBoundingClientRect();
@@ -129,6 +158,72 @@ export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDra
     return event.pointerType === 'mouse' && event.button === 0 && isFingerDrawEnabled();
   }
 
+  function startGesture(point) {
+    const selectedRect = getSelectedScreenRect();
+    const handle = hitHandle(point, selectedRect);
+    if (handle && selectedRect) {
+      gesture =
+        handle.kind === 'corner'
+          ? { kind: 'resize', index: handle.index, rect: selectedRect }
+          : { kind: 'rotate', rect: selectedRect, center: rectCenter(selectedRect), startAngle: angleOf(rectCenter(selectedRect), point) };
+      return;
+    }
+    if (getActiveTypeKind() === 'area') {
+      gesture = { kind: 'rect', start: point };
+      onDraft({ kind: 'rect', points: rectFromDrag(point, point) });
+      return;
+    }
+    gesture = { kind: 'stroke' };
+    points = [point];
+    onDraft({ kind: 'polyline', points });
+  }
+
+  function moveGesture(point, samples) {
+    if (!gesture) return;
+    if (gesture.kind === 'stroke') {
+      for (const sample of samples) points.push(sample);
+      onDraft({ kind: 'polyline', points });
+      return;
+    }
+    if (gesture.kind === 'rect') {
+      onDraft({ kind: 'rect', points: rectFromDrag(gesture.start, point) });
+      return;
+    }
+    if (gesture.kind === 'resize') {
+      onTransform(resizeRect(gesture.rect, gesture.index, point), false);
+      return;
+    }
+    onTransform(rotatePoints(gesture.rect, gesture.center, angleOf(gesture.center, point) - gesture.startAngle), false);
+  }
+
+  function endGesture(point, cancelled) {
+    const current = gesture;
+    gesture = null;
+    const stroke = points;
+    points = [];
+    if (!current) return;
+    if (cancelled) {
+      onDraft(null);
+      if (current.kind === 'resize' || current.kind === 'rotate') onTransform(current.rect, true);
+      return;
+    }
+    if (current.kind === 'stroke') {
+      onDraft(null);
+      onStroke(stroke);
+      return;
+    }
+    if (current.kind === 'rect') {
+      onDraft(null);
+      onRect(current.start, point);
+      return;
+    }
+    if (current.kind === 'resize') {
+      onTransform(resizeRect(current.rect, current.index, point), true);
+      return;
+    }
+    onTransform(rotatePoints(current.rect, current.center, angleOf(current.center, point) - current.startAngle), true);
+  }
+
   function onPointerDown(event) {
     if (activePointerId !== null) {
       // 펜으로 그리는 중 닿은 손바닥·다른 손가락은 무시한다 (팜 리젝션).
@@ -137,37 +232,29 @@ export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDra
       return;
     }
     if (!inViewer(event) || !wantsDrawing(event)) return;
-    swallowedPointers.add(event.pointerId);
     swallow(event);
+    swallowedPointers.add(event.pointerId);
     activePointerId = event.pointerId;
-    points = [toCanvas(event)];
-    onDraft(points);
+    startGesture(toCanvas(event));
   }
 
   function onPointerMove(event) {
     if (activePointerId === null) return;
     swallow(event);
     if (event.pointerId !== activePointerId) return;
-    const samples = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
-    for (const sample of samples.length > 0 ? samples : [event]) points.push(toCanvas(sample));
-    onDraft(points);
+    const coalesced = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
+    const samples = (coalesced.length > 0 ? coalesced : [event]).map((sample) => toCanvas(sample));
+    moveGesture(samples[samples.length - 1], samples);
   }
 
   function onPointerEnd(event) {
-    // 펜이 눌리기 전부터 이미 뷰어(Hammer 포인터 입력)가 받은 접촉은 up·cancel도 뷰어로 보내야
-    // Hammer에 지워지지 않은 포인터가 남지 않는다.
+    // 펜보다 먼저 닿아 있던 접촉은 뷰어가 down을 이미 받았으므로 up/cancel을 그대로 넘긴다.
     if (!swallowedPointers.has(event.pointerId)) return;
     swallowedPointers.delete(event.pointerId);
     swallow(event);
     if (event.pointerId !== activePointerId) return;
     activePointerId = null;
-    const stroke = points;
-    points = [];
-    if (event.type === 'pointercancel') {
-      onDraft(null);
-      return;
-    }
-    onStroke(stroke);
+    endGesture(toCanvas(event), event.type === 'pointercancel');
   }
 
   // iOS는 Apple Pencil에 대해 touch 이벤트도 보낸다. 펜 터치와 그리는 중의 터치는 뷰어에 넘기지 않는다.
@@ -186,7 +273,6 @@ export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDra
   }
 
   // 손가락 그리기: 뷰어 도구로 등록해 한 손가락 드래그(drag*)만 가져간다.
-  let fingerPoints = null;
   const tool = new Autodesk.Viewing.ToolInterface();
   tool.names = [TOOL_NAME];
   tool.getPriority = () => 100;
@@ -195,32 +281,23 @@ export function createCrackInput({ viewer, container, isFingerDrawEnabled, onDra
     const point = [event.canvasX, event.canvasY];
     switch (event.type) {
       case 'dragstart':
-        fingerPoints = [point];
-        onDraft(fingerPoints);
+        startGesture(point);
         return true;
       case 'dragmove':
-        if (!fingerPoints) return false;
-        fingerPoints.push(point);
-        onDraft(fingerPoints);
+        if (!gesture) return false;
+        moveGesture(point, [point]);
         return true;
-      case 'dragend': {
-        if (!fingerPoints) return false;
-        const stroke = fingerPoints;
-        fingerPoints = null;
-        onStroke(stroke);
+      case 'dragend':
+        if (!gesture) return false;
+        endGesture(point, false);
         return true;
-      }
       default:
-        // 두 손가락 핀치·회전이 시작되면 그리던 선을 버리고 뷰어가 줌·팬하도록 넘긴다.
-        if (fingerPoints) {
-          fingerPoints = null;
-          onDraft(null);
-        }
+        // 두 손가락 핀치·회전이 시작되면 그리던 것을 버리고 뷰어가 줌·팬하도록 넘긴다.
+        if (gesture) endGesture(point, true);
         return false;
     }
   };
   tool.handleSingleTap = (event) => onTap([event.canvasX, event.canvasY]);
-  // PC 마우스 클릭은 뷰어 도구에 handleSingleTap이 아니라 handleSingleClick으로 들어온다.
   tool.handleSingleClick = (event, button) => {
     if (button !== 0) return false;
     const point = typeof event.canvasX === 'number' ? [event.canvasX, event.canvasY] : toCanvas(event);
