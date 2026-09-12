@@ -186,6 +186,13 @@ async function start() {
     return damage.geometry.world.map((point) => mapper.worldToClient(point));
   }
 
+  // 선택 상태를 바꾸는 유일한 곳. 속성창은 선택이 바뀔 때마다 닫는다(다른 손상의 값이 남아있지 않도록).
+  // 선택 자체가 속성창을 여는 일은 없다 — 여는 것은 사용자가 "속성" 버튼을 눌렀을 때뿐이다.
+  function setSelection(id) {
+    selectedId = id;
+    $('propsPanel').hidden = true;
+  }
+
   function refresh() {
     overlay.setDamages(editor.doc.damages);
     overlay.setSelected(selectedId);
@@ -216,8 +223,7 @@ async function start() {
       showCoordinates(point);
       return true;
     }
-    selectedId = pickDamage(editor.doc.damages, point, mapper);
-    $('propsPanel').hidden = true;
+    setSelection(pickDamage(editor.doc.damages, point, mapper));
     refresh();
     return selectedId !== null;
   }
@@ -243,7 +249,7 @@ async function start() {
         handleTap(lastPoint);
         return;
       }
-      selectedId = null;
+      setSelection(null);
       apply(addDamage(editor, damage, nowIso()));
     },
     onRect: (start, end) => {
@@ -257,7 +263,7 @@ async function start() {
         handleTap(end);
         return;
       }
-      selectedId = null;
+      setSelection(null);
       apply(addDamage(editor, damage, nowIso()));
     },
     onTransform: (screenRect, done) => {
@@ -347,15 +353,13 @@ async function start() {
     if (!coordCheck) $('coordPanel').hidden = true;
   });
   $('undo').addEventListener('click', () => {
-    selectedId = null;
-    $('propsPanel').hidden = true;
+    setSelection(null);
     apply(undo(editor, nowIso()));
   });
   $('delete').addEventListener('click', () => {
     if (selectedId === null) return;
     const id = selectedId;
-    selectedId = null;
-    $('propsPanel').hidden = true;
+    setSelection(null);
     apply(removeDamage(editor, id, nowIso()));
   });
   document.addEventListener('visibilitychange', () => {
