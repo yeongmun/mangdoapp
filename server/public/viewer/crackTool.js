@@ -1,38 +1,89 @@
-// 균열 입력. 펜은 항상 그리기, 손가락은 기본적으로 뷰어 줌·팬.
+// 손상 입력. 펜은 항상 그리기, 손가락은 기본적으로 뷰어 줌·팬.
 // "손가락 그리기"를 켜면 한 손가락 드래그와 마우스 드래그로 그리고, 두 손가락 핀치·회전은 뷰어에 넘긴다.
 
-import { distanceToPolyline, polylineLength, simplifyPolyline } from './geometry.js';
+import { getDamageType } from './damageTypes.js';
+import {
+  distanceToPolyline,
+  pointInPolygon,
+  polygonArea,
+  polylineLength,
+  rectFromDrag,
+  simplifyPolyline,
+} from './geometry.js';
 
 export const SIMPLIFY_TOLERANCE_PX = 1.5;
 export const MIN_STROKE_PX = 10;
+export const MIN_RECT_PX = 10;
 export const PICK_RADIUS_PX = 12;
 const TOOL_NAME = 'mangdo-finger-draw';
 
-function isFinitePoint(p) {
-  return Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+function isFinitePoint(point) {
+  return Array.isArray(point) && Number.isFinite(point[0]) && Number.isFinite(point[1]);
 }
 
-export function finalizeStroke(clientPoints, mapper, { now, newId }) {
+// world 점들을 DWG로 바꾼다. 하나라도 못 바꾸면 null.
+function toDwg(worldPoints, mapper) {
+  const dwg = worldPoints.map((point) => mapper.worldToDwg(point));
+  return dwg.every((point) => point !== null && isFinitePoint(point)) ? dwg : null;
+}
+
+function normalizeCoordinate(value) {
+  // Convert -0 to 0 to match test expectations
+  return Object.is(value, -0) ? 0 : value;
+}
+
+function normalizePoint(point) {
+  return [normalizeCoordinate(point[0]), normalizeCoordinate(point[1])];
+}
+
+function normalizePoints(points) {
+  return points.map(normalizePoint);
+}
+
+function emptyDamage(typeId, worldPoints, dwgPoints, kind, options) {
+  return {
+    id: options.newId(),
+    type: typeId,
+    createdAt: options.now,
+    geometry: { kind, world: normalizePoints(worldPoints), dwg: dwgPoints ? normalizePoints(dwgPoints) : null },
+    measured: { lengthM: null, areaM2: null },
+    computed: { lengthDwg: null, areaDwg: null },
+    attrs: { widthMm: null, member: '', note: '' },
+  };
+}
+
+export function finalizeStroke(clientPoints, mapper, options) {
+  const type = getDamageType(options.typeId);
+  if (!type || type.kind !== 'line') return null;
   if (clientPoints.length < 2) return null;
   // 화면과 world는 닮은꼴 변환이므로 화면 1.5px로 단순화하면 world에서도 같은 비율의 허용 오차가 된다.
-  // 펜을 가만히 대고 있을 때 들어오는 미세 떨림(240Hz 좌표 샘플)은 원본 길이는 10px을 넘길 수 있으므로,
-  // 단순화한 뒤의 길이로 판정해야 실제로 움직이지 않은 획을 걸러낼 수 있다.
   const simplified = simplifyPolyline(clientPoints, SIMPLIFY_TOLERANCE_PX);
   if (simplified.length < 2 || polylineLength(simplified) < MIN_STROKE_PX) return null;
 
   const world = simplified.map(([x, y]) => mapper.clientToWorld(x, y));
-  if (!world.every(isFinitePoint)) return null;
+  if (!world.every((point) => point !== null && isFinitePoint(point))) return null;
 
-  const dwgPoints = world.map((p) => mapper.worldToDwg(p));
-  const dwg = dwgPoints.every(isFinitePoint) ? dwgPoints : null;
+  const dwg = toDwg(world, mapper);
+  const damage = emptyDamage(options.typeId, world, dwg, 'polyline', options);
+  if (dwg) damage.computed.lengthDwg = polylineLength(dwg);
+  return damage;
+}
 
-  return {
-    id: newId(),
-    type: 'crack',
-    createdAt: now,
-    geometry: { kind: 'polyline', world, dwg },
-    lengthDwg: dwg ? polylineLength(dwg) : null,
-  };
+export function finalizeRect(startClient, endClient, mapper, options) {
+  const type = getDamageType(options.typeId);
+  if (!type || type.kind !== 'area') return null;
+  if (Math.abs(endClient[0] - startClient[0]) < MIN_RECT_PX && Math.abs(endClient[1] - startClient[1]) < MIN_RECT_PX) {
+    return null;
+  }
+
+  const clientRect = rectFromDrag(startClient, endClient);
+  const world = clientRect.map(([x, y]) => mapper.clientToWorld(x, y));
+  if (!world.every((point) => point !== null && isFinitePoint(point))) return null;
+
+  const dwg = toDwg(world, mapper);
+  const damage = emptyDamage(options.typeId, world, dwg, 'rect', options);
+  if (dwg) damage.computed.areaDwg = polygonArea(dwg);
+  return damage;
 }
 
 export function pickDamage(damages, clientPoint, mapper, radiusPx = PICK_RADIUS_PX) {
@@ -40,7 +91,11 @@ export function pickDamage(damages, clientPoint, mapper, radiusPx = PICK_RADIUS_
   let bestDistance = radiusPx;
   for (const damage of damages) {
     const screen = damage.geometry.world.map((p) => mapper.worldToClient(p));
-    const distance = distanceToPolyline(clientPoint, screen);
+    if (damage.geometry.kind === 'rect' && pointInPolygon(clientPoint, screen)) return damage.id;
+    const distance =
+      damage.geometry.kind === 'rect'
+        ? distanceToPolyline(clientPoint, [...screen, screen[0]])
+        : distanceToPolyline(clientPoint, screen);
     if (distance <= bestDistance) {
       bestId = damage.id;
       bestDistance = distance;
