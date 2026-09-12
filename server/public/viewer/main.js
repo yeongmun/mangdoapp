@@ -1,6 +1,8 @@
-import { addDamage, canUndo, createEditor, removeDamage, undo, validateDamageDoc } from './damageDoc.js';
+import { addDamage, canUndo, createEditor, migrateDoc, removeDamage, undo, updateDamage, validateDamageDoc } from './damageDoc.js';
+import { DAMAGE_TYPES, DEFAULT_DAMAGE_TYPE_ID, getDamageType } from './damageTypes.js';
+import { polygonArea, polylineLength } from './geometry.js';
 import { createCoordinateMapper } from './coords.js';
-import { createCrackInput, finalizeStroke, pickDamage } from './crackTool.js';
+import { createCrackInput, finalizeRect, finalizeStroke, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
 
@@ -102,6 +104,7 @@ async function start() {
   if (!accessKey) throw new Error('접근키가 없습니다. 앱 설정을 확인하세요.');
 
   const [drawings, serverDoc] = await Promise.all([api('/drawings'), api(`/drawings/${drawingId}/damages`)]);
+  const serverDocV2 = migrateDoc(serverDoc, drawingId) ?? serverDoc;
   const drawing = drawings.find((d) => d.id === drawingId);
   if (!drawing) throw new Error('도면을 찾을 수 없습니다.');
   if (drawing.status !== 'success') throw new Error('아직 변환이 끝나지 않은 도면입니다.');
@@ -156,18 +159,39 @@ async function start() {
 
   const backup = syncer.readBackup();
   const usableBackup = backup && validateDamageDoc(backup, drawingId).length === 0 ? backup : null;
-  const initial = chooseInitialDoc(serverDoc, usableBackup);
+  const initial = chooseInitialDoc(serverDocV2, usableBackup);
   let editor = createEditor(initial.doc);
   let selectedId = null;
   let fingerDraw = false;
   let coordCheck = false;
+  let activeTypeId = DEFAULT_DAMAGE_TYPE_ID;
   const nowIso = () => new Date().toISOString();
+
+  for (const type of DAMAGE_TYPES) {
+    const option = document.createElement('option');
+    option.value = type.id;
+    option.textContent = type.label;
+    $('damageType').append(option);
+  }
+  $('damageType').value = activeTypeId;
+  $('damageType').addEventListener('change', () => {
+    activeTypeId = $('damageType').value;
+  });
+
+  const selectedDamage = () => editor.doc.damages.find((damage) => damage.id === selectedId) ?? null;
+
+  function selectedScreenRect() {
+    const damage = selectedDamage();
+    if (!damage || damage.geometry.kind !== 'rect') return null;
+    return damage.geometry.world.map((point) => mapper.worldToClient(point));
+  }
 
   function refresh() {
     overlay.setDamages(editor.doc.damages);
     overlay.setSelected(selectedId);
     $('undo').disabled = !canUndo(editor);
     $('delete').disabled = selectedId === null;
+    $('props').disabled = selectedId === null;
   }
 
   function apply(nextEditor) {
@@ -193,6 +217,7 @@ async function start() {
       return true;
     }
     selectedId = pickDamage(editor.doc.damages, point, mapper);
+    $('propsPanel').hidden = true;
     refresh();
     return selectedId !== null;
   }
@@ -201,7 +226,9 @@ async function start() {
     viewer,
     container: $('viewer'),
     isFingerDrawEnabled: () => fingerDraw,
-    onDraft: (points) => overlay.setDraft(points),
+    getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
+    getSelectedScreenRect: selectedScreenRect,
+    onDraft: (draft) => overlay.setDraft(draft),
     onTap: handleTap,
     onStroke: (points) => {
       overlay.setDraft(null);
@@ -210,15 +237,104 @@ async function start() {
         handleTap(lastPoint);
         return;
       }
-      const damage = finalizeStroke(points, mapper, { now: nowIso(), newId: () => crypto.randomUUID() });
+      const damage = finalizeStroke(points, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeId });
       if (!damage) {
-        // 너무 짧은 획은 탭으로 보고 균열 선택에 쓴다.
+        // 너무 짧은 획은 탭으로 보고 손상 선택에 쓴다.
         handleTap(lastPoint);
         return;
       }
       selectedId = null;
       apply(addDamage(editor, damage, nowIso()));
     },
+    onRect: (start, end) => {
+      overlay.setDraft(null);
+      if (coordCheck) {
+        handleTap(end);
+        return;
+      }
+      const damage = finalizeRect(start, end, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeId });
+      if (!damage) {
+        handleTap(end);
+        return;
+      }
+      selectedId = null;
+      apply(addDamage(editor, damage, nowIso()));
+    },
+    onTransform: (screenRect, done) => {
+      if (!done) {
+        overlay.setDraft({ kind: 'rect', points: screenRect });
+        return;
+      }
+      overlay.setDraft(null);
+      const damage = selectedDamage();
+      if (!damage) return;
+      const world = screenRect.map(([x, y]) => mapper.clientToWorld(x, y));
+      if (world.some((point) => point === null)) return;
+      const dwgPoints = world.map((point) => mapper.worldToDwg(point));
+      const dwg = dwgPoints.every((point) => point !== null) ? dwgPoints : null;
+      apply(
+        updateDamage(
+          editor,
+          damage.id,
+          { geometry: { world, dwg }, computed: { lengthDwg: null, areaDwg: dwg ? polygonArea(dwg) : null } },
+          nowIso(),
+        ),
+      );
+    },
+  });
+
+  function openProps() {
+    const damage = selectedDamage();
+    if (!damage) return;
+    const type = getDamageType(damage.type);
+    $('propsTitle').textContent = `${type.label} 속성`;
+    $('lengthRow').hidden = type.quantityUnit !== 'm';
+    $('areaRow').hidden = type.quantityUnit !== 'm2';
+    $('lengthInput').value = damage.measured.lengthM ?? '';
+    $('areaInput').value = damage.measured.areaM2 ?? '';
+    $('widthInput').value = damage.attrs.widthMm ?? '';
+    $('memberInput').value = damage.attrs.member;
+    $('noteInput').value = damage.attrs.note;
+    const computed = type.quantityUnit === 'm' ? damage.computed.lengthDwg : damage.computed.areaDwg;
+    $('computedHint').textContent =
+      computed === null ? '참고값 없음 (DWG 좌표 변환 불가)' : `참고: 도면에서 계산한 값 ${computed.toFixed(1)} (도면 단위)`;
+    $('propsPanel').hidden = false;
+  }
+
+  function numberOrNull(value) {
+    const text = value.trim();
+    if (text === '') return null;
+    const parsed = Number(text);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  $('props').addEventListener('click', openProps);
+  $('propsClose').addEventListener('click', () => {
+    $('propsPanel').hidden = true;
+  });
+  $('propsSave').addEventListener('click', () => {
+    const damage = selectedDamage();
+    if (!damage) return;
+    const type = getDamageType(damage.type);
+    apply(
+      updateDamage(
+        editor,
+        damage.id,
+        {
+          measured: {
+            lengthM: type.quantityUnit === 'm' ? numberOrNull($('lengthInput').value) : null,
+            areaM2: type.quantityUnit === 'm2' ? numberOrNull($('areaInput').value) : null,
+          },
+          attrs: {
+            widthMm: numberOrNull($('widthInput').value),
+            member: $('memberInput').value.trim(),
+            note: $('noteInput').value.trim(),
+          },
+        },
+        nowIso(),
+      ),
+    );
+    $('propsPanel').hidden = true;
   });
 
   $('fingerDraw').addEventListener('click', () => {
@@ -238,6 +354,7 @@ async function start() {
     if (selectedId === null) return;
     const id = selectedId;
     selectedId = null;
+    $('propsPanel').hidden = true;
     apply(removeDamage(editor, id, nowIso()));
   });
   document.addEventListener('visibilitychange', () => {

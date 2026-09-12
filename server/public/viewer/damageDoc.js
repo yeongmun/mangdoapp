@@ -206,6 +206,23 @@ export function removeDamage(editor, damageId, now) {
   return commit(editor, editor.doc.damages.filter((d) => d.id !== damageId), now);
 }
 
+// 손상 한 건의 일부만 바꾼다. geometry·measured·computed·attrs는 각각 얕게 병합한다.
+export function updateDamage(editor, damageId, changes, now) {
+  const index = editor.doc.damages.findIndex((damage) => damage.id === damageId);
+  if (index === -1) return editor;
+  const current = editor.doc.damages[index];
+  const updated = {
+    ...current,
+    ...changes,
+    geometry: { ...current.geometry, ...(changes.geometry ?? {}) },
+    measured: { ...current.measured, ...(changes.measured ?? {}) },
+    computed: { ...current.computed, ...(changes.computed ?? {}) },
+    attrs: { ...current.attrs, ...(changes.attrs ?? {}) },
+  };
+  const damages = editor.doc.damages.map((damage, i) => (i === index ? updated : damage));
+  return commit(editor, damages, now);
+}
+
 /**
  * @param {Editor} editor
  * @param {string} now

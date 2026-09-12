@@ -9,6 +9,7 @@ import {
   removeDamage,
   SCHEMA_VERSION,
   undo,
+  updateDamage,
   validateDamageDoc,
 } from '../public/viewer/damageDoc.js';
 
@@ -241,5 +242,23 @@ describe('editor', () => {
     let editor = createEditor(createEmptyDoc(DRAWING, T0));
     for (let i = 0; i < MAX_HISTORY + 10; i++) editor = addDamage(editor, lineDamage(`c${i}`), T1);
     expect(editor.history.length).toBe(MAX_HISTORY);
+  });
+
+  it('updateDamage는 값을 병합하고 updatedAt을 올린다', () => {
+    let editor = createEditor(createEmptyDoc(DRAWING, T0));
+    editor = addDamage(editor, areaDamage('a'), T1);
+
+    editor = updateDamage(editor, 'a', { measured: { areaM2: 3.5 }, attrs: { note: '확인 필요' } }, T2);
+
+    expect(editor.doc.damages[0].measured).toEqual({ lengthM: null, areaM2: 3.5 });
+    expect(editor.doc.damages[0].attrs).toEqual({ widthMm: null, member: '', note: '확인 필요' });
+    expect(editor.doc.damages[0].geometry).toEqual(areaDamage('a').geometry);
+    expect(editor.doc.updatedAt).toBe(T2);
+    expect(canUndo(editor)).toBe(true);
+  });
+
+  it('updateDamage는 없는 id면 같은 editor를 돌려준다', () => {
+    const editor = createEditor(createEmptyDoc(DRAWING, T0));
+    expect(updateDamage(editor, 'nope', { measured: { areaM2: 1 } }, T1)).toBe(editor);
   });
 });
