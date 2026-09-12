@@ -128,6 +128,11 @@ export function createCrackInput({
   onDraft,
   onStroke,
   onRect,
+  // onTransform(screenRect, status) — status:
+  //   'preview' 드래그 중, 미리보기만(저장하지 않는다)
+  //   'commit'  손을 떼 확정(저장한다)
+  //   'cancel'  중단(펜 끼어들기, 두 손가락 제스처, pointercancel 등) — 아무것도 저장하지 않는다.
+  //             화면은 onDraft(null)로 draft를 지우는 것만으로 원래 문서 그대로 복원된다.
   onTransform,
   onTap,
 }) {
@@ -190,10 +195,10 @@ export function createCrackInput({
       return;
     }
     if (gesture.kind === 'resize') {
-      onTransform(resizeRect(gesture.rect, gesture.index, point), false);
+      onTransform(resizeRect(gesture.rect, gesture.index, point), 'preview');
       return;
     }
-    onTransform(rotatePoints(gesture.rect, gesture.center, angleOf(gesture.center, point) - gesture.startAngle), false);
+    onTransform(rotatePoints(gesture.rect, gesture.center, angleOf(gesture.center, point) - gesture.startAngle), 'preview');
   }
 
   function endGesture(point, cancelled) {
@@ -204,7 +209,8 @@ export function createCrackInput({
     if (!current) return;
     if (cancelled) {
       onDraft(null);
-      if (current.kind === 'resize' || current.kind === 'rotate') onTransform(current.rect, true);
+      // 취소는 저장하지 않는다 — draft를 지우는 것만으로 화면이 원래 문서로 복원된다.
+      if (current.kind === 'resize' || current.kind === 'rotate') onTransform(current.rect, 'cancel');
       return;
     }
     if (current.kind === 'stroke') {
@@ -218,10 +224,10 @@ export function createCrackInput({
       return;
     }
     if (current.kind === 'resize') {
-      onTransform(resizeRect(current.rect, current.index, point), true);
+      onTransform(resizeRect(current.rect, current.index, point), 'commit');
       return;
     }
-    onTransform(rotatePoints(current.rect, current.center, angleOf(current.center, point) - current.startAngle), true);
+    onTransform(rotatePoints(current.rect, current.center, angleOf(current.center, point) - current.startAngle), 'commit');
   }
 
   function onPointerDown(event) {

@@ -133,6 +133,25 @@ function handleElement(point, shape) {
   return el;
 }
 
+// 손상 하나를 어떻게 그릴지 결정한다. DOM을 만들지 않는 순수 함수라 테스트하기 쉽다.
+// type을 손상 유형 목록에서 찾지 못해도(유형이 이름 바뀌거나 삭제된 경우) 그리지 않고 건너뛰지 않는다 —
+// 그러면 손상이 화면에서 사라져 선택할 수도, 지울 수도 없게 되어 저장이 영영 막힌다. 대신 테두리만
+// 그리고 저장된 원본 type 문자열을 라벨로 보여줘, 선택해서 `선택 삭제`로 지울 수 있게 한다.
+export function describeDamageRender(damage, selectedId) {
+  const type = getDamageType(damage.type);
+  const selected = damage.id === selectedId;
+  const isRect = damage.geometry.kind === 'rect';
+  return {
+    known: type !== null,
+    shape: isRect ? 'polygon' : 'polyline',
+    color: selected ? SELECTED_COLOR : CRACK_COLOR,
+    width: selected ? SELECTED_WIDTH_PX : CRACK_WIDTH_PX,
+    fillPattern: type && type.fill ? type.fill.pattern : null,
+    label: type ? (!type.fill && isRect ? type.label : null) : String(damage.type),
+    showHandles: selected && isRect,
+  };
+}
+
 export function createOverlay(svg, mapper) {
   let damages = [];
   let selectedId = null;
@@ -142,21 +161,16 @@ export function createOverlay(svg, mapper) {
   ensurePatternDefs(svg);
 
   function renderDamage(damage, elements) {
-    const type = getDamageType(damage.type);
-    if (!type) return;
-    const selected = damage.id === selectedId;
-    const color = selected ? SELECTED_COLOR : CRACK_COLOR;
-    const width = selected ? SELECTED_WIDTH_PX : CRACK_WIDTH_PX;
+    const plan = describeDamageRender(damage, selectedId);
     const screen = damage.geometry.world.map((p) => mapper.worldToClient(p));
 
-    if (damage.geometry.kind === 'polyline') {
-      elements.push(polylineElement(screen, color, width, 1));
-      return;
+    if (plan.shape === 'polyline') {
+      elements.push(polylineElement(screen, plan.color, plan.width, 1));
+    } else {
+      elements.push(polygonElement(screen, plan.color, plan.width, plan.fillPattern, 1));
     }
-
-    elements.push(polygonElement(screen, color, width, type.fill ? type.fill.pattern : null, 1));
-    if (!type.fill) elements.push(labelElement(rectCenter(screen), type.label));
-    if (!selected) return;
+    if (plan.label !== null) elements.push(labelElement(rectCenter(screen), plan.label));
+    if (!plan.showHandles) return;
 
     const handles = rectHandlePositions(screen);
     for (const corner of handles.corners) elements.push(handleElement(corner, 'rect'));

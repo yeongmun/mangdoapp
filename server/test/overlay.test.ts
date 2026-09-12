@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DAMAGE_TYPES } from '../public/viewer/damageTypes.js';
-import { HANDLE_SIZE_PX, HATCH_PATTERNS, rectHandlePositions, ROTATE_HANDLE_OFFSET_PX } from '../public/viewer/overlay.js';
+import {
+  CRACK_COLOR,
+  describeDamageRender,
+  HANDLE_SIZE_PX,
+  HATCH_PATTERNS,
+  rectHandlePositions,
+  ROTATE_HANDLE_OFFSET_PX,
+  SELECTED_COLOR,
+} from '../public/viewer/overlay.js';
 
 type Pt = [number, number];
 
@@ -40,5 +48,39 @@ describe('rectHandlePositions', () => {
 
   it('핸들 크기 상수는 손가락으로 누를 수 있는 크기다', () => {
     expect(HANDLE_SIZE_PX).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe('describeDamageRender', () => {
+  it('유형 목록에 없는 면형 손상은 테두리만(채우기 없이) 그리고 원본 type을 라벨로 보여준다', () => {
+    const unknown = { id: 'x', type: 'no_such_type', geometry: { kind: 'rect', world: [] } };
+    const plan = describeDamageRender(unknown, null);
+    expect(plan.known).toBe(false);
+    expect(plan.shape).toBe('polygon');
+    expect(plan.fillPattern).toBeNull();
+    expect(plan.label).toBe('no_such_type');
+    expect(plan.color).toBe(CRACK_COLOR);
+  });
+
+  it('유형 목록에 없어도 선택하면 강조색과 핸들을 보여준다 — 선택·삭제가 가능해야 한다', () => {
+    const unknown = { id: 'x', type: 'no_such_type', geometry: { kind: 'rect', world: [] } };
+    const plan = describeDamageRender(unknown, 'x');
+    expect(plan.color).toBe(SELECTED_COLOR);
+    expect(plan.showHandles).toBe(true);
+  });
+
+  it('유형 목록에 없는 선형 손상은 핸들 없이 라벨만 그린다', () => {
+    const unknown = { id: 'y', type: 'nope', geometry: { kind: 'polyline', world: [] } };
+    const plan = describeDamageRender(unknown, 'y');
+    expect(plan.shape).toBe('polyline');
+    expect(plan.label).toBe('nope');
+    expect(plan.showHandles).toBe(false);
+  });
+
+  it('알려진 유형은 그대로 채우기 여부에 따라 라벨을 정한다', () => {
+    const filled = { id: 'a', type: 'spalling', geometry: { kind: 'rect', world: [] } };
+    expect(describeDamageRender(filled, null).label).toBeNull();
+    const unfilled = { id: 'b', type: 'breakage', geometry: { kind: 'rect', world: [] } };
+    expect(describeDamageRender(unfilled, null).label).toBe('파손');
   });
 });

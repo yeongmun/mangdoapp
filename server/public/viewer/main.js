@@ -270,12 +270,14 @@ async function start() {
       setSelection(null);
       apply(addDamage(editor, damage, nowIso()));
     },
-    onTransform: (screenRect, done) => {
-      if (!done) {
+    onTransform: (screenRect, status) => {
+      if (status === 'preview') {
         overlay.setDraft({ kind: 'rect', points: screenRect });
         return;
       }
       overlay.setDraft(null);
+      // 취소는 아무것도 저장하지 않는다 — draft를 지운 것만으로 원래 문서 그대로 복원된다.
+      if (status === 'cancel') return;
       const damage = selectedDamage();
       if (!damage) return;
       const world = screenRect.map(([x, y]) => mapper.clientToWorld(x, y));
