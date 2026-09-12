@@ -1,8 +1,8 @@
 import { addDamage, canUndo, createEditor, migrateDoc, removeDamage, undo, updateDamage, validateDamageDoc } from './damageDoc.js';
 import { DAMAGE_TYPES, DEFAULT_DAMAGE_TYPE_ID, getDamageType } from './damageTypes.js';
-import { polygonArea, polylineLength } from './geometry.js';
+import { polygonArea } from './geometry.js';
 import { createCoordinateMapper } from './coords.js';
-import { createCrackInput, finalizeRect, finalizeStroke, pickDamage } from './crackTool.js';
+import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
 
@@ -269,9 +269,9 @@ async function start() {
       const damage = selectedDamage();
       if (!damage) return;
       const world = screenRect.map(([x, y]) => mapper.clientToWorld(x, y));
-      if (world.some((point) => point === null)) return;
+      if (world.some((point) => point === null || !isFinitePoint(point))) return;
       const dwgPoints = world.map((point) => mapper.worldToDwg(point));
-      const dwg = dwgPoints.every((point) => point !== null) ? dwgPoints : null;
+      const dwg = dwgPoints.every((point) => point !== null && isFinitePoint(point)) ? dwgPoints : null;
       apply(
         updateDamage(
           editor,
@@ -286,7 +286,7 @@ async function start() {
   function openProps() {
     const damage = selectedDamage();
     if (!damage) return;
-    const type = getDamageType(damage.type);
+    const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
     $('lengthRow').hidden = type.quantityUnit !== 'm';
     $('areaRow').hidden = type.quantityUnit !== 'm2';
@@ -315,7 +315,7 @@ async function start() {
   $('propsSave').addEventListener('click', () => {
     const damage = selectedDamage();
     if (!damage) return;
-    const type = getDamageType(damage.type);
+    const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     apply(
       updateDamage(
         editor,
@@ -348,6 +348,7 @@ async function start() {
   });
   $('undo').addEventListener('click', () => {
     selectedId = null;
+    $('propsPanel').hidden = true;
     apply(undo(editor, nowIso()));
   });
   $('delete').addEventListener('click', () => {

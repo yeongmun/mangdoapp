@@ -22,7 +22,7 @@ export const MIN_RECT_PX = 10;
 export const PICK_RADIUS_PX = 12;
 export const TOOL_NAME = 'mangdo-finger-draw';
 
-function isFinitePoint(point) {
+export function isFinitePoint(point) {
   return Array.isArray(point) && Number.isFinite(point[0]) && Number.isFinite(point[1]);
 }
 
