@@ -70,7 +70,7 @@ async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {})
 
 function crackDoc(drawingId: string) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     drawingId,
     updatedAt: '2026-09-10T01:00:00.000Z',
     damages: [
@@ -79,7 +79,32 @@ function crackDoc(drawingId: string) {
         type: 'crack',
         createdAt: '2026-09-10T01:00:00.000Z',
         geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[10, 10], [13, 14]] },
-        lengthDwg: 5,
+        measured: { lengthM: 5, areaM2: null },
+        computed: { lengthDwg: 5, areaDwg: null },
+        attrs: { widthMm: 0.3, member: '거더 하부', note: '' },
+      },
+    ],
+  };
+}
+
+function spallingDoc(drawingId: string) {
+  return {
+    schemaVersion: 2,
+    drawingId,
+    updatedAt: '2026-09-12T01:00:00.000Z',
+    damages: [
+      {
+        id: 's1',
+        type: 'spalling',
+        createdAt: '2026-09-12T01:00:00.000Z',
+        geometry: {
+          kind: 'rect',
+          world: [[0, 0], [2, 0], [2, 1], [0, 1]],
+          dwg: [[10, 10], [12, 10], [12, 11], [10, 11]],
+        },
+        measured: { lengthM: null, areaM2: 1.8 },
+        computed: { lengthDwg: null, areaDwg: 2 },
+        attrs: { widthMm: null, member: '', note: '' },
       },
     ],
   };
@@ -247,7 +272,7 @@ describe('손상 문서 API', () => {
     const drawing = await seed(drawings);
 
     const empty = await request(app).get(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY);
-    expect(empty.body).toEqual({ schemaVersion: 1, drawingId: drawing.id, updatedAt: '1970-01-01T00:00:00.000Z', damages: [] });
+    expect(empty.body).toEqual({ schemaVersion: 2, drawingId: drawing.id, updatedAt: '1970-01-01T00:00:00.000Z', damages: [] });
 
     const doc = crackDoc(drawing.id);
     const put = await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(doc);
@@ -264,7 +289,31 @@ describe('손상 문서 API', () => {
     const bad = { ...crackDoc(drawing.id), schemaVersion: 9 };
     const res = await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(bad);
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: '손상 데이터 형식이 올바르지 않습니다.', details: ['schemaVersion은 1이어야 합니다.'] });
+    expect(res.body).toEqual({ error: '손상 데이터 형식이 올바르지 않습니다.', details: ['schemaVersion은 2이어야 합니다.'] });
+  });
+
+  it('면형 손상 문서도 저장·조회된다', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const doc = spallingDoc(drawing.id);
+
+    const put = await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(doc);
+    expect(put.status).toBe(200);
+
+    const saved = await request(app).get(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY);
+    expect(saved.body).toEqual(doc);
+  });
+
+  it('유형 목록에 없는 type은 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const bad = crackDoc(drawing.id);
+    bad.damages[0].type = 'nope';
+
+    const res = await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(bad);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toContain('damages[0].type이 손상 유형 목록에 없습니다.');
   });
 
   it('JSON 문법 오류는 400', async () => {

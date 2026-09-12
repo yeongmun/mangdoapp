@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { createEmptyDoc } from '../public/viewer/damageDoc.js';
+import { createEmptyDoc, migrateDoc } from '../public/viewer/damageDoc.js';
 import { isDrawingId } from './drawingsStore.js';
 import { readJsonFile, writeJsonFileAtomic } from './jsonFile.js';
 
@@ -17,7 +17,9 @@ export class DamagesStore {
 
   async get(drawingId: string): Promise<DamageDoc> {
     const saved = await readJsonFile<DamageDoc>(this.pathFor(drawingId));
-    return saved ?? createEmptyDoc(drawingId, NEVER_SAVED);
+    if (!saved) return createEmptyDoc(drawingId, NEVER_SAVED);
+    // 예전에 저장된 v1 문서는 읽을 때 v2로 바꿔서 돌려준다. 저장은 항상 v2로 한다.
+    return (migrateDoc(saved, drawingId) as DamageDoc | null) ?? createEmptyDoc(drawingId, NEVER_SAVED);
   }
 
   async save(doc: DamageDoc): Promise<void> {
