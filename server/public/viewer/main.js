@@ -198,6 +198,12 @@ async function start() {
     $('propsPanel').hidden = true;
   }
 
+  // 속성 패널이 열려 있는지. 그리기 입력(crackTool)이 패널이 열린 동안 제스처를 시작하지 않도록
+  // 이 값을 그대로 물어본다(R3) — 패널은 #viewer 밖에 있어 inViewer() 검사로는 보호되지 않는다.
+  function isPropsOpen() {
+    return !$('propsPanel').hidden;
+  }
+
   function refresh() {
     overlay.setDamages(editor.doc.damages);
     overlay.setSelected(selectedId);
@@ -237,6 +243,7 @@ async function start() {
     viewer,
     container: $('viewer'),
     isFingerDrawEnabled: () => fingerDraw,
+    isPropsOpen,
     getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
     getSelectedScreenRect: selectedScreenRect,
     onDraft: (draft) => overlay.setDraft(draft),
@@ -318,21 +325,29 @@ async function start() {
     // 참고값은 도면 단위(설계 8장 미해결)가 정해질 때까지 숨긴다. 도면 단위를 모르는 채 그대로 보여주면
     // (예: mm 도면의 1.8㎡가 1800000.0으로) 실제 크기와 자릿수가 크게 달라 보여 오히려 오해를 준다.
     $('computedHint').hidden = true;
+    // 지난번 저장 시도에서 남은 검증 오류를 새로 열 때 지운다. 그대로 두면 이번 손상과 무관한
+    // 메시지가 계속 보인다.
+    $('propsError').hidden = true;
     updateSummary();
     $('propsPanel').hidden = false;
   }
 
   // 빈 입력은 null(측정 안 함)로 본다. 그 외에는 0 이상의 유한한 숫자여야 하며, 아니면 거부한다.
-  function parseAmount(value) {
-    const text = value.trim();
+  // type="number" 칸에 `0..5`처럼 숫자로 파싱할 수 없는 글자를 치면 DOM의 value는 ''를 돌려주면서도
+  // 화면에는 친 글자가 그대로 남는다. value만 보면 이것과 진짜 빈 칸을 구분할 수 없어 "측정 안 함"으로
+  // 조용히 저장돼 버리므로, validity.badInput(브라우저가 판단한 "숫자로 못 읽음")을 먼저 본다.
+  function parseAmount(input) {
+    if (input.validity.badInput) return { ok: false, value: null };
+    const text = input.value.trim();
     if (text === '') return { ok: true, value: null };
     const parsed = Number(text);
     return Number.isFinite(parsed) && parsed >= 0 ? { ok: true, value: parsed } : { ok: false, value: null };
   }
 
   // 개소는 낱개를 세는 값이라 정수여야 한다. 1.5개소는 물량표에 적을 수 없다.
-  function parseCount(value) {
-    const text = value.trim();
+  function parseCount(input) {
+    if (input.validity.badInput) return { ok: false, value: null };
+    const text = input.value.trim();
     if (text === '') return { ok: true, value: null };
     const parsed = Number(text);
     return Number.isInteger(parsed) && parsed >= 0 ? { ok: true, value: parsed } : { ok: false, value: null };
@@ -343,9 +358,9 @@ async function start() {
     return {
       ...damage,
       measured: {
-        width: parseAmount($('widthInput').value).value,
-        length: parseAmount($('lengthInput').value).value,
-        count: parseCount($('countInput').value).value,
+        width: parseAmount($('widthInput')).value,
+        length: parseAmount($('lengthInput')).value,
+        count: parseCount($('countInput')).value,
       },
       attrs: { ...damage.attrs, statusText: $('statusInput').value.trim() },
     };
@@ -362,9 +377,11 @@ async function start() {
     $('propsSummary').textContent = `번호 ${number ?? '-'} · 손상현황 ${statusTextOf(draft)} · 물량 ${quantityText}`;
   }
 
-  function showSaveError(message) {
-    $('saveError').textContent = message;
-    $('saveError').hidden = false;
+  // 속성 패널 자신의 검증 메시지. #saveError는 동기화 상태 전용이라 여기서 건드리지 않는다 —
+  // 같은 요소를 같이 쓰면 저장 실패 배지와 패널 메시지가 서로를 지운다(A3).
+  function showPropsError(message) {
+    $('propsError').textContent = message;
+    $('propsError').hidden = false;
   }
 
   $('props').addEventListener('click', openProps);
@@ -378,17 +395,17 @@ async function start() {
     const damage = selectedDamage();
     if (!damage) return;
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
-    const width = parseAmount($('widthInput').value);
-    const length = parseAmount($('lengthInput').value);
-    const count = parseCount($('countInput').value);
-    // 범위를 벗어난 값을 조용히 null로 바꿔 저장하면(예: -3 입력) 사용자가 적은 값이 사라진 채
-    // 패널이 닫혀 저장된 것처럼 보인다. 대신 패널을 열어둔 채 알리고 다시 고치게 한다.
+    const width = parseAmount($('widthInput'));
+    const length = parseAmount($('lengthInput'));
+    const count = parseCount($('countInput'));
+    // 범위를 벗어난 값·숫자로 읽을 수 없는 글자를 조용히 null로 바꿔 저장하면(예: -3, `0..5`) 사용자가
+    // 적은 값이 사라진 채 패널이 닫혀 저장된 것처럼 보인다. 대신 패널을 열어둔 채 알리고 다시 고치게 한다.
     if (!width.ok || !length.ok) {
-      showSaveError('저장하지 못했습니다: 0 이상의 숫자를 입력하세요.');
+      showPropsError('저장하지 못했습니다: 0 이상의 숫자를 입력하세요.');
       return;
     }
     if (!count.ok) {
-      showSaveError('저장하지 못했습니다: 개소는 0 이상의 정수를 입력하세요.');
+      showPropsError('저장하지 못했습니다: 개소는 0 이상의 정수를 입력하세요.');
       return;
     }
     apply(
@@ -406,7 +423,7 @@ async function start() {
         nowIso(),
       ),
     );
-    $('saveError').hidden = true;
+    $('propsError').hidden = true;
     $('propsPanel').hidden = true;
   });
 

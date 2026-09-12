@@ -126,6 +126,11 @@ export function createCrackInput({
   viewer,
   container,
   isFingerDrawEnabled,
+  // 속성 패널이 열려 있는 동안은 그리기 제스처를 아예 시작하지 않는다(R3). 패널은 #viewer 밖의
+  // 240px 모서리 오버레이라 inViewer() 검사로는 막히지 않으므로, 패널이 열려 있으면 펜이 도면에
+  // 닿아도 새 손상이 생기거나 선택한 사각형이 움직이지 않아야 한다. 줌·팬은 뷰어 자신의 제스처이므로
+  // 여기서 이벤트를 삼키지 않고(스크롤/네비게이션 이벤트는 그대로 두고) false를 돌려주는 방식으로 넘긴다.
+  isPropsOpen,
   getActiveTypeKind,
   getSelectedScreenRect,
   onDraft,
@@ -240,6 +245,9 @@ export function createCrackInput({
       swallow(event);
       return;
     }
+    // 속성 패널이 열려 있으면 그리기를 시작하지 않는다. swallow()를 호출하지 않고 그냥 돌아가
+    // 이벤트가 뷰어에 그대로 전달되게 한다 — 두 손가락 줌·팬 등 뷰어 자신의 제스처가 막히지 않는다.
+    if (isPropsOpen()) return;
     if (!inViewer(event) || !wantsDrawing(event)) return;
     // 손가락 드래그 중 펜이 터치되면 손가락 제스처를 취소하고 펜을 우선한다.
     if (gesture !== null) {
@@ -292,6 +300,9 @@ export function createCrackInput({
   tool.handleGesture = (event) => {
     if (activePointerId !== null) return false;
     if (!isFingerDrawEnabled()) return false;
+    // 속성 패널이 열려 있으면 손가락 제스처도 시작하지 않는다. false를 돌려주면 툴 컨트롤러가
+    // 다음 우선순위 도구(뷰어의 기본 줌·팬)에 넘기므로 핀치·회전 같은 뷰어 제스처는 그대로 동작한다.
+    if (isPropsOpen()) return false;
     const point = [event.canvasX, event.canvasY];
     switch (event.type) {
       case 'dragstart':

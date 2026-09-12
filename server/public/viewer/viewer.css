@@ -103,6 +103,7 @@ body {
 #propsSave { background: #1e66f5; border-color: #1e66f5; color: #fff; }
 #propsSummary { margin: 0 0 10px; color: #3c4149; font-size: 13px; line-height: 1.4; }
 #computedHint { margin: 0 0 8px; color: #8a8f98; font-size: 12px; }
+#propsError { margin: 0 0 8px; color: #b71c1c; font-size: 12px; }
 
 /* 위의 #propsPanel label 규칙이 브라우저 기본 [hidden]을 이기므로, 패널 안의 숨김은 여기서 다시 정한다.
    칸이 늘어도 규칙을 고칠 필요가 없도록 자손 전체에 적용한다. */
