@@ -86,6 +86,18 @@ describe('validateDamageDoc', () => {
     expect(errors).toContain('damages[0].type이 손상 유형 목록에 없습니다.');
   });
 
+  it('유형이 잘못돼도 날짜·속성 오류를 함께 알려준다', () => {
+    const broken = lineDamage('a', {
+      type: 'nope',
+      createdAt: 3,
+      attrs: { widthMm: -1, member: '', note: '' },
+    });
+    const errors = validateDamageDoc(docWith([broken]), DRAWING);
+    expect(errors).toContain('damages[0].type이 손상 유형 목록에 없습니다.');
+    expect(errors).toContain('damages[0].createdAt이 올바른 날짜가 아닙니다.');
+    expect(errors).toContain('damages[0].attrs.widthMm는 0 이상의 숫자이거나 null이어야 합니다.');
+  });
+
   it('선형은 polyline 2점 이상, 면형은 rect 4점이어야 한다', () => {
     const wrongKind = validateDamageDoc(
       docWith([lineDamage('a', { geometry: { kind: 'rect', world: [[0, 0], [1, 0], [1, 1], [0, 1]], dwg: null } })]),

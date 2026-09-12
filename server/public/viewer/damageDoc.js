@@ -108,12 +108,13 @@ function validateDamage(damage, path, errors) {
     return;
   }
   if (typeof damage.id !== 'string' || damage.id === '') errors.push(`${path}.id가 비어 있습니다.`);
+  if (!isDateString(damage.createdAt)) errors.push(`${path}.createdAt이 올바른 날짜가 아닙니다.`);
   const type = typeof damage.type === 'string' ? getDamageType(damage.type) : null;
   if (!type) {
     errors.push(`${path}.type이 손상 유형 목록에 없습니다.`);
+    validateAttrs(damage, path, errors);
     return;
   }
-  if (!isDateString(damage.createdAt)) errors.push(`${path}.createdAt이 올바른 날짜가 아닙니다.`);
 
   const hasDwg = validateGeometry(damage, type, path, errors);
   validateMeasured(damage, type, path, errors);
