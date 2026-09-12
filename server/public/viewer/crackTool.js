@@ -51,9 +51,10 @@ function emptyDamage(typeId, worldPoints, dwgPoints, kind, options) {
     type: typeId,
     createdAt: options.now,
     geometry: { kind, world: normalizePoints(worldPoints), dwg: dwgPoints ? normalizePoints(dwgPoints) : null },
-    measured: { lengthM: null, areaM2: null },
+    // 측정값은 아직 없음(null)이다. 0과 구분한다 — 0은 "재 보니 0"이라는 뜻이다.
+    measured: { width: null, length: null, count: null },
     computed: { lengthDwg: null, areaDwg: null },
-    attrs: { widthMm: null, member: '', note: '' },
+    attrs: { note: '', statusText: '' },
   };
 }
 
