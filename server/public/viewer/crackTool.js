@@ -51,9 +51,10 @@ function emptyDamage(typeId, worldPoints, dwgPoints, kind, options) {
     type: typeId,
     createdAt: options.now,
     geometry: { kind, world: normalizePoints(worldPoints), dwg: dwgPoints ? normalizePoints(dwgPoints) : null },
-    measured: { lengthM: null, areaM2: null },
+    // 측정값은 아직 없음(null)이다. 0과 구분한다 — 0은 "재 보니 0"이라는 뜻이다.
+    measured: { width: null, length: null, count: null },
     computed: { lengthDwg: null, areaDwg: null },
-    attrs: { widthMm: null, member: '', note: '' },
+    attrs: { note: '', statusText: '' },
   };
 }
 
@@ -125,6 +126,11 @@ export function createCrackInput({
   viewer,
   container,
   isFingerDrawEnabled,
+  // 속성 패널이 열려 있는 동안은 그리기 제스처를 아예 시작하지 않는다(R3). 패널은 #viewer 밖의
+  // 240px 모서리 오버레이라 inViewer() 검사로는 막히지 않으므로, 패널이 열려 있으면 펜이 도면에
+  // 닿아도 새 손상이 생기거나 선택한 사각형이 움직이지 않아야 한다. 줌·팬은 뷰어 자신의 제스처이므로
+  // 여기서 이벤트를 삼키지 않고(스크롤/네비게이션 이벤트는 그대로 두고) false를 돌려주는 방식으로 넘긴다.
+  isPropsOpen,
   getActiveTypeKind,
   getSelectedScreenRect,
   onDraft,
@@ -239,6 +245,9 @@ export function createCrackInput({
       swallow(event);
       return;
     }
+    // 속성 패널이 열려 있으면 그리기를 시작하지 않는다. swallow()를 호출하지 않고 그냥 돌아가
+    // 이벤트가 뷰어에 그대로 전달되게 한다 — 두 손가락 줌·팬 등 뷰어 자신의 제스처가 막히지 않는다.
+    if (isPropsOpen()) return;
     if (!inViewer(event) || !wantsDrawing(event)) return;
     // 손가락 드래그 중 펜이 터치되면 손가락 제스처를 취소하고 펜을 우선한다.
     if (gesture !== null) {
@@ -292,6 +301,16 @@ export function createCrackInput({
     if (activePointerId !== null) return false;
     if (!isFingerDrawEnabled()) return false;
     const point = [event.canvasX, event.canvasY];
+    // 속성 패널이 열려 있으면 손가락 제스처를 받지 않는다. false를 돌려주면 툴 컨트롤러가 다음
+    // 우선순위 도구(뷰어의 기본 줌·팬)에 넘기므로 핀치·회전 같은 뷰어 제스처는 그대로 동작한다.
+    // 패널이 열리기 전부터 진행 중이던 제스처가 있으면(예: 한 손가락으로 크기 조절 중 다른 손가락이
+    // 속성 버튼을 누른 경우) 먼저 취소한다 — 그냥 false만 돌려주면 이후의 dragmove/dragend도 계속
+    // false를 돌려줘 endGesture가 영영 불리지 않고, 마지막 미리보기(draft)가 실제 위치 대신 화면에
+    // 남는다.
+    if (isPropsOpen()) {
+      if (gesture) endGesture(point, true);
+      return false;
+    }
     switch (event.type) {
       case 'dragstart':
         startGesture(point);
@@ -310,9 +329,16 @@ export function createCrackInput({
         return false;
     }
   };
-  tool.handleSingleTap = (event) => onTap([event.canvasX, event.canvasY]);
+  // 속성 패널이 열려 있으면 탭도 받지 않는다(R6). 탭이 선택을 바꾸면 setSelection이 패널을 닫아
+  // 입력하던 값을 지우므로, 그리기 제스처와 똑같이 막아야 한다. false는 이 두 핸들러가 "처리 안 함"을
+  // 나타낼 때 이미 쓰는 값이라 그대로 돌려주면 뷰어 자신의 탭 처리(선택 해제 등)로 넘어간다.
+  tool.handleSingleTap = (event) => {
+    if (isPropsOpen()) return false;
+    return onTap([event.canvasX, event.canvasY]);
+  };
   tool.handleSingleClick = (event, button) => {
     if (button !== 0) return false;
+    if (isPropsOpen()) return false;
     const point = typeof event.canvasX === 'number' ? [event.canvasX, event.canvasY] : toCanvas(event);
     return onTap(point);
   };

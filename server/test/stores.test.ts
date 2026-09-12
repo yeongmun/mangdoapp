@@ -150,7 +150,7 @@ describe('DamagesStore', () => {
   it('없는 문서는 1970년 updatedAt을 가진 빈 문서', async () => {
     const id = newDrawingId();
     expect(await new DamagesStore(join(dir, 'damages')).get(id)).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       drawingId: id,
       updatedAt: '1970-01-01T00:00:00.000Z',
       damages: [],
@@ -160,12 +160,12 @@ describe('DamagesStore', () => {
   it('저장한 문서를 다시 읽는다', async () => {
     const store = new DamagesStore(join(dir, 'damages'));
     const id = newDrawingId();
-    const doc = { schemaVersion: 2, drawingId: id, updatedAt: '2026-09-10T00:00:00.000Z', damages: [{ id: 'x' }] };
+    const doc = { schemaVersion: 3, drawingId: id, updatedAt: '2026-09-10T00:00:00.000Z', damages: [{ id: 'x' }] };
     await store.save(doc);
     expect(await store.get(id)).toEqual(doc);
   });
 
-  it('v1 문서를 읽으면 v2로 변환해서 돌려준다', async () => {
+  it('v1 문서를 읽으면 v3로 변환해서 돌려준다', async () => {
     const store = new DamagesStore(join(dir, 'damages'));
     const id = newDrawingId();
     await writeJsonFileAtomic(join(dir, 'damages', `${id}.json`), {
@@ -185,15 +185,57 @@ describe('DamagesStore', () => {
 
     const doc = await store.get(id);
 
-    expect(doc.schemaVersion).toBe(2);
+    expect(doc.schemaVersion).toBe(3);
     expect(doc.damages[0]).toEqual({
       id: 'old-1',
       type: 'crack',
       createdAt: '2026-09-10T00:00:00.000Z',
       geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[10, 10], [13, 14]] },
-      measured: { lengthM: null, areaM2: null },
+      measured: { width: null, length: null, count: null },
       computed: { lengthDwg: 5, areaDwg: null },
-      attrs: { widthMm: null, member: '', note: '' },
+      attrs: { note: '', statusText: '' },
+    });
+  });
+
+  it('v2 문서를 읽으면 v3로 변환하고 면적·부재명을 비고에 남긴다', async () => {
+    const store = new DamagesStore(join(dir, 'damages'));
+    const id = newDrawingId();
+    await writeJsonFileAtomic(join(dir, 'damages', `${id}.json`), {
+      schemaVersion: 2,
+      drawingId: id,
+      updatedAt: '2026-09-12T00:00:00.000Z',
+      damages: [
+        {
+          id: 'v2-area',
+          type: 'spalling',
+          createdAt: '2026-09-12T00:00:00.000Z',
+          geometry: {
+            kind: 'rect',
+            world: [[0, 0], [2, 0], [2, 1], [0, 1]],
+            dwg: [[10, 10], [12, 10], [12, 11], [10, 11]],
+          },
+          measured: { lengthM: null, areaM2: 1.8 },
+          computed: { lengthDwg: null, areaDwg: 2 },
+          attrs: { widthMm: null, member: '기둥', note: '' },
+        },
+      ],
+    });
+
+    const doc = await store.get(id);
+
+    expect(doc.schemaVersion).toBe(3);
+    expect(doc.damages[0]).toEqual({
+      id: 'v2-area',
+      type: 'spalling',
+      createdAt: '2026-09-12T00:00:00.000Z',
+      geometry: {
+        kind: 'rect',
+        world: [[0, 0], [2, 0], [2, 1], [0, 1]],
+        dwg: [[10, 10], [12, 10], [12, 11], [10, 11]],
+      },
+      measured: { width: null, length: null, count: null },
+      computed: { lengthDwg: null, areaDwg: 2 },
+      attrs: { note: '이전 면적 입력값: 1.8㎡\n부재명: 기둥', statusText: '' },
     });
   });
 

@@ -24,12 +24,14 @@
 
     <div id="propsPanel" hidden>
       <h2 id="propsTitle"></h2>
-      <label id="lengthRow">길이 (m) <input id="lengthInput" type="number" step="0.01" min="0" inputmode="decimal" /></label>
-      <label id="areaRow">면적 (㎡) <input id="areaInput" type="number" step="0.01" min="0" inputmode="decimal" /></label>
-      <label id="widthRow">균열 폭 (mm) <input id="widthInput" type="number" step="0.1" min="0" inputmode="decimal" /></label>
-      <label>부재명 <input id="memberInput" type="text" /></label>
+      <p id="propsSummary"></p>
+      <label><span id="widthLabel">가로/폭 (mm)</span> <input id="widthInput" type="number" step="0.01" min="0" inputmode="decimal" /></label>
+      <label>세로/길이 (m) <input id="lengthInput" type="number" step="0.01" min="0" inputmode="decimal" /></label>
+      <label>개소 <input id="countInput" type="number" step="1" min="0" inputmode="numeric" /></label>
       <label>비고 <input id="noteInput" type="text" /></label>
+      <label id="statusRow">손상현황 <input id="statusInput" type="text" /></label>
       <p id="computedHint"></p>
+      <p id="propsError" hidden></p>
       <div class="row">
         <button id="propsSave" type="button">저장</button>
         <button id="propsClose" type="button">닫기</button>

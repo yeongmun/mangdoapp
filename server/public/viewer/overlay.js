@@ -2,6 +2,7 @@
 
 import { getDamageType } from './damageTypes.js';
 import { rectCenter } from './geometry.js';
+import { computeNumbers, statusTextOf } from './quantities.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 export const CRACK_COLOR = '#e53935';
@@ -11,6 +12,7 @@ export const CRACK_WIDTH_PX = 1;
 export const SELECTED_WIDTH_PX = 2;
 export const HANDLE_SIZE_PX = 12;
 export const ROTATE_HANDLE_OFFSET_PX = 28;
+export const LABEL_OFFSET_PX = 6;
 
 // 해치 패턴의 화면 표현. 캐드 패턴을 그대로 그리는 것이 아니라 구분이 되도록 흉내 낸다.
 // 간격 단위는 화면 픽셀이라 도면을 확대해도 촘촘해지지 않는다.
@@ -77,6 +79,20 @@ export function rectHandlePositions(screenRect) {
   };
 }
 
+// 라벨은 도형 위쪽 바깥에 놓는다. 도형 한가운데에 놓으면 선·무늬와 겹쳐 번호를 읽기 어렵다.
+export function labelAnchor(screenPoints) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  for (const [x, y] of screenPoints) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+  }
+  if (minX === Infinity) return [0, 0];
+  return [(minX + maxX) / 2, minY - LABEL_OFFSET_PX];
+}
+
 function pointsAttr(points) {
   return points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
 }
@@ -136,18 +152,21 @@ function handleElement(point, shape) {
 // 손상 하나를 어떻게 그릴지 결정한다. DOM을 만들지 않는 순수 함수라 테스트하기 쉽다.
 // type을 손상 유형 목록에서 찾지 못해도(유형이 이름 바뀌거나 삭제된 경우) 그리지 않고 건너뛰지 않는다 —
 // 그러면 손상이 화면에서 사라져 선택할 수도, 지울 수도 없게 되어 저장이 영영 막힌다. 대신 테두리만
-// 그리고 저장된 원본 type 문자열을 라벨로 보여줘, 선택해서 `선택 삭제`로 지울 수 있게 한다.
-export function describeDamageRender(damage, selectedId) {
+// 그리고 statusTextOf가 돌려주는 원본 type 문자열을 라벨로 보여줘, 선택해서 `선택 삭제`로 지울 수 있게 한다.
+/** @type {(damage: any, selectedId: string | null, number?: number | null) => any} */
+export function describeDamageRender(damage, selectedId, number = null) {
   const type = getDamageType(damage.type);
   const selected = damage.id === selectedId;
   const isRect = damage.geometry.kind === 'rect';
+  const status = statusTextOf(damage);
   return {
     known: type !== null,
     shape: isRect ? 'polygon' : 'polyline',
     color: selected ? SELECTED_COLOR : CRACK_COLOR,
     width: selected ? SELECTED_WIDTH_PX : CRACK_WIDTH_PX,
     fillPattern: type && type.fill ? type.fill.pattern : null,
-    label: type ? (!type.fill && isRect ? type.label : null) : String(damage.type),
+    // 번호가 화면에 있어야 번호 순서가 규칙대로인지 눈으로 확인할 수 있다.
+    label: number === null ? status : `${number} ${status}`,
     showHandles: selected && isRect,
   };
 }
@@ -157,11 +176,15 @@ export function createOverlay(svg, mapper) {
   let selectedId = null;
   let draft = null;
   let frame = 0;
+  // 번호는 damages가 실제로 바뀔 때만(setDamages) 다시 계산해 여기 담아 둔다. CAMERA_CHANGE는
+  // 팬·줌마다 한 번씩(때로는 초당 여러 번) requestRender를 부르므로, render()마다 다시 계산하면
+  // 손상 수에 대해 최악 O(n²)(중앙값 높이가 0일 때) 비용이 매 프레임 반복된다.
+  let numbers = new Map();
 
   ensurePatternDefs(svg);
 
-  function renderDamage(damage, elements) {
-    const plan = describeDamageRender(damage, selectedId);
+  function renderDamage(damage, number, elements) {
+    const plan = describeDamageRender(damage, selectedId, number);
     const screen = damage.geometry.world.map((p) => mapper.worldToClient(p));
 
     if (plan.shape === 'polyline') {
@@ -169,7 +192,7 @@ export function createOverlay(svg, mapper) {
     } else {
       elements.push(polygonElement(screen, plan.color, plan.width, plan.fillPattern, 1));
     }
-    if (plan.label !== null) elements.push(labelElement(rectCenter(screen), plan.label));
+    if (plan.label !== '') elements.push(labelElement(labelAnchor(screen), plan.label));
     if (!plan.showHandles) return;
 
     const handles = rectHandlePositions(screen);
@@ -180,11 +203,12 @@ export function createOverlay(svg, mapper) {
   function render() {
     frame = 0;
     const elements = [];
+    // 번호는 저장하지 않는다. setDamages에서 이미 계산해 둔 값을 그대로 쓴다(아래 numbers 캐시).
     for (const damage of damages) {
       // 크기·회전 조절 중인 손상은 움직이는 draft가 대신 보여준다 — 그대로 두면 손 떼기 전
       // 원래 위치의 사각형·핸들과 draft가 겹쳐 두 개로 보인다.
       if (draft && draft.activeId != null && damage.id === draft.activeId) continue;
-      renderDamage(damage, elements);
+      renderDamage(damage, numbers.get(damage.id) ?? null, elements);
     }
     if (draft && draft.points.length > 1) {
       elements.push(
@@ -203,7 +227,12 @@ export function createOverlay(svg, mapper) {
 
   return {
     setDamages(list) {
-      damages = list;
+      // 참조가 같으면(선택만 바뀌는 등) 목록 자체는 안 바뀐 것이다 — editor의 모든 변경 함수는
+      // 항상 새 배열을 만들므로(damageDoc.js) 참조 비교로 충분하다.
+      if (list !== damages) {
+        damages = list;
+        numbers = computeNumbers(damages);
+      }
       requestRender();
     },
     setSelected(id) {
@@ -215,5 +244,10 @@ export function createOverlay(svg, mapper) {
       requestRender();
     },
     requestRender,
+    // main.js의 속성 패널 요약줄(번호 표시)이 render()와 같은 캐시를 쓰도록 내보낸다 —
+    // 따로 computeNumbers를 다시 부르면 캐시를 둔 의미가 없다.
+    numberOf(id) {
+      return numbers.get(id) ?? null;
+    },
   };
 }

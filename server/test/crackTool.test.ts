@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { polylineLength } from '../public/viewer/geometry.js';
 import { finalizeRect, finalizeStroke, hitHandle, MIN_RECT_PX, MIN_STROKE_PX, pickDamage } from '../public/viewer/crackTool.js';
+import { validateDamageDoc } from '../public/viewer/damageDoc.js';
 
 type Pt = [number, number];
 
@@ -28,7 +29,7 @@ describe('finalizeStroke', () => {
     expect(finalizeStroke(stroke, mapper, options)).toBeNull();
   });
 
-  it('선형 손상을 v2 형태로 만든다', () => {
+  it('선형 손상을 v3 형태로 만든다', () => {
     const stroke: Pt[] = [];
     for (let i = 0; i <= 100; i++) stroke.push([i, i % 2 === 0 ? 50 : 50.5]);
     expect(finalizeStroke(stroke, mapper, options)).toEqual({
@@ -36,9 +37,9 @@ describe('finalizeStroke', () => {
       type: 'crack',
       createdAt: '2026-09-12T03:00:00.000Z',
       geometry: { kind: 'polyline', world: [[0, -5], [10, -5]], dwg: [[1000, 1995], [1010, 1995]] },
-      measured: { lengthM: null, areaM2: null },
+      measured: { width: null, length: null, count: null },
       computed: { lengthDwg: 10, areaDwg: null },
-      attrs: { widthMm: null, member: '', note: '' },
+      attrs: { note: '', statusText: '' },
     });
   });
 
@@ -65,9 +66,9 @@ describe('finalizeRect', () => {
         world: [[0, 0], [2, 0], [2, -1], [0, -1]],
         dwg: [[1000, 2000], [1002, 2000], [1002, 1999], [1000, 1999]],
       },
-      measured: { lengthM: null, areaM2: null },
+      measured: { width: null, length: null, count: null },
       computed: { lengthDwg: null, areaDwg: 2 },
-      attrs: { widthMm: null, member: '', note: '' },
+      attrs: { note: '', statusText: '' },
     });
   });
 
@@ -144,5 +145,37 @@ describe('hitHandle', () => {
 
   it('사각형이 없으면 null', () => {
     expect(hitHandle([0, 0], null)).toBeNull();
+  });
+});
+
+describe('v3 document validation', () => {
+  it('새로 만든 선형 손상이 v3 문서에서 검증을 통과한다', () => {
+    const stroke: Pt[] = [];
+    for (let i = 0; i <= 100; i++) stroke.push([i, i % 2 === 0 ? 50 : 50.5]);
+    const damage = finalizeStroke(stroke, mapper, options);
+    expect(damage).not.toBeNull();
+
+    const doc = {
+      schemaVersion: 3,
+      drawingId: 'test-drawing',
+      updatedAt: '2026-09-12T03:00:00.000Z',
+      damages: [damage!],
+    };
+    const errors = validateDamageDoc(doc, 'test-drawing');
+    expect(errors).toHaveLength(0);
+  });
+
+  it('새로 만든 면형 손상이 v3 문서에서 검증을 통과한다', () => {
+    const damage = finalizeRect([0, 0], [20, 10], mapper, areaOptions);
+    expect(damage).not.toBeNull();
+
+    const doc = {
+      schemaVersion: 3,
+      drawingId: 'test-drawing',
+      updatedAt: '2026-09-12T03:00:00.000Z',
+      damages: [damage!],
+    };
+    const errors = validateDamageDoc(doc, 'test-drawing');
+    expect(errors).toHaveLength(0);
   });
 });

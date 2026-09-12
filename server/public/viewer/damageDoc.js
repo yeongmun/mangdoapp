@@ -2,7 +2,7 @@
 
 import { getDamageType } from './damageTypes.js';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const MAX_HISTORY = 50;
 
 export function createEmptyDoc(drawingId, updatedAt) {
@@ -22,6 +22,11 @@ function isPointList(value, exactLength) {
 // null이거나 0 이상의 유한한 숫자
 function isNullableAmount(value) {
   return value === null || (Number.isFinite(value) && value >= 0);
+}
+
+// null이거나 0 이상의 정수 (개소)
+function isNullableCount(value) {
+  return value === null || (Number.isInteger(value) && value >= 0);
 }
 
 function validateGeometry(damage, type, path, errors) {
@@ -53,23 +58,20 @@ function validateGeometry(damage, type, path, errors) {
   return true;
 }
 
-function validateMeasured(damage, type, path, errors) {
+function validateMeasured(damage, path, errors) {
   const measured = damage.measured;
   if (typeof measured !== 'object' || measured === null) {
     errors.push(`${path}.measured가 객체가 아닙니다.`);
     return;
   }
-  if (!isNullableAmount(measured.lengthM)) {
-    errors.push(`${path}.measured.lengthM은 0 이상의 숫자이거나 null이어야 합니다.`);
+  if (!isNullableAmount(measured.width)) {
+    errors.push(`${path}.measured.width는 0 이상의 숫자이거나 null이어야 합니다.`);
   }
-  if (!isNullableAmount(measured.areaM2)) {
-    errors.push(`${path}.measured.areaM2는 0 이상의 숫자이거나 null이어야 합니다.`);
+  if (!isNullableAmount(measured.length)) {
+    errors.push(`${path}.measured.length는 0 이상의 숫자이거나 null이어야 합니다.`);
   }
-  if (type.quantityUnit === 'm' && measured.areaM2 !== null) {
-    errors.push(`${path}.measured.areaM2는 선형 손상에서 null이어야 합니다.`);
-  }
-  if (type.quantityUnit === 'm2' && measured.lengthM !== null) {
-    errors.push(`${path}.measured.lengthM은 면형 손상에서 null이어야 합니다.`);
+  if (!isNullableCount(measured.count)) {
+    errors.push(`${path}.measured.count는 0 이상의 정수이거나 null이어야 합니다.`);
   }
 }
 
@@ -88,17 +90,20 @@ function validateComputed(damage, hasDwg, path, errors) {
   }
 }
 
-function validateAttrs(damage, path, errors) {
+function validateAttrs(damage, type, path, errors) {
   const attrs = damage.attrs;
   if (typeof attrs !== 'object' || attrs === null) {
     errors.push(`${path}.attrs가 객체가 아닙니다.`);
     return;
   }
-  if (!isNullableAmount(attrs.widthMm)) {
-    errors.push(`${path}.attrs.widthMm는 0 이상의 숫자이거나 null이어야 합니다.`);
+  if (typeof attrs.note !== 'string' || typeof attrs.statusText !== 'string') {
+    errors.push(`${path}.attrs.note와 statusText는 문자열이어야 합니다.`);
+    return;
   }
-  if (typeof attrs.member !== 'string' || typeof attrs.note !== 'string') {
-    errors.push(`${path}.attrs.member와 note는 문자열이어야 합니다.`);
+  // 손상현황은 기타에서만 사용자가 적는다. 다른 유형은 유형 이름·균열 폭 구간으로 계산되므로
+  // 값이 들어 있으면 화면에 보이지 않는 값이 조용히 남아 물량표와 어긋난다.
+  if (type !== null && type.id !== 'etc' && attrs.statusText !== '') {
+    errors.push(`${path}.attrs.statusText는 기타 유형에서만 쓸 수 있습니다.`);
   }
 }
 
@@ -112,20 +117,20 @@ function validateDamage(damage, path, errors) {
   const type = typeof damage.type === 'string' ? getDamageType(damage.type) : null;
   if (!type) {
     errors.push(`${path}.type이 손상 유형 목록에 없습니다.`);
-    validateAttrs(damage, path, errors);
+    validateAttrs(damage, null, path, errors);
     return;
   }
 
   const hasDwg = validateGeometry(damage, type, path, errors);
-  validateMeasured(damage, type, path, errors);
+  validateMeasured(damage, path, errors);
   validateComputed(damage, hasDwg, path, errors);
-  validateAttrs(damage, path, errors);
+  validateAttrs(damage, type, path, errors);
 }
 
 export function validateDamageDoc(doc, drawingId) {
   if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return ['문서가 객체가 아닙니다.'];
   const errors = [];
-  if (doc.schemaVersion !== SCHEMA_VERSION) errors.push('schemaVersion은 2이어야 합니다.');
+  if (doc.schemaVersion !== SCHEMA_VERSION) errors.push('schemaVersion은 3이어야 합니다.');
   if (doc.drawingId !== drawingId) errors.push('drawingId가 주소와 다릅니다.');
   if (!isDateString(doc.updatedAt)) errors.push('updatedAt이 올바른 날짜가 아닙니다.');
   if (!Array.isArray(doc.damages)) {
@@ -144,14 +149,11 @@ export function validateDamageDoc(doc, drawingId) {
   return errors;
 }
 
-// v1 문서(균열만, lengthDwg 한 개)를 v2 형태로 바꿔 읽는다. 저장은 항상 v2로 한다.
-export function migrateDoc(doc, drawingId) {
-  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return null;
-  if (doc.schemaVersion === SCHEMA_VERSION) return doc;
-  if (doc.schemaVersion !== 1) return doc;
+// v1 문서(균열만, lengthDwg 한 개)를 v2 형태로 바꾼다.
+function migrateV1ToV2(doc, drawingId) {
   const damages = Array.isArray(doc.damages) ? doc.damages : [];
   return {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: 2,
     drawingId: doc.drawingId ?? drawingId,
     updatedAt: doc.updatedAt,
     damages: damages.map((damage) => ({
@@ -164,6 +166,63 @@ export function migrateDoc(doc, drawingId) {
       attrs: { widthMm: null, member: '', note: '' },
     })),
   };
+}
+
+// v2의 면적·부재명은 v3에 들어갈 칸이 없다. 면적에서 가로·세로를 되돌릴 수 없으므로 지어내지 않고,
+// 조용히 버리지도 않는다. 사용자가 보고 다시 입력할 수 있게 비고에 옮겨 적는다.
+//
+// 길이(lengthM)는 선형 유형(isLineType)이면 measured.length로 제 칸을 찾아가므로 여기서는 다루지
+// 않는다. isLineType이 아닌데(면형이거나, 유형이 삭제·이름바뀜으로 알 수 없는데) lengthM 값이
+// 남아 있으면 measured.length 자리를 못 찾고 그대로 사라지므로, areaM2와 같은 방식으로 비고에 옮긴다.
+function carriedNote(damage, isLineType) {
+  const measured = damage.measured ?? {};
+  const attrs = damage.attrs ?? {};
+  const lines = [];
+  if (!isLineType && Number.isFinite(measured.lengthM)) lines.push(`이전 길이 입력값: ${measured.lengthM}m`);
+  if (Number.isFinite(measured.areaM2)) lines.push(`이전 면적 입력값: ${measured.areaM2}㎡`);
+  if (typeof attrs.member === 'string' && attrs.member !== '') lines.push(`부재명: ${attrs.member}`);
+  if (typeof attrs.note === 'string' && attrs.note !== '') lines.push(attrs.note);
+  return lines.join('\n');
+}
+
+function migrateV2ToV3(doc) {
+  const damages = Array.isArray(doc.damages) ? doc.damages : [];
+  return {
+    ...doc,
+    schemaVersion: 3,
+    damages: damages.map((damage) => {
+      const measured = damage.measured ?? {};
+      const attrs = damage.attrs ?? {};
+      // v2의 widthMm(mm, 균열류의 폭)은 선형 유형에서만 쓰였다. areaM2가 채워졌는지가 아니라
+      // 유형표를 직접 조회해 판단한다 — 손으로 고쳐진 v2 파일처럼 면형 유형인데 areaM2는 null이고
+      // widthMm만 남아 있는 경우, areaM2 유무로 판단하면 mm 값이 그대로 m 단위 measured.width로
+      // 새어 들어간다. 유형을 알 수 없을 때도 같은 이유로 보수적으로 옮기지 않는다.
+      const type = typeof damage.type === 'string' ? getDamageType(damage.type) : null;
+      const isLineType = type !== null && type.quantityUnit === 'm';
+      return {
+        id: damage.id,
+        type: damage.type,
+        createdAt: damage.createdAt,
+        geometry: damage.geometry,
+        measured: {
+          width: isLineType && Number.isFinite(attrs.widthMm) ? attrs.widthMm : null,
+          length: isLineType && Number.isFinite(measured.lengthM) ? measured.lengthM : null,
+          count: null,
+        },
+        computed: damage.computed ?? { lengthDwg: null, areaDwg: null },
+        attrs: { note: carriedNote(damage, isLineType), statusText: '' },
+      };
+    }),
+  };
+}
+
+// 예전 문서를 읽을 때 한 단계씩 이어 붙여 v3로 올린다. 저장은 항상 v3로 한다.
+// 단계를 나눠 두면 새 버전이 생겨도 각 단계를 따로 검증할 수 있다.
+export function migrateDoc(doc, drawingId) {
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return null;
+  if (doc.schemaVersion === SCHEMA_VERSION) return doc;
+  const v2 = doc.schemaVersion === 1 ? migrateV1ToV2(doc, drawingId) : doc;
+  return v2.schemaVersion === 2 ? migrateV2ToV3(v2) : v2;
 }
 
 /**

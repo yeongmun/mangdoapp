@@ -5,6 +5,8 @@ import {
   describeDamageRender,
   HANDLE_SIZE_PX,
   HATCH_PATTERNS,
+  LABEL_OFFSET_PX,
+  labelAnchor,
   rectHandlePositions,
   ROTATE_HANDLE_OFFSET_PX,
   SELECTED_COLOR,
@@ -54,11 +56,11 @@ describe('rectHandlePositions', () => {
 describe('describeDamageRender', () => {
   it('유형 목록에 없는 면형 손상은 테두리만(채우기 없이) 그리고 원본 type을 라벨로 보여준다', () => {
     const unknown = { id: 'x', type: 'no_such_type', geometry: { kind: 'rect', world: [] } };
-    const plan = describeDamageRender(unknown, null);
+    const plan = describeDamageRender(unknown, null, 2);
     expect(plan.known).toBe(false);
     expect(plan.shape).toBe('polygon');
     expect(plan.fillPattern).toBeNull();
-    expect(plan.label).toBe('no_such_type');
+    expect(plan.label).toBe('2 no_such_type');
     expect(plan.color).toBe(CRACK_COLOR);
   });
 
@@ -71,16 +73,48 @@ describe('describeDamageRender', () => {
 
   it('유형 목록에 없는 선형 손상은 핸들 없이 라벨만 그린다', () => {
     const unknown = { id: 'y', type: 'nope', geometry: { kind: 'polyline', world: [] } };
-    const plan = describeDamageRender(unknown, 'y');
+    const plan = describeDamageRender(unknown, 'y', 1);
     expect(plan.shape).toBe('polyline');
-    expect(plan.label).toBe('nope');
+    expect(plan.label).toBe('1 nope');
     expect(plan.showHandles).toBe(false);
   });
 
-  it('알려진 유형은 그대로 채우기 여부에 따라 라벨을 정한다', () => {
+  it('라벨은 번호와 손상현황이다', () => {
+    const crack = {
+      id: 'a',
+      type: 'crack',
+      geometry: { kind: 'polyline', world: [] },
+      measured: { width: 0.2, length: 1.5, count: 1 },
+      attrs: { note: '', statusText: '' },
+    };
+    expect(describeDamageRender(crack, null, 17).label).toBe('17 균열(0.3mm미만)');
+  });
+
+  it('채우기가 있는 면형도 번호와 손상현황을 보여준다', () => {
     const filled = { id: 'a', type: 'spalling', geometry: { kind: 'rect', world: [] } };
-    expect(describeDamageRender(filled, null).label).toBeNull();
+    expect(describeDamageRender(filled, null, 3).label).toBe('3 박락');
     const unfilled = { id: 'b', type: 'breakage', geometry: { kind: 'rect', world: [] } };
-    expect(describeDamageRender(unfilled, null).label).toBe('파손');
+    expect(describeDamageRender(unfilled, null, 4).label).toBe('4 파손');
+  });
+
+  it('번호가 없으면 손상현황만 보여준다', () => {
+    const filled = { id: 'a', type: 'spalling', geometry: { kind: 'rect', world: [] } };
+    expect(describeDamageRender(filled, null).label).toBe('박락');
+  });
+});
+
+describe('labelAnchor', () => {
+  it('도형 위쪽 가운데에서 조금 위에 놓는다 (화면 좌표는 아래로 갈수록 y가 크다)', () => {
+    const rect: Pt[] = [[10, 40], [50, 40], [50, 80], [10, 80]];
+    expect(labelAnchor(rect)).toEqual([30, 40 - LABEL_OFFSET_PX]);
+  });
+
+  it('선도 경계상자 기준으로 놓는다', () => {
+    const line: Pt[] = [[0, 100], [60, 20]];
+    expect(labelAnchor(line)).toEqual([30, 20 - LABEL_OFFSET_PX]);
+  });
+
+  it('점이 없으면 원점', () => {
+    expect(labelAnchor([])).toEqual([0, 0]);
   });
 });

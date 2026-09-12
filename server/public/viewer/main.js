@@ -5,6 +5,7 @@ import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
+import { formatQuantity, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
 
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
@@ -104,7 +105,7 @@ async function start() {
   if (!accessKey) throw new Error('접근키가 없습니다. 앱 설정을 확인하세요.');
 
   const [drawings, serverDoc] = await Promise.all([api('/drawings'), api(`/drawings/${drawingId}/damages`)]);
-  const serverDocV2 = migrateDoc(serverDoc, drawingId) ?? serverDoc;
+  const serverDocV3 = migrateDoc(serverDoc, drawingId) ?? serverDoc;
   const drawing = drawings.find((d) => d.id === drawingId);
   if (!drawing) throw new Error('도면을 찾을 수 없습니다.');
   if (drawing.status !== 'success') throw new Error('아직 변환이 끝나지 않은 도면입니다.');
@@ -158,12 +159,12 @@ async function start() {
   };
 
   const backup = syncer.readBackup();
-  // 서버 문서와 같은 방식으로 백업도 먼저 v2로 옮긴 뒤 검증한다. v1 백업을 그대로 검증하면
+  // 서버 문서와 같은 방식으로 백업도 먼저 v3로 옮긴 뒤 검증한다. v1·v2 백업을 그대로 검증하면
   // schemaVersion만으로 거부되어, 아직 서버에 못 올린 손상이 조용히 버려진다.
   const migratedBackup = backup ? (migrateDoc(backup, drawingId) ?? backup) : null;
   const usableBackup =
     migratedBackup && validateDamageDoc(migratedBackup, drawingId).length === 0 ? migratedBackup : null;
-  const initial = chooseInitialDoc(serverDocV2, usableBackup);
+  const initial = chooseInitialDoc(serverDocV3, usableBackup);
   let editor = createEditor(initial.doc);
   let selectedId = null;
   let fingerDraw = false;
@@ -195,6 +196,12 @@ async function start() {
   function setSelection(id) {
     selectedId = id;
     $('propsPanel').hidden = true;
+  }
+
+  // 속성 패널이 열려 있는지. 그리기 입력(crackTool)이 패널이 열린 동안 제스처를 시작하지 않도록
+  // 이 값을 그대로 물어본다(R3) — 패널은 #viewer 밖에 있어 inViewer() 검사로는 보호되지 않는다.
+  function isPropsOpen() {
+    return !$('propsPanel').hidden;
   }
 
   function refresh() {
@@ -236,6 +243,7 @@ async function start() {
     viewer,
     container: $('viewer'),
     isFingerDrawEnabled: () => fingerDraw,
+    isPropsOpen,
     getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
     getSelectedScreenRect: selectedScreenRect,
     onDraft: (draft) => overlay.setDraft(draft),
@@ -296,57 +304,107 @@ async function start() {
     },
   });
 
-  // 균열류(선형 손상: 균열, 균열/백태) — 폭 입력이 의미 있는 유형. quantityUnit이 'm'인 유형과 같다
-  // (kind: 'line'과 동치), lengthRow를 보여주는 조건과 같은 기준이다.
-  const isCrackLikeType = (type) => type.quantityUnit === 'm';
-
   function openProps() {
     const damage = selectedDamage();
     if (!damage) return;
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
-    $('lengthRow').hidden = type.quantityUnit !== 'm';
-    $('areaRow').hidden = type.quantityUnit !== 'm2';
-    $('widthRow').hidden = !isCrackLikeType(type);
-    $('lengthInput').value = damage.measured.lengthM ?? '';
-    $('areaInput').value = damage.measured.areaM2 ?? '';
-    $('widthInput').value = damage.attrs.widthMm ?? '';
-    $('memberInput').value = damage.attrs.member;
+    // 균열류의 가로/폭만 mm다. 0.3mm·0.5mm 경계로 손상현황이 갈리고, 물량 계산에는 쓰이지 않는다.
+    // 단위 판정은 quantities.js의 widthUnitOf가 갖는다 — 2단계 물량표도 같은 판정을 써야 하므로.
+    $('widthLabel').textContent = `가로/폭 (${widthUnitOf(type)})`;
+    // 손상현황을 직접 적는 것은 기타뿐이다. 나머지는 유형 이름·폭 구간으로 자동으로 정해진다.
+    $('statusRow').hidden = type.id !== 'etc';
+    $('widthInput').value = damage.measured.width ?? '';
+    $('lengthInput').value = damage.measured.length ?? '';
+    $('countInput').value = damage.measured.count ?? '';
     $('noteInput').value = damage.attrs.note;
-    // 참고값은 도면 단위(9장 미확정)가 정해질 때까지 숨긴다. 도면 단위를 모르는 채 그대로 보여주면
+    $('statusInput').value = damage.attrs.statusText;
+    // 참고값은 도면 단위(설계 8장 미해결)가 정해질 때까지 숨긴다. 도면 단위를 모르는 채 그대로 보여주면
     // (예: mm 도면의 1.8㎡가 1800000.0으로) 실제 크기와 자릿수가 크게 달라 보여 오히려 오해를 준다.
     $('computedHint').hidden = true;
+    // 지난번 저장 시도에서 남은 검증 오류를 새로 열 때 지운다. 그대로 두면 이번 손상과 무관한
+    // 메시지가 계속 보인다.
+    $('propsError').hidden = true;
+    updateSummary();
     $('propsPanel').hidden = false;
   }
 
   // 빈 입력은 null(측정 안 함)로 본다. 그 외에는 0 이상의 유한한 숫자여야 하며, 아니면 거부한다.
-  function parseAmount(value) {
-    const text = value.trim();
+  // type="number" 칸에 `0..5`처럼 숫자로 파싱할 수 없는 글자를 치면 DOM의 value는 ''를 돌려주면서도
+  // 화면에는 친 글자가 그대로 남는다. value만 보면 이것과 진짜 빈 칸을 구분할 수 없어 "측정 안 함"으로
+  // 조용히 저장돼 버리므로, validity.badInput(브라우저가 판단한 "숫자로 못 읽음")을 먼저 본다.
+  function parseAmount(input) {
+    if (input.validity.badInput) return { ok: false, value: null };
+    const text = input.value.trim();
     if (text === '') return { ok: true, value: null };
     const parsed = Number(text);
     return Number.isFinite(parsed) && parsed >= 0 ? { ok: true, value: parsed } : { ok: false, value: null };
   }
 
-  function showSaveError(message) {
-    $('saveError').textContent = message;
-    $('saveError').hidden = false;
+  // 개소는 낱개를 세는 값이라 정수여야 한다. 1.5개소는 물량표에 적을 수 없다.
+  function parseCount(input) {
+    if (input.validity.badInput) return { ok: false, value: null };
+    const text = input.value.trim();
+    if (text === '') return { ok: true, value: null };
+    const parsed = Number(text);
+    return Number.isInteger(parsed) && parsed >= 0 ? { ok: true, value: parsed } : { ok: false, value: null };
+  }
+
+  // 입력 중인 값으로 만든 임시 손상. 요약줄을 미리 보여주는 데만 쓰고 저장하지 않는다.
+  function draftFromInputs(damage) {
+    return {
+      ...damage,
+      measured: {
+        width: parseAmount($('widthInput')).value,
+        length: parseAmount($('lengthInput')).value,
+        count: parseCount($('countInput')).value,
+      },
+      attrs: { ...damage.attrs, statusText: $('statusInput').value.trim() },
+    };
+  }
+
+  // 번호·손상현황·물량은 저장하지 않는다. 보여줄 때마다 다시 계산한다.
+  function updateSummary() {
+    const damage = selectedDamage();
+    if (!damage) return;
+    const draft = draftFromInputs(damage);
+    // overlay가 setDamages에서 이미 계산해 둔 번호를 그대로 읽는다 — 여기서 computeNumbers를
+    // 다시 부르면 같은 값을 두 번 계산하는 셈이라 캐시를 둔 의미가 없다.
+    const number = overlay.numberOf(damage.id);
+    const quantity = quantityOf(draft);
+    const quantityText = quantity === null ? '-' : `${formatQuantity(quantity)} ${unitOf(draft)}`;
+    $('propsSummary').textContent = `번호 ${number ?? '-'} · 손상현황 ${statusTextOf(draft)} · 물량 ${quantityText}`;
+  }
+
+  // 속성 패널 자신의 검증 메시지. #saveError는 동기화 상태 전용이라 여기서 건드리지 않는다 —
+  // 같은 요소를 같이 쓰면 저장 실패 배지와 패널 메시지가 서로를 지운다(A3).
+  function showPropsError(message) {
+    $('propsError').textContent = message;
+    $('propsError').hidden = false;
   }
 
   $('props').addEventListener('click', openProps);
   $('propsClose').addEventListener('click', () => {
     $('propsPanel').hidden = true;
   });
+  for (const id of ['widthInput', 'lengthInput', 'countInput', 'statusInput']) {
+    $(id).addEventListener('input', updateSummary);
+  }
   $('propsSave').addEventListener('click', () => {
     const damage = selectedDamage();
     if (!damage) return;
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
-    const length = type.quantityUnit === 'm' ? parseAmount($('lengthInput').value) : { ok: true, value: null };
-    const area = type.quantityUnit === 'm2' ? parseAmount($('areaInput').value) : { ok: true, value: null };
-    const width = isCrackLikeType(type) ? parseAmount($('widthInput').value) : { ok: true, value: null };
-    if (!length.ok || !area.ok || !width.ok) {
-      // 범위를 벗어난 값을 조용히 null로 바꿔 저장하면(예: -3 입력) 사용자가 적은 값이 사라진 채
-      // 패널이 닫혀 저장된 것처럼 보인다. 대신 패널을 열어둔 채 알리고 다시 고치게 한다.
-      showSaveError('저장하지 못했습니다: 0 이상의 숫자를 입력하세요.');
+    const width = parseAmount($('widthInput'));
+    const length = parseAmount($('lengthInput'));
+    const count = parseCount($('countInput'));
+    // 범위를 벗어난 값·숫자로 읽을 수 없는 글자를 조용히 null로 바꿔 저장하면(예: -3, `0..5`) 사용자가
+    // 적은 값이 사라진 채 패널이 닫혀 저장된 것처럼 보인다. 대신 패널을 열어둔 채 알리고 다시 고치게 한다.
+    if (!width.ok || !length.ok) {
+      showPropsError('저장하지 못했습니다: 0 이상의 숫자를 입력하세요.');
+      return;
+    }
+    if (!count.ok) {
+      showPropsError('저장하지 못했습니다: 개소는 0 이상의 정수를 입력하세요.');
       return;
     }
     apply(
@@ -354,17 +412,17 @@ async function start() {
         editor,
         damage.id,
         {
-          measured: { lengthM: length.value, areaM2: area.value },
+          measured: { width: width.value, length: length.value, count: count.value },
           attrs: {
-            widthMm: width.value,
-            member: $('memberInput').value.trim(),
             note: $('noteInput').value.trim(),
+            // 손상현황은 기타에서만 저장한다. 다른 유형에 값이 남아 있으면 검증에서 막힌다.
+            statusText: type.id === 'etc' ? $('statusInput').value.trim() : '',
           },
         },
         nowIso(),
       ),
     );
-    $('saveError').hidden = true;
+    $('propsError').hidden = true;
     $('propsPanel').hidden = true;
   });
 
