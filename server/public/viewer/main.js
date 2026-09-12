@@ -5,7 +5,7 @@ import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
-import { computeNumbers, formatQuantity, quantityOf, statusTextOf, unitOf } from './quantities.js';
+import { computeNumbers, formatQuantity, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
 
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
@@ -304,17 +304,14 @@ async function start() {
     },
   });
 
-  // 균열류(선형 손상: 균열, 균열/백태) — 가로/폭을 mm로 적고 물량 계산에는 쓰지 않는 유형.
-  // 유형표의 quantityUnit이 'm'인 유형과 같다(kind: 'line'과 동치).
-  const isCrackLikeType = (type) => type.quantityUnit === 'm';
-
   function openProps() {
     const damage = selectedDamage();
     if (!damage) return;
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
     // 균열류의 가로/폭만 mm다. 0.3mm·0.5mm 경계로 손상현황이 갈리고, 물량 계산에는 쓰이지 않는다.
-    $('widthLabel').textContent = isCrackLikeType(type) ? '가로/폭 (mm)' : '가로/폭 (m)';
+    // 단위 판정은 quantities.js의 widthUnitOf가 갖는다 — 2단계 물량표도 같은 판정을 써야 하므로.
+    $('widthLabel').textContent = `가로/폭 (${widthUnitOf(type)})`;
     // 손상현황을 직접 적는 것은 기타뿐이다. 나머지는 유형 이름·폭 구간으로 자동으로 정해진다.
     $('statusRow').hidden = type.id !== 'etc';
     $('widthInput').value = damage.measured.width ?? '';

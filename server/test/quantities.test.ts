@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getDamageType } from '../public/viewer/damageTypes.js';
 import {
   computeNumbers,
   CRACK_WIDTH_BREAKS,
@@ -7,6 +8,7 @@ import {
   quantityOf,
   statusTextOf,
   unitOf,
+  widthUnitOf,
 } from '../public/viewer/quantities.js';
 
 type Pt = [number, number];
@@ -233,6 +235,23 @@ describe('unitOf', () => {
     expect(unitOf(crack('a', { width: null, length: null, count: null }))).toBe('m');
     expect(unitOf(area('b', { width: null, length: null, count: null }))).toBe('㎡');
     expect(unitOf({ id: 'x', type: 'nope' })).toBeNull();
+  });
+});
+
+describe('widthUnitOf', () => {
+  it('균열류(quantityUnit이 m인 선형 유형)는 mm', () => {
+    expect(widthUnitOf(getDamageType('crack'))).toBe('mm');
+    expect(widthUnitOf(getDamageType('crack_efflorescence'))).toBe('mm');
+  });
+
+  it('나머지 유형(면형)은 m', () => {
+    expect(widthUnitOf(getDamageType('spalling'))).toBe('m');
+    expect(widthUnitOf(getDamageType('etc'))).toBe('m');
+  });
+
+  it('유형을 알 수 없으면(삭제·이름바뀜) mm으로 잘못 보여주지 않도록 m', () => {
+    expect(widthUnitOf(getDamageType('no_such_type'))).toBe('m');
+    expect(widthUnitOf(null)).toBe('m');
   });
 });
 

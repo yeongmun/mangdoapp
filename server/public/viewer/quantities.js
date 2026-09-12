@@ -2,8 +2,16 @@
 // 저장하면 손상을 하나 지울 때마다 뒷번호를 전부 다시 써야 하고, 값과 위치가 어긋날 수 있다.
 //
 // 2단계 DWG 물량표도 같은 함수를 쓴다. 표 한 행의 칸은 다음과 같이 대응한다.
-//   번호 computeNumbers / 손상현황 statusTextOf / 가로·폭 measured.width / 세로·길이 measured.length
-//   / 개소 measured.count / 물량 quantityOf / 단위 unitOf / 비고 attrs.note
+//   번호 computeNumbers / 손상현황 statusTextOf
+//   / 가로·폭 measured.width (단위는 유형마다 다르다 — widthUnitOf(type)이 'mm'|'m'을 돌려준다.
+//     균열류(quantityUnit이 'm'인 유형)는 mm, 나머지는 m. 표 생성기가 이 칸을 한 열에 그대로 쓰면
+//     균열의 0.3과 박락의 1.2가 단위 표시 없이 같은 칸에 섞이므로, 반드시 widthUnitOf로 단위를 붙여야 한다)
+//   / 세로·길이 measured.length / 개소 measured.count / 물량 quantityOf / 단위 unitOf / 비고 attrs.note
+//
+// computeNumbers는 geometry.world 좌표로 번호를 매긴다(3.1). geometry.dwg로 다시 매기면 안 된다 —
+// 페이지→모델 변환(coords.js)이 회전·반전을 포함할 수 있어 world 기준 순서와 dwg 기준 순서가 달라질
+// 수 있다. 2단계 생성기가 DWG 모델 공간에서 동작하더라도, 번호는 world 좌표로 계산한 결과(id→번호)를
+// 그대로 가져다 써야 한다.
 //
 // 값의 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md 3장
 
@@ -118,6 +126,15 @@ export function unitOf(damage) {
   const type = getDamageType(damage?.type);
   if (!type) return null;
   return UNIT_LABELS[type.quantityUnit] ?? null;
+}
+
+// 가로/폭 칸의 단위. 균열류(quantityUnit이 'm'인 선형 유형)만 mm이고 나머지는 m이다 — 균열 폭이
+// 0.3mm·0.5mm 경계로 손상현황을 가르는 mm 단위 값이기 때문이다(2장). 유형을 모르면(삭제·이름바뀜)
+// mm으로 잘못 보여주지 않도록 보수적으로 m을 돌려준다.
+// damage 대신 이미 조회해 둔 type 객체를 받는다 — main.js의 속성 패널이 DEFAULT_DAMAGE_TYPE_ID로
+// 대체한 type을 이미 들고 있어 그대로 넘길 수 있고, 2단계 표 생성기도 유형표를 조회한 뒤 쓰게 된다.
+export function widthUnitOf(type) {
+  return type && type.quantityUnit === 'm' ? 'mm' : 'm';
 }
 
 // 물량은 저장하지 않고 보여줄 때만 문자열로 만든다. 소수 넷째 자리에서 반올림하고 뒤의 0은 지운다
