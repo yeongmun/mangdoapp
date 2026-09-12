@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  angleOf,
   distanceToPolyline,
   distanceToSegment,
+  pointInPolygon,
+  polygonArea,
   polylineLength,
+  rectCenter,
+  rectFromDrag,
+  resizeRect,
+  rotatePoints,
   simplifyPolyline,
 } from '../public/viewer/geometry.js';
 
@@ -73,5 +80,92 @@ describe('polylineLength', () => {
   it('점이 2개 미만이면 0', () => {
     expect(polylineLength([[1, 1]])).toBe(0);
     expect(polylineLength([])).toBe(0);
+  });
+});
+
+describe('rectFromDrag', () => {
+  it('드래그한 두 점을 대각선으로 하는 사각형을 만든다', () => {
+    expect(rectFromDrag([1, 2], [5, 6])).toEqual([[1, 2], [5, 2], [5, 6], [1, 6]]);
+  });
+
+  it('반대 방향으로 드래그해도 네 점이 이어진 사각형이다', () => {
+    expect(rectFromDrag([5, 6], [1, 2])).toEqual([[5, 6], [1, 6], [1, 2], [5, 2]]);
+  });
+});
+
+describe('rectCenter / angleOf / rotatePoints', () => {
+  const rect: Pt[] = [[0, 0], [4, 0], [4, 2], [0, 2]];
+
+  it('네 점의 가운데를 구한다', () => {
+    expect(rectCenter(rect)).toEqual([2, 1]);
+  });
+
+  it('중심에서 점까지의 각도를 라디안으로 구한다', () => {
+    expect(angleOf([0, 0], [1, 0])).toBeCloseTo(0, 10);
+    expect(angleOf([0, 0], [0, 2])).toBeCloseTo(Math.PI / 2, 10);
+  });
+
+  it('중심을 기준으로 90도 회전한다', () => {
+    const rotated = rotatePoints(rect, rectCenter(rect), Math.PI / 2);
+    expect(rotated[0][0]).toBeCloseTo(3, 10);
+    expect(rotated[0][1]).toBeCloseTo(-1, 10);
+    expect(rotated[2][0]).toBeCloseTo(1, 10);
+    expect(rotated[2][1]).toBeCloseTo(3, 10);
+    expect(polygonArea(rotated)).toBeCloseTo(8, 10);
+    expect(rect).toEqual([[0, 0], [4, 0], [4, 2], [0, 2]]);
+  });
+});
+
+describe('resizeRect', () => {
+  it('반대쪽 모서리를 고정한 채 크기를 바꾼다', () => {
+    const rect: Pt[] = [[0, 0], [4, 0], [4, 2], [0, 2]];
+    const resized = resizeRect(rect, 2, [6, 5]);
+    expect(resized[0]).toEqual([0, 0]);
+    expect(polygonArea(resized)).toBeCloseTo(30, 10);
+    expect(resized[2][0]).toBeCloseTo(6, 10);
+    expect(resized[2][1]).toBeCloseTo(5, 10);
+  });
+
+  it('회전된 사각형은 기울기를 유지한 채 크기만 바뀐다', () => {
+    const rect: Pt[] = [[0, 0], [4, 0], [4, 2], [0, 2]];
+    const rotated = rotatePoints(rect, rectCenter(rect), Math.PI / 2);
+    const resized = resizeRect(rotated, 2, rotated[2]);
+    for (let i = 0; i < 4; i++) {
+      expect(resized[i][0]).toBeCloseTo(rotated[i][0], 8);
+      expect(resized[i][1]).toBeCloseTo(rotated[i][1], 8);
+    }
+  });
+});
+
+describe('polygonArea', () => {
+  it('사각형 면적을 구하고 도는 방향과 무관하게 0 이상이다', () => {
+    const rect: Pt[] = [[0, 0], [4, 0], [4, 2], [0, 2]];
+    expect(polygonArea(rect)).toBeCloseTo(8, 10);
+    expect(polygonArea([...rect].reverse())).toBeCloseTo(8, 10);
+  });
+
+  it('점이 3개 미만이면 0', () => {
+    expect(polygonArea([[0, 0], [1, 1]])).toBe(0);
+  });
+});
+
+describe('pointInPolygon', () => {
+  const rect: Pt[] = [[0, 0], [4, 0], [4, 2], [0, 2]];
+
+  it('안쪽은 true, 바깥은 false', () => {
+    expect(pointInPolygon([2, 1], rect)).toBe(true);
+    expect(pointInPolygon([5, 1], rect)).toBe(false);
+    expect(pointInPolygon([2, 3], rect)).toBe(false);
+  });
+
+  it('경계선 위의 점도 true', () => {
+    expect(pointInPolygon([0, 1], rect)).toBe(true);
+    expect(pointInPolygon([4, 2], rect)).toBe(true);
+  });
+
+  it('회전된 사각형에서도 맞는다', () => {
+    const rotated = rotatePoints(rect, rectCenter(rect), Math.PI / 4);
+    expect(pointInPolygon(rectCenter(rect), rotated)).toBe(true);
+    expect(pointInPolygon([rectCenter(rect)[0] + 3, rectCenter(rect)[1] + 3], rotated)).toBe(false);
   });
 });

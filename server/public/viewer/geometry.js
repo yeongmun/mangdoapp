@@ -52,3 +52,91 @@ export function polylineLength(points) {
   }
   return total;
 }
+
+// 면형 손상은 회전 가능한 사각형을 네 꼭짓점으로 저장한다. 아래 함수들은 그 네 점을 다룬다.
+
+export function rectFromDrag(start, end) {
+  return [
+    [start[0], start[1]],
+    [end[0], start[1]],
+    [end[0], end[1]],
+    [start[0], end[1]],
+  ];
+}
+
+export function rectCenter(points) {
+  const sum = points.reduce((acc, [x, y]) => [acc[0] + x, acc[1] + y], [0, 0]);
+  return [sum[0] / points.length, sum[1] / points.length];
+}
+
+export function angleOf(center, point) {
+  return Math.atan2(point[1] - center[1], point[0] - center[0]);
+}
+
+export function rotatePoints(points, center, angleRad) {
+  const cos = Math.cos(angleRad);
+  const sin = Math.sin(angleRad);
+  return points.map(([x, y]) => {
+    const dx = x - center[0];
+    const dy = y - center[1];
+    return [center[0] + dx * cos - dy * sin, center[1] + dx * sin + dy * cos];
+  });
+}
+
+// 끄는 모서리의 대각선 반대 모서리를 고정하고, 사각형이 기울어진 방향(변 방향)을 유지한 채 크기를 바꾼다.
+export function resizeRect(points, cornerIndex, newPoint) {
+  const fixed = points[(cornerIndex + 2) % 4];
+  const next = points[(cornerIndex + 1) % 4];
+  const previous = points[(cornerIndex + 3) % 4];
+
+  const uRaw = [next[0] - fixed[0], next[1] - fixed[1]];
+  const vRaw = [previous[0] - fixed[0], previous[1] - fixed[1]];
+  const uLength = Math.hypot(uRaw[0], uRaw[1]) || 1;
+  const vLength = Math.hypot(vRaw[0], vRaw[1]) || 1;
+  const u = [uRaw[0] / uLength, uRaw[1] / uLength];
+  const v = [vRaw[0] / vLength, vRaw[1] / vLength];
+
+  const d = [newPoint[0] - fixed[0], newPoint[1] - fixed[1]];
+  const width = d[0] * u[0] + d[1] * u[1];
+  const height = d[0] * v[0] + d[1] * v[1];
+
+  const alongU = [fixed[0] + u[0] * width, fixed[1] + u[1] * width];
+  const alongV = [fixed[0] + v[0] * height, fixed[1] + v[1] * height];
+  const opposite = [fixed[0] + u[0] * width + v[0] * height, fixed[1] + u[1] * width + v[1] * height];
+
+  const result = [];
+  result[(cornerIndex + 2) % 4] = fixed;
+  result[(cornerIndex + 1) % 4] = alongU;
+  result[cornerIndex] = opposite;
+  result[(cornerIndex + 3) % 4] = alongV;
+  return result;
+}
+
+export function polygonArea(points) {
+  if (points.length < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    sum += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(sum) / 2;
+}
+
+// 광선 교차 방식. 경계선 위의 점은 안쪽으로 본다(탭으로 고를 때 가장자리를 놓치지 않도록).
+export function pointInPolygon(point, polygon) {
+  const [px, py] = point;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    if (distanceToSegment(point, a, b) <= 1e-9) return true;
+  }
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersects = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
