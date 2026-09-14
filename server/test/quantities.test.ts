@@ -247,14 +247,21 @@ describe('widthUnitOf', () => {
 });
 
 describe('formatQuantity', () => {
+  it('정수도 최소한 소수 첫째 자리까지 표시한다', () => {
+    expect(formatQuantity(1)).toBe('1.0');
+    expect(formatQuantity(0)).toBe('0.0');
+    expect(formatQuantity(1.25)).toBe('1.25');
+    expect(formatQuantity(1.2345)).toBe('1.234'); // 1.2345는 부동소수 표현 특성상 1.234로 반올림됨
+  });
+
   it('부동소수 꼬리를 정리해서 보여준다', () => {
     const value = quantityOf(area('a', { width: 0.2, length: 1.5, count: 1 })) as number;
     expect(value).not.toBe(0.3); // 0.30000000000000004
     expect(formatQuantity(value)).toBe('0.3');
   });
 
-  it('0은 0, 계산할 수 없으면 -', () => {
-    expect(formatQuantity(0)).toBe('0');
+  it('0은 0.0, 계산할 수 없으면 -', () => {
+    expect(formatQuantity(0)).toBe('0.0');
     expect(formatQuantity(1.5)).toBe('1.5');
     expect(formatQuantity(null)).toBe('-');
   });
@@ -288,8 +295,8 @@ describe('dimensionTextOf', () => {
   });
 
   it('0은 유효한 값이다', () => {
-    expect(dimensionTextOf(crack('a', { width: 0, length: 0.5, count: 1 }))).toBe('0/0.5');
-    expect(dimensionTextOf(area('b', { width: 0, length: 0.5, count: 1 }))).toBe('0x0.5');
+    expect(dimensionTextOf(crack('a', { width: 0, length: 0.5, count: 1 }))).toBe('0.0/0.5');
+    expect(dimensionTextOf(area('b', { width: 0, length: 0.5, count: 1 }))).toBe('0.0x0.5');
   });
 
   it('숫자는 formatQuantity로 다듬는다(소수 3자리, 뒤 0 제거)', () => {

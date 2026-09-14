@@ -117,10 +117,16 @@ export function widthUnitOf(type) {
 }
 
 // 물량은 저장하지 않고 보여줄 때만 문자열로 만든다. 소수 넷째 자리에서 반올림하고 뒤의 0은 지운다
-// (0.2 × 1.5 × 1이 0.30000000000000004로 보이지 않게).
+// (0.2 × 1.5 × 1이 0.30000000000000004로 보이지 않게). 정수도 최소한 소수 첫째 자리까지 표시한다 (1.0).
 export function formatQuantity(value) {
   if (value === null || !Number.isFinite(value)) return '-';
-  return String(Number(value.toFixed(3)));
+  const rounded = Number(value.toFixed(3));
+  const str = String(rounded);
+  // 정수면 .0 붙이기
+  if (!str.includes('.')) {
+    return str + '.0';
+  }
+  return str;
 }
 
 // 도면 라벨의 둘째 줄: 치수 문구. width와 length가 모두 있을 때만 문자열을 만든다.

@@ -456,17 +456,6 @@ async function start() {
   // 이미 hidden/표시를 토글하는 임시 텍스트 자리라 다른 기능과 부딪히지 않는다.
   // 좌표 확인 패널은 좌표 확인을 끌 때만 닫히므로, 이 메시지를 그냥 두면 좌표와 무관한 문구가
   // 화면에 계속 남는다. 잠깐 보여 주고 스스로 지운다.
-  let renumberTimer = 0;
-  $('renumber').addEventListener('click', () => {
-    const count = overlay.recomputeNumbers();
-    $('coordPanel').textContent = count === 0 ? '손상이 없습니다' : `번호를 다시 매겼습니다 (${count}개)`;
-    $('coordPanel').hidden = false;
-    clearTimeout(renumberTimer);
-    renumberTimer = setTimeout(() => {
-      $('coordPanel').hidden = true;
-      $('coordPanel').textContent = '';
-    }, 3000);
-  });
   $('undo').addEventListener('click', () => {
     setSelection(null);
     apply(undo(editor, nowIso()));

@@ -100,7 +100,7 @@ body {
 #propsPanel input { width: 100%; font-size: 15px; padding: 6px 8px; box-sizing: border-box; }
 #propsPanel .row { display: flex; gap: 8px; }
 #propsPanel button { flex: 1; font-size: 15px; padding: 9px 0; border-radius: 8px; border: 1px solid #c7c9cf; background: #fff; }
-#propsSave { background: #1e66f5; border-color: #1e66f5; color: #fff; }
+#propsPanel #propsSave { background: #1e66f5; border-color: #1e66f5; color: #fff; }
 #propsSummary { margin: 0 0 10px; color: #3c4149; font-size: 13px; line-height: 1.4; }
 #computedHint { margin: 0 0 8px; color: #8a8f98; font-size: 12px; }
 #propsError { margin: 0 0 8px; color: #b71c1c; font-size: 12px; }
