@@ -21,6 +21,7 @@ import {
   ROTATE_HANDLE_OFFSET_PX,
   SELECTED_COLOR,
   SELECTED_WIDTH_PX,
+  BASELINE_CENTER_FACTOR,
 } from '../public/viewer/overlay.js';
 
 type Pt = [number, number];
@@ -127,8 +128,10 @@ describe('describeDamageRender', () => {
     expect(plan.name).toBe('박리');
     expect(plan.fillPattern).toBe('ANSI31');
     expect(plan.fillSpacingMm).toBeCloseTo(158.75, 5);
-    const unfilled = { id: 'b', type: 'breakage', geometry: { kind: 'rect', world: [] } };
-    expect(describeDamageRender(unfilled, null, 4).fillPattern).toBeNull();
+    const breakage = { id: 'b', type: 'breakage', geometry: { kind: 'rect', world: [] } };
+    const breakagePlan = describeDamageRender(breakage, null, 4);
+    expect(breakagePlan.fillPattern).toBe('ANSI33');
+    expect(breakagePlan.fillSpacingMm).toBeCloseTo(317.5, 5);
   });
 
   it('번호가 없으면 number가 null이다', () => {
@@ -474,5 +477,15 @@ describe('labelLayout', () => {
     expect(layout.lines.map((l) => l.text)).toEqual(['박락', '1.2x1.2', '사진 1']);
     expect(layout.lines[0].anchor).toBe('middle');
     expect(layout.lines[2].y).toBe(anchor[1]);
+  });
+});
+
+describe('ANCHORLK 화면 근사 무늬', () => {
+  it('HATCH_PATTERNS에 ANCHORLK가 있다', () => {
+    expect(typeof HATCH_PATTERNS.ANCHORLK).toBe('function');
+  });
+
+  it('베이스라인-중심 비율을 내보낸다', () => {
+    expect(BASELINE_CENTER_FACTOR).toBe(0.35);
   });
 });
