@@ -1,0 +1,203 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import {
+  createHandleAllocator,
+  DAMAGE_LAYER,
+  ensureLayer,
+  findSection,
+  findTable,
+  formatInt,
+  formatReal,
+  HandleAllocator,
+  headerValue,
+  insertEntities,
+  layerNames,
+  pair,
+  parseDxf,
+  recordHandle,
+  serializeDxf,
+  setHeaderValue,
+} from '../src/export/dxfDocument.js';
+
+const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
+
+async function templateText(): Promise<string> {
+  return readFile(fixturePath, 'utf8');
+}
+
+describe('parseDxf / serializeDxf', () => {
+  it('쌍으로 나누고 원래 글자 그대로 되돌린다 (LF)', async () => {
+    const text = await templateText();
+    const doc = parseDxf(text);
+    expect(doc.eol).toBe('\n');
+    expect(doc.pairs[0]).toMatchObject({ code: 0, value: 'SECTION' });
+    expect(doc.pairs[1]).toMatchObject({ code: 2, value: 'HEADER' });
+    expect(serializeDxf(doc)).toBe(text);
+  });
+
+  it('CRLF 파일도 CRLF 그대로 되돌린다', async () => {
+    const text = (await templateText()).replace(/\n/g, '\r\n');
+    const doc = parseDxf(text);
+    expect(doc.eol).toBe('\r\n');
+    expect(serializeDxf(doc)).toBe(text);
+  });
+
+  it('빈 값 줄도 잃지 않는다', () => {
+    const doc = parseDxf('  1\n\n  0\nEOF\n');
+    expect(doc.pairs).toHaveLength(2);
+    expect(doc.pairs[0].value).toBe('');
+    expect(serializeDxf(doc)).toBe('  1\n\n  0\nEOF\n');
+  });
+
+  it('줄 수가 홀수면 던진다', () => {
+    expect(() => parseDxf('  0\nSECTION\n  2\n')).toThrow(/짝이 맞지 않습니다/);
+  });
+
+  it('코드가 숫자가 아니면 던진다', () => {
+    expect(() => parseDxf('abc\nSECTION\n')).toThrow(/코드가 숫자가 아닙니다/);
+  });
+});
+
+describe('formatReal / formatInt', () => {
+  it('정수도 소수점을 붙인다', () => {
+    expect(formatReal(1)).toBe('1.0');
+    expect(formatReal(0)).toBe('0.0');
+    expect(formatReal(-0)).toBe('0.0');
+    expect(formatReal(-12)).toBe('-12.0');
+  });
+
+  it('소수는 그대로 쓴다', () => {
+    expect(formatReal(1140.5)).toBe('1140.5');
+    expect(formatReal(-112.2532015133644)).toBe('-112.2532015133644');
+  });
+
+  it('유한하지 않으면 던진다', () => {
+    expect(() => formatReal(Number.NaN)).toThrow(/쓸 수 없는 숫자/);
+    expect(() => formatReal(Number.POSITIVE_INFINITY)).toThrow(/쓸 수 없는 숫자/);
+  });
+
+  it('정수는 버림해서 쓴다', () => {
+    expect(formatInt(5)).toBe('5');
+    expect(formatInt(5.9)).toBe('5');
+    expect(formatInt(-5.9)).toBe('-5');
+  });
+});
+
+describe('구역과 표 찾기', () => {
+  it('ENTITIES 구역의 시작과 ENDSEC을 찾는다', async () => {
+    const doc = parseDxf(await templateText());
+    const range = findSection(doc, 'ENTITIES');
+    expect(range).not.toBeNull();
+    expect(doc.pairs[range!.start]).toMatchObject({ code: 0, value: 'SECTION' });
+    expect(doc.pairs[range!.start + 1]).toMatchObject({ code: 2, value: 'ENTITIES' });
+    expect(doc.pairs[range!.end]).toMatchObject({ code: 0, value: 'ENDSEC' });
+    const types = doc.pairs.slice(range!.start, range!.end).filter((p) => p.code === 0).map((p) => p.value);
+    expect(types).toEqual(['SECTION', 'INSERT', 'LINE']);
+  });
+
+  it('없는 구역은 null', async () => {
+    const doc = parseDxf(await templateText());
+    expect(findSection(doc, 'OBJECTS')).toBeNull();
+  });
+
+  it('LAYER 표의 ENDTAB을 찾는다', async () => {
+    const doc = parseDxf(await templateText());
+    const range = findTable(doc, 'LAYER');
+    expect(range).not.toBeNull();
+    expect(doc.pairs[range!.end]).toMatchObject({ code: 0, value: 'ENDTAB' });
+  });
+});
+
+describe('HEADER 값', () => {
+  it('읽는다', async () => {
+    const doc = parseDxf(await templateText());
+    expect(headerValue(doc, '$HANDSEED')).toBe('200');
+    expect(headerValue(doc, '$INSUNITS')).toBe('     1');
+    expect(headerValue(doc, '$ACADVER')).toBe('AC1032');
+    expect(headerValue(doc, '$NOPE')).toBeNull();
+  });
+
+  it('고쳐 쓴다', async () => {
+    const doc = parseDxf(await templateText());
+    expect(setHeaderValue(doc, '$HANDSEED', '2FF')).toBe(true);
+    expect(headerValue(doc, '$HANDSEED')).toBe('2FF');
+    expect(serializeDxf(doc)).toContain('$HANDSEED\n  5\n2FF\n');
+  });
+
+  it('없는 값은 false', async () => {
+    const doc = parseDxf(await templateText());
+    expect(setHeaderValue(doc, '$NOPE', 'x')).toBe(false);
+  });
+});
+
+describe('표 레코드 핸들', () => {
+  it('블록 레코드 핸들을 이름으로 찾는다', async () => {
+    const doc = parseDxf(await templateText());
+    expect(recordHandle(doc, 'BLOCK_RECORD', '*Model_Space')).toBe('1F');
+    expect(recordHandle(doc, 'BLOCK_RECORD', '망도틀')).toBe('30');
+    expect(recordHandle(doc, 'BLOCK_RECORD', '없는블록')).toBeNull();
+  });
+});
+
+describe('HandleAllocator', () => {
+  it('16진 대문자로 1씩 올린다', () => {
+    const alloc = new HandleAllocator(0x1fe);
+    expect(alloc.next()).toBe('1FE');
+    expect(alloc.next()).toBe('1FF');
+    expect(alloc.next()).toBe('200');
+    expect(alloc.seed).toBe('201');
+  });
+
+  it('$HANDSEED와 파일 안 최대 핸들 중 큰 값에서 시작한다', async () => {
+    const doc = parseDxf(await templateText());
+    // 픽스처의 $HANDSEED는 200이고 실제 최대 핸들은 81이다 → 200부터
+    expect(createHandleAllocator(doc).next()).toBe('200');
+
+    const bumped = parseDxf((await templateText()).replace('$HANDSEED\n  5\n200\n', '$HANDSEED\n  5\n10\n'));
+    // $HANDSEED가 최대 핸들보다 작으면 최대 핸들 + 1에서 시작한다
+    expect(createHandleAllocator(bumped).next()).toBe('82');
+  });
+});
+
+describe('insertEntities', () => {
+  it('ENTITIES의 ENDSEC 바로 앞에 넣는다', async () => {
+    const doc = parseDxf(await templateText());
+    insertEntities(doc, [pair(0, 'CIRCLE'), pair(5, '200'), pair(8, DAMAGE_LAYER)]);
+
+    const range = findSection(doc, 'ENTITIES')!;
+    const types = doc.pairs.slice(range.start, range.end).filter((p) => p.code === 0).map((p) => p.value);
+    expect(types).toEqual(['SECTION', 'INSERT', 'LINE', 'CIRCLE']);
+    expect(doc.pairs[range.end - 1]).toMatchObject({ code: 8, value: DAMAGE_LAYER });
+    expect(serializeDxf(doc)).toContain('  0\nCIRCLE\n  5\n200\n  8\n신규손상\n  0\nENDSEC\n');
+  });
+
+  it('ENTITIES 구역이 없으면 던진다', () => {
+    const doc = parseDxf('  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n  0\nEOF\n');
+    expect(() => insertEntities(doc, [pair(0, 'CIRCLE')])).toThrow(/ENTITIES 구역/);
+  });
+});
+
+describe('ensureLayer', () => {
+  it('없으면 LAYER 표의 ENDTAB 앞에 추가한다', async () => {
+    const doc = parseDxf(await templateText());
+    expect(layerNames(doc)).toEqual(['0']);
+
+    ensureLayer(doc, createHandleAllocator(doc), DAMAGE_LAYER, 1);
+
+    expect(layerNames(doc)).toEqual(['0', DAMAGE_LAYER]);
+    const out = serializeDxf(doc);
+    expect(out).toContain('  0\nLAYER\n  5\n200\n330\n2\n');
+    expect(out).toContain('  2\n신규손상\n 70\n     0\n 62\n     1\n  6\nContinuous\n');
+    // 표의 항목 수(코드 70)는 손대지 않는다
+    expect(out).toContain('AcDbSymbolTable\n 70\n     1\n');
+  });
+
+  it('이미 있으면 아무것도 하지 않는다', async () => {
+    const doc = parseDxf(await templateText());
+    ensureLayer(doc, createHandleAllocator(doc), '0', 1);
+    expect(layerNames(doc)).toEqual(['0']);
+    expect(serializeDxf(doc)).toBe(await templateText());
+  });
+});
