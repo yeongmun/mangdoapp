@@ -144,6 +144,22 @@ describe('exportDamagesToDxf', () => {
     expect(result.warnings).toContain(EXPORT_WARNINGS.units);
   });
 
+  // 2,000개 손상 스트레스 확인(실제 사내 템플릿) 중 발견: pairs.push(...fillTable(...))도
+  // splice(...)와 같은 인자 전개 방식이라, 넘침 표가 많아 fillTable의 반환 배열이 아주 크면
+  // (이 픽스처는 데이터 행 3개라 손상 3,000개면 넘침 표가 1,000장) "Maximum call stack size
+  // exceeded"로 죽는다. exportDrawing.ts는 인자 전개 없이 하나씩 옮겨 붙이도록 고쳤다.
+  it('넘침 표가 아주 많아도(인자 전개 없이) 산출되고 다시 읽힌다', async () => {
+    const text = await template();
+    const damages = [];
+    for (let i = 0; i < 3000; i++) {
+      const x = i * 20;
+      damages.push(damage(`d${i}`, 'crack', x, [[x, 0], [x + 10, 10]], { width: 0.2, length: 1.5, count: 1 }));
+    }
+    const result = exportDamagesToDxf(text, damages);
+    expect(result.skipped).toBe(0);
+    expect(() => parseDxf(result.dxfText)).not.toThrow();
+  });
+
   // R17(minor): 균열/백태 원이 1000개에서 잘리면 경고를 붙인다.
   it('균열/백태 원이 1000개에서 잘리면 경고를 붙인다', async () => {
     const longLine = damage('a', 'crack_efflorescence', 0, [[0, 0], [1_000_000, 0]]);

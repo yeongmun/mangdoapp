@@ -50,6 +50,14 @@ export interface ExportResult {
 // mm(4), 없음(0), 인치(1)만 허용한다. 인치는 캐드 기본값이 남은 것이라 실제로는 mm다(스펙 10장).
 const ALLOWED_INSUNITS = new Set([0, 1, 4]);
 
+// R14와 같은 종류의 문제: push(...source)도 splice(...)와 마찬가지로 source를 인자로 펼친다.
+// fillTable은 손상 수천 개 분량의 넘침 표를 한 배열로 돌려줄 수 있어(2,000개 손상 스트레스
+// 테스트에서 실측) 그대로 pairs.push(...fillTable(...))를 쓰면 여기서도 "Maximum call stack
+// size exceeded"가 난다. 인자 전개 없이 하나씩 옮겨 붙인다.
+function appendAll(target: DxfPair[], source: DxfPair[]): void {
+  for (const p of source) target.push(p);
+}
+
 function boundsCenter(pointGroups: Point[][]): Point {
   let minX = Infinity;
   let maxX = -Infinity;
@@ -121,9 +129,9 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   const pairs: DxfPair[] = [];
   const circleWarnings: DamageEntitiesWarnings = { circlesTruncated: false };
   for (const entry of included) {
-    pairs.push(...damageEntities(entry.damage, alloc, owner, circleWarnings));
+    appendAll(pairs, damageEntities(entry.damage, alloc, owner, circleWarnings));
     const label = damageLabel(entry.damage, entry.number > 0 ? entry.number : null);
-    if (label) pairs.push(...labelEntities(label, alloc, owner));
+    if (label) appendAll(pairs, labelEntities(label, alloc, owner));
   }
   if (circleWarnings.circlesTruncated) warnings.push(EXPORT_WARNINGS.circlesTruncated);
 
@@ -150,7 +158,7 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
         const damage = byNumber.get(number);
         rows.push(damage !== undefined ? rowValuesOf(damage, number) : { number, cells: new Array(COLUMN_COUNT).fill('') });
       }
-      pairs.push(...fillTable(grid, rows, alloc, owner));
+      appendAll(pairs, fillTable(grid, rows, alloc, owner));
     }
   }
 
