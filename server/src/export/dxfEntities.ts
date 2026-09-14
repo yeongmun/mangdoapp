@@ -43,7 +43,7 @@ function xy(point: Point, xCode: number, yCode: number): DxfPair[] {
 export function lwPolylineEntity(base: EntityBase, points: Point[], closed: boolean): DxfPair[] {
   if (points.length < 2) throw new Error('LWPOLYLINE은 점이 둘 이상이어야 합니다.');
   const pairs = head(base, 'LWPOLYLINE', 'AcDbPolyline');
-  pairs.push(pair(90, formatInt(points.length)));
+  pairs.push(pair(90, int32(points.length))); // 90은 32비트 코드 — 회사 파일도 9칸으로 채운다
   pairs.push(pair(70, int16(closed ? 1 : 0)));
   pairs.push(pair(43, '0.0'));
   for (const point of points) pairs.push(...xy(point, 10, 20));

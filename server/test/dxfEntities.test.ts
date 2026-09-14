@@ -47,7 +47,7 @@ describe('lwPolylineEntity', () => {
   it('열린 폴리라인은 70=0이고 꼭짓점 수를 적는다', () => {
     const pairs = lwPolylineEntity(base, [[0, 0], [10, 20], [30, 40]], false);
     expect(pairs[0].value).toBe('LWPOLYLINE');
-    expect(valueOf(pairs, 90)).toBe('3');
+    expect(valueOf(pairs, 90)).toBe('        3'); // 32비트 코드는 9칸 채움
     expect(valueOf(pairs, 70)).toBe('     0');
     expect(valuesOf(pairs, 10)).toEqual(['0.0', '10.0', '30.0']);
     expect(valuesOf(pairs, 20)).toEqual(['0.0', '20.0', '40.0']);
@@ -57,7 +57,7 @@ describe('lwPolylineEntity', () => {
   it('닫힌 폴리라인은 70=1이고 첫 점을 되풀이하지 않는다', () => {
     const pairs = lwPolylineEntity(base, [[0, 0], [1, 0], [1, 1], [0, 1]], true);
     expect(valueOf(pairs, 70)).toBe('     1');
-    expect(valueOf(pairs, 90)).toBe('4');
+    expect(valueOf(pairs, 90)).toBe('        4');
     expect(valuesOf(pairs, 10)).toHaveLength(4);
   });
 
