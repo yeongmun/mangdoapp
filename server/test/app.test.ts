@@ -164,14 +164,34 @@ describe('POST /api/drawings', () => {
   it('파일이 없으면 400', async () => {
     const res = await request(setup().app).post('/api/drawings').set('x-access-key', KEY).field('name', 'a.dwg');
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: 'DWG 파일이 없습니다.' });
+    expect(res.body).toEqual({ error: 'DWG 또는 DXF 파일이 없습니다.' });
+  });
+
+  it('.dwg 또는 .dxf를 올리고 올바른 확장자로 저장한다', async () => {
+    const { app, aps, drawings } = setup();
+    // DXF 업로드
+    const resDxf = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('name', '교량 B.dxf')
+      .attach('file', Buffer.from('dxf-bytes'), 'bridge.dxf');
+
+    expect(resDxf.status).toBe(201);
+    expect(resDxf.body).toMatchObject({
+      name: '교량 B.dxf',
+      status: 'pending',
+    });
+    const idDxf = resDxf.body.id as string;
+    expect(resDxf.body.objectKey).toBe(`${idDxf}.dxf`);
+    expect(resDxf.body.urn).toBe(`urn-${idDxf}.dxf`);
+    expect(aps.uploadDrawing).toHaveBeenCalledWith(Buffer.from('dxf-bytes'), `${idDxf}.dxf`);
   });
 
   it('.dwg가 아니면 400이고 APS를 부르지 않는다', async () => {
     const { app, aps, drawings } = setup();
     const res = await request(app).post('/api/drawings').set('x-access-key', KEY).attach('file', Buffer.from('x'), 'photo.jpg');
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: '.dwg 파일만 업로드할 수 있습니다.' });
+    expect(res.body).toEqual({ error: '.dwg 또는 .dxf 파일만 업로드할 수 있습니다.' });
     expect(aps.uploadDrawing).not.toHaveBeenCalled();
     expect(await drawings.list()).toEqual([]);
   });

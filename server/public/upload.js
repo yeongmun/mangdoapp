@@ -123,8 +123,9 @@ $('uploadForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const file = $('file').files[0];
   if (!file) return;
-  if (!file.name.toLowerCase().endsWith('.dwg')) {
-    showMessage('.dwg 파일만 업로드할 수 있습니다.', true);
+  const nameLower = file.name.toLowerCase();
+  if (!nameLower.endsWith('.dwg') && !nameLower.endsWith('.dxf')) {
+    showMessage('.dwg 또는 .dxf 파일만 업로드할 수 있습니다.', true);
     return;
   }
   if (file.size > MAX_UPLOAD_BYTES) {

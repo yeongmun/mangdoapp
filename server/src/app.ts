@@ -79,19 +79,23 @@ export function createApp(deps: AppDeps) {
   api.post('/drawings', upload.single('file'), async (req, res) => {
     const file = req.file;
     if (!file) {
-      res.status(400).json({ error: 'DWG 파일이 없습니다.' });
+      res.status(400).json({ error: 'DWG 또는 DXF 파일이 없습니다.' });
       return;
     }
     // 브라우저가 보낸 name 필드는 UTF-8로 안전하게 들어온다. 없을 때만 multipart 파일명을 쓴다.
     const bodyName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
     const name = bodyName || file.originalname;
-    if (!name.toLowerCase().endsWith('.dwg')) {
-      res.status(400).json({ error: '.dwg 파일만 업로드할 수 있습니다.' });
+    const nameLower = name.toLowerCase();
+    const isDwg = nameLower.endsWith('.dwg');
+    const isDxf = nameLower.endsWith('.dxf');
+    if (!isDwg && !isDxf) {
+      res.status(400).json({ error: '.dwg 또는 .dxf 파일만 업로드할 수 있습니다.' });
       return;
     }
 
     const id = newDrawingId();
-    const objectKey = `${id}.dwg`;
+    const extension = isDwg ? '.dwg' : '.dxf';
+    const objectKey = `${id}${extension}`;
     try {
       const { urn } = await deps.aps.uploadDrawing(file.buffer, objectKey);
       await deps.aps.startTranslation(urn);
