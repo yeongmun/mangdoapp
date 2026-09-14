@@ -54,7 +54,7 @@ function emptyDamage(typeId, worldPoints, dwgPoints, kind, options) {
     // 측정값은 아직 없음(null)이다. 0과 구분한다 — 0은 "재 보니 0"이라는 뜻이다.
     measured: { width: null, length: null, count: null },
     computed: { lengthDwg: null, areaDwg: null },
-    attrs: { note: '', statusText: '' },
+    attrs: { note: '', statusText: '', photoNumbers: [] },
   };
 }
 

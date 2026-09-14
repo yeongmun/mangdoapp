@@ -2,7 +2,7 @@
 
 import { getDamageType } from './damageTypes.js';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const MAX_HISTORY = 50;
 
 export function createEmptyDoc(drawingId, updatedAt) {
@@ -90,6 +90,19 @@ function validateComputed(damage, hasDwg, path, errors) {
   }
 }
 
+// photoNumbers는 문자열 배열이며, 각 항목은 앞뒤 공백이 없는 빈 문자열 아닌 값이고 중복이 없어야
+// 한다(설계 9.4). parsePhotoNumbers(quantities.js)가 이미 이 모양으로 만들어 주므로, 손으로 고친
+// 파일이나 예전 형식이 섞여 들어오는 경우만 이 검증에서 걸러진다.
+function isValidPhotoNumbers(value) {
+  if (!Array.isArray(value)) return false;
+  const seen = new Set();
+  for (const item of value) {
+    if (typeof item !== 'string' || item.trim() !== item || item === '' || seen.has(item)) return false;
+    seen.add(item);
+  }
+  return true;
+}
+
 function validateAttrs(damage, type, path, errors) {
   const attrs = damage.attrs;
   if (typeof attrs !== 'object' || attrs === null) {
@@ -104,6 +117,9 @@ function validateAttrs(damage, type, path, errors) {
   // 값이 들어 있으면 화면에 보이지 않는 값이 조용히 남아 물량표와 어긋난다.
   if (type !== null && type.id !== 'etc' && attrs.statusText !== '') {
     errors.push(`${path}.attrs.statusText는 기타 유형에서만 쓸 수 있습니다.`);
+  }
+  if (!isValidPhotoNumbers(attrs.photoNumbers)) {
+    errors.push(`${path}.attrs.photoNumbers는 문자열 배열이며 앞뒤 공백 없는 빈 문자열 아닌 값, 중복 없이 있어야 합니다.`);
   }
 }
 
@@ -130,7 +146,7 @@ function validateDamage(damage, path, errors) {
 export function validateDamageDoc(doc, drawingId) {
   if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return ['문서가 객체가 아닙니다.'];
   const errors = [];
-  if (doc.schemaVersion !== SCHEMA_VERSION) errors.push('schemaVersion은 3이어야 합니다.');
+  if (doc.schemaVersion !== SCHEMA_VERSION) errors.push(`schemaVersion은 ${SCHEMA_VERSION}이어야 합니다.`);
   if (doc.drawingId !== drawingId) errors.push('drawingId가 주소와 다릅니다.');
   if (!isDateString(doc.updatedAt)) errors.push('updatedAt이 올바른 날짜가 아닙니다.');
   if (!Array.isArray(doc.damages)) {
@@ -216,13 +232,28 @@ function migrateV2ToV3(doc) {
   };
 }
 
-// 예전 문서를 읽을 때 한 단계씩 이어 붙여 v3로 올린다. 저장은 항상 v3로 한다.
+// v3의 각 손상에 attrs.photoNumbers = []를 채워 v4로 올린다(설계 9.3). 다른 값은 그대로 두고,
+// 입력 doc과 손상 객체는 바꾸지 않는다.
+function migrateV3ToV4(doc) {
+  const damages = Array.isArray(doc.damages) ? doc.damages : [];
+  return {
+    ...doc,
+    schemaVersion: 4,
+    damages: damages.map((damage) => ({
+      ...damage,
+      attrs: { ...damage.attrs, photoNumbers: [] },
+    })),
+  };
+}
+
+// 예전 문서를 읽을 때 한 단계씩 이어 붙여 v4로 올린다. 저장은 항상 v4로 한다.
 // 단계를 나눠 두면 새 버전이 생겨도 각 단계를 따로 검증할 수 있다.
 export function migrateDoc(doc, drawingId) {
   if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return null;
   if (doc.schemaVersion === SCHEMA_VERSION) return doc;
   const v2 = doc.schemaVersion === 1 ? migrateV1ToV2(doc, drawingId) : doc;
-  return v2.schemaVersion === 2 ? migrateV2ToV3(v2) : v2;
+  const v3 = v2.schemaVersion === 2 ? migrateV2ToV3(v2) : v2;
+  return v3.schemaVersion === 3 ? migrateV3ToV4(v3) : v3;
 }
 
 /**

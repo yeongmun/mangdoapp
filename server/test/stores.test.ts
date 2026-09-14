@@ -150,7 +150,7 @@ describe('DamagesStore', () => {
   it('없는 문서는 1970년 updatedAt을 가진 빈 문서', async () => {
     const id = newDrawingId();
     expect(await new DamagesStore(join(dir, 'damages')).get(id)).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       drawingId: id,
       updatedAt: '1970-01-01T00:00:00.000Z',
       damages: [],
@@ -160,12 +160,12 @@ describe('DamagesStore', () => {
   it('저장한 문서를 다시 읽는다', async () => {
     const store = new DamagesStore(join(dir, 'damages'));
     const id = newDrawingId();
-    const doc = { schemaVersion: 3, drawingId: id, updatedAt: '2026-09-10T00:00:00.000Z', damages: [{ id: 'x' }] };
+    const doc = { schemaVersion: 4, drawingId: id, updatedAt: '2026-09-10T00:00:00.000Z', damages: [{ id: 'x' }] };
     await store.save(doc);
     expect(await store.get(id)).toEqual(doc);
   });
 
-  it('v1 문서를 읽으면 v3로 변환해서 돌려준다', async () => {
+  it('v1 문서를 읽으면 v4로 변환해서 돌려준다', async () => {
     const store = new DamagesStore(join(dir, 'damages'));
     const id = newDrawingId();
     await writeJsonFileAtomic(join(dir, 'damages', `${id}.json`), {
@@ -185,7 +185,7 @@ describe('DamagesStore', () => {
 
     const doc = await store.get(id);
 
-    expect(doc.schemaVersion).toBe(3);
+    expect(doc.schemaVersion).toBe(4);
     expect(doc.damages[0]).toEqual({
       id: 'old-1',
       type: 'crack',
@@ -193,11 +193,11 @@ describe('DamagesStore', () => {
       geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[10, 10], [13, 14]] },
       measured: { width: null, length: null, count: null },
       computed: { lengthDwg: 5, areaDwg: null },
-      attrs: { note: '', statusText: '' },
+      attrs: { note: '', statusText: '', photoNumbers: [] },
     });
   });
 
-  it('v2 문서를 읽으면 v3로 변환하고 면적·부재명을 비고에 남긴다', async () => {
+  it('v2 문서를 읽으면 v4로 변환하고 면적·부재명을 비고에 남긴다', async () => {
     const store = new DamagesStore(join(dir, 'damages'));
     const id = newDrawingId();
     await writeJsonFileAtomic(join(dir, 'damages', `${id}.json`), {
@@ -223,7 +223,7 @@ describe('DamagesStore', () => {
 
     const doc = await store.get(id);
 
-    expect(doc.schemaVersion).toBe(3);
+    expect(doc.schemaVersion).toBe(4);
     expect(doc.damages[0]).toEqual({
       id: 'v2-area',
       type: 'spalling',
@@ -235,7 +235,41 @@ describe('DamagesStore', () => {
       },
       measured: { width: null, length: null, count: null },
       computed: { lengthDwg: null, areaDwg: 2 },
-      attrs: { note: '이전 면적 입력값: 1.8㎡\n부재명: 기둥', statusText: '' },
+      attrs: { note: '이전 면적 입력값: 1.8㎡\n부재명: 기둥', statusText: '', photoNumbers: [] },
+    });
+  });
+
+  it('v3 문서를 읽으면 photoNumbers를 채워 v4로 변환한다', async () => {
+    const store = new DamagesStore(join(dir, 'damages'));
+    const id = newDrawingId();
+    await writeJsonFileAtomic(join(dir, 'damages', `${id}.json`), {
+      schemaVersion: 3,
+      drawingId: id,
+      updatedAt: '2026-09-13T00:00:00.000Z',
+      damages: [
+        {
+          id: 'v3-crack',
+          type: 'crack',
+          createdAt: '2026-09-13T00:00:00.000Z',
+          geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[10, 10], [13, 14]] },
+          measured: { width: 0.3, length: 5, count: 2 },
+          computed: { lengthDwg: 5, areaDwg: null },
+          attrs: { note: '기존 비고', statusText: '' },
+        },
+      ],
+    });
+
+    const doc = await store.get(id);
+
+    expect(doc.schemaVersion).toBe(4);
+    expect(doc.damages[0]).toEqual({
+      id: 'v3-crack',
+      type: 'crack',
+      createdAt: '2026-09-13T00:00:00.000Z',
+      geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[10, 10], [13, 14]] },
+      measured: { width: 0.3, length: 5, count: 2 },
+      computed: { lengthDwg: 5, areaDwg: null },
+      attrs: { note: '기존 비고', statusText: '', photoNumbers: [] },
     });
   });
 
