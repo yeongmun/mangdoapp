@@ -113,6 +113,14 @@ function overflowFrame(grid: TableGrid, tableIndex: number, alloc: HandleAllocat
   return pairs;
 }
 
+/**
+ * 표를 채운다. 원본 표는 인쇄된 번호 칸을 건드리지 않고 값 칸만 쓰고, 용량을 넘는 번호는 오른쪽 넘침 표에 넣는다.
+ *
+ * **호출 규칙 — 반드시 지킬 것:** `rows`에는 **1부터 마지막 번호까지 모든 번호의 행**을 넘겨야 한다. 도면 좌표가
+ * 없어 건너뛴 손상도 번호는 그대로 갖고(설계 8장), 그 번호의 행은 칸이 전부 빈 문자열인 채로 넘긴다.
+ * 넘침 표의 틀(격자·머리글·번호 칸)은 `rows`에 실제로 있는 번호로만 판단해 그리므로, 어떤 넘침 표에 속한 번호가
+ * 전부 빠져 있으면 그 표 자체가 그려지지 않은 채 다음 표가 제 자리에 놓인다.
+ */
 export function fillTable(grid: TableGrid, rows: TableRow[], alloc: HandleAllocator, owner: string): DxfPair[] {
   const capacity = grid.dataRowCount;
   if (capacity <= 0) return [];
