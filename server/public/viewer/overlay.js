@@ -467,13 +467,5 @@ export function createOverlay(svg, mapper) {
       return numbers.get(id) ?? null;
     },
     // "번호정렬" 버튼 전용. setDamages는 damages 배열 참조가 그대로면(문서가 안 바뀌었으면) 위
-    // 캐시를 그대로 두므로, 아무것도 안 바뀐 상태에서도 사용자가 재계산을 직접 확인할 수 있도록
-    // 참조 비교 없이 강제로 다시 계산한다. damages 자체는 여기서도 바꾸지 않는다 — 문서에는
-    // 손대지 않고 번호만 다시 매긴 뒤 화면을 새로 그린다.
-    recomputeNumbers() {
-      numbers = computeNumbers(damages);
-      requestRender();
-      return numbers.size;
-    },
   };
 }
