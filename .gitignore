@@ -24,3 +24,7 @@ server/data/
 
 # macOS
 .DS_Store
+
+# 사내 도면 원본은 커밋하지 않는다 (치수는 스펙에 적어 둔다)
+*.dwg
+*.dxf
