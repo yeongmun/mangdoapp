@@ -175,6 +175,36 @@ describe('fillTable — 넘침 표', () => {
     expect(lineCount(pairs)).toBe(34);
   });
 
+  // R17(minor): 넘침 표의 머리글 글자는 각자 원래 높이(BlockText.height × 배율)로 그려야
+  // 한다 — 셀(데이터 칸) 글자 높이를 그대로 쓰면 원본에서 머리글과 데이터 칸의 글자 크기가
+  // 다를 때 어긋난다. 픽스처는 둘 다 10.0이라 구별이 안 되므로, 머리글 하나의 높이만
+  // 15.0으로 바꿔 셀 높이(10.0)와 달라지게 한다.
+  it('머리글 글자는 셀 높이가 아니라 각자 원래 높이 × 배율로 그려진다', async () => {
+    const original = await readFile(fixturePath, 'utf8');
+    const target = ' 10\n610.0\n 20\n-50.0\n 30\n0.0\n 40\n10.0\n 71\n     5\n  1\n가로/폭\n';
+    const replaced = ' 10\n610.0\n 20\n-50.0\n 30\n0.0\n 40\n15.0\n 71\n     5\n  1\n가로/폭\n';
+    expect(original.includes(target)).toBe(true);
+    const doc = parseDxf(original.replace(target, replaced));
+    const g = buildGrid(doc, findTableCandidates(doc)[0])!;
+
+    const pairs = fillTable(g, [rowValuesOf(damage('spalling', { length: 1.5 }), 4)], new HandleAllocator(0x400), '1F');
+
+    let index = -1;
+    for (let i = 0; i < pairs.length; i++) {
+      if (pairs[i].code === 0 && pairs[i].value === 'TEXT') {
+        const text = pairs.slice(i, i + 20).find((p) => p.code === 1)?.value;
+        if (text === '가로/폭') {
+          index = i;
+          break;
+        }
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0);
+    const height = pairs.slice(index, index + 20).find((p) => p.code === 40)!.value;
+    // 15.0(원래 높이) × 배율(2) = 30.0. 셀 높이였다면 10.0 × 2 = 20.0이 나왔을 것이다.
+    expect(height).toBe('30.0');
+  });
+
   it('핸들이 겹치지 않는다', async () => {
     const g = await grid();
     const alloc = new HandleAllocator(0x400);

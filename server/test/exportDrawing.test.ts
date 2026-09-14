@@ -144,6 +144,13 @@ describe('exportDamagesToDxf', () => {
     expect(result.warnings).toContain(EXPORT_WARNINGS.units);
   });
 
+  // R17(minor): 균열/백태 원이 1000개에서 잘리면 경고를 붙인다.
+  it('균열/백태 원이 1000개에서 잘리면 경고를 붙인다', async () => {
+    const longLine = damage('a', 'crack_efflorescence', 0, [[0, 0], [1_000_000, 0]]);
+    const result = exportDamagesToDxf(await template(), [longLine]);
+    expect(result.warnings).toContain(EXPORT_WARNINGS.circlesTruncated);
+  });
+
   it('$INSUNITS가 4·0·1이면 경고가 없다', async () => {
     for (const value of ['     4', '     0', '     1']) {
       const text = (await template()).replace('$INSUNITS\n 70\n     1\n', `$INSUNITS\n 70\n${value}\n`);

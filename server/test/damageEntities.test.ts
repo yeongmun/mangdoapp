@@ -134,6 +134,19 @@ describe('decorationCircles', () => {
   it('아주 긴 선에서도 1000개를 넘지 않는다', () => {
     expect(decorationCircles([[0, 0], [1_000_000, 0]], 54.4, 158, 77)).toHaveLength(1000);
   });
+
+  // R17(minor): 상한에서 잘리면 info.truncated로 알린다(반환 배열 모양은 그대로).
+  it('상한에서 잘리면 info.truncated를 true로 남긴다', () => {
+    const info = { truncated: false };
+    decorationCircles([[0, 0], [1_000_000, 0]], 54.4, 158, 77, info);
+    expect(info.truncated).toBe(true);
+  });
+
+  it('안 잘리면 info.truncated는 false로 남는다', () => {
+    const info = { truncated: false };
+    decorationCircles([[0, 0], [500, 0]], 54.4, 158, 77, info);
+    expect(info.truncated).toBe(false);
+  });
 });
 
 describe('damageEntities', () => {
@@ -183,6 +196,29 @@ describe('damageEntities', () => {
 
   it('dwg가 없으면 아무것도 만들지 않는다', () => {
     expect(damageEntities(damage('crack', 'polyline', null), new HandleAllocator(0x100), owner)).toEqual([]);
+  });
+
+  // R17(minor): 균열/백태 원이 1000개에서 잘리면 warnings.circlesTruncated로 알린다.
+  it('원이 1000개에서 잘리면 warnings.circlesTruncated를 true로 남긴다', () => {
+    const warnings = { circlesTruncated: false };
+    damageEntities(
+      damage('crack_efflorescence', 'polyline', [[0, 0], [1_000_000, 0]]),
+      new HandleAllocator(0x100),
+      owner,
+      warnings,
+    );
+    expect(warnings.circlesTruncated).toBe(true);
+  });
+
+  it('짧은 선은 warnings.circlesTruncated를 건드리지 않는다', () => {
+    const warnings = { circlesTruncated: false };
+    damageEntities(
+      damage('crack_efflorescence', 'polyline', [[0, 0], [500, 0]]),
+      new HandleAllocator(0x100),
+      owner,
+      warnings,
+    );
+    expect(warnings.circlesTruncated).toBe(false);
   });
 
   it('유형 목록에 없는 type도 테두리는 그린다', () => {

@@ -234,6 +234,28 @@ describe('POST /api/drawings', () => {
     const res = await request(app).post('/api/drawings').set('x-access-key', KEY).attach('file', Buffer.from('dwg'), 'a.dwg');
     expect(await originals.read(`${res.body.id}.dwg`)).toEqual(Buffer.from('dwg'));
   });
+
+  // R17(minor): APS 업로드·변환 요청이 이미 성공했으면 디스크 저장 실패로 업로드 전체를
+  // 502로 되돌리지 않는다 — 로그만 남기고 레코드는 만든다(산출 시점에 "원본 파일이 없습니다"로 드러난다).
+  it('원본 저장이 실패해도 레코드는 만들어진다(로그만 남긴다)', async () => {
+    const { app, drawings, originals } = setup();
+    originals.save = vi.fn(async () => {
+      throw new Error('disk full');
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('name', '교량.dxf')
+      .attach('file', Buffer.from('  0\nSECTION\n'), 'bridge.dxf');
+
+    expect(res.status).toBe(201);
+    expect(await drawings.get(res.body.id)).toEqual(res.body);
+    expect(errorSpy).toHaveBeenCalledWith('[upload] 원본 보관 실패', expect.any(String), expect.any(Error));
+
+    errorSpy.mockRestore();
+  });
 });
 
 describe('GET /api/drawings', () => {

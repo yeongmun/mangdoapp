@@ -102,8 +102,15 @@ export function createApp(deps: AppDeps) {
     try {
       const { urn } = await deps.aps.uploadDrawing(file.buffer, objectKey);
       await deps.aps.startTranslation(urn);
-      // 산출은 이 사본에서 시작한다(스펙 2장). APS가 성공한 뒤에만 남긴다.
-      await deps.originals.save(objectKey, file.buffer);
+      // 산출은 이 사본에서 시작한다(스펙 2장). APS가 성공한 뒤에 시도한다. 디스크 저장이
+      // 실패해도(디스크 꽉 참 등) 업로드 자체(APS 업로드·변환 요청)는 이미 성공했으므로 여기서
+      // 502로 되돌리지 않는다 — 로그만 남기고 레코드는 그대로 만든다. 원본이 없다는 사실은
+      // 나중에 산출을 시도할 때 "원본 파일이 없습니다"로 드러난다(R17).
+      try {
+        await deps.originals.save(objectKey, file.buffer);
+      } catch (err) {
+        console.error('[upload] 원본 보관 실패', objectKey, err);
+      }
       const record: DrawingRecord = {
         id,
         name,

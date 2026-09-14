@@ -12,7 +12,6 @@ const PATTERN_BASE_SPACING = {
   CORK: 3.175,
   TRIANG: 9.525,
   ANCHORLK: 3.952854,
-  NET: 3.175,
 };
 
 function hatch(pattern, scale) {

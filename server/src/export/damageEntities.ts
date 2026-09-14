@@ -87,13 +87,21 @@ export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeM
   return segments;
 }
 
+/** decorationCircles가 MAX_DECORATION_CIRCLES에서 잘랐는지 알려주는 선택적 출력. */
+export interface CircleTruncationInfo {
+  truncated: boolean;
+}
+
 // 그은 선을 따라 일정 간격으로 원을 반복하고 위·아래를 번갈아 둔다.
 // 첫 원은 선 시작에서 간격의 절반 지점이다 — 짧은 선에도 원이 하나는 찍히게 한다.
+// info를 넘기면 상한(MAX_DECORATION_CIRCLES)에서 잘렸는지를 info.truncated에 남긴다
+// (반환 배열의 모양은 그대로다 — 기존 호출부·테스트에 영향 없음).
 export function decorationCircles(
   points: Point[],
   diameterMm: number,
   spacingMm: number,
   offsetMm: number,
+  info?: CircleTruncationInfo,
 ): Array<{ center: Point; radius: number }> {
   if (points.length < 2 || !(spacingMm > 0)) return [];
   const radius = diameterMm / 2;
@@ -112,7 +120,10 @@ export function decorationCircles(
     const direction = unit(dx, dy);
     const normal: Point = [-direction[1], direction[0]];
     while (nextAt <= travelled + length) {
-      if (circles.length >= MAX_DECORATION_CIRCLES) return circles;
+      if (circles.length >= MAX_DECORATION_CIRCLES) {
+        if (info) info.truncated = true;
+        return circles;
+      }
       const t = nextAt - travelled;
       const sign = index % 2 === 0 ? 1 : -1;
       circles.push({
@@ -130,7 +141,17 @@ export function decorationCircles(
   return circles;
 }
 
-export function damageEntities(damage: unknown, alloc: HandleAllocator, owner: string): DxfPair[] {
+/** exportDrawing.ts가 균열/백태 원이 잘렸는지 모아 경고로 바꾸기 위한 선택적 출력. */
+export interface DamageEntitiesWarnings {
+  circlesTruncated: boolean;
+}
+
+export function damageEntities(
+  damage: unknown,
+  alloc: HandleAllocator,
+  owner: string,
+  warnings?: DamageEntitiesWarnings,
+): DxfPair[] {
   const points = dwgPointsOf(damage);
   if (!points) return [];
 
@@ -151,14 +172,17 @@ export function damageEntities(damage: unknown, alloc: HandleAllocator, owner: s
       pairs.push(...lineEntity(baseFor(alloc, owner), from, to));
     }
   } else if (decoration && decoration.kind === 'circles') {
+    const circleInfo: CircleTruncationInfo = { truncated: false };
     for (const { center, radius } of decorationCircles(
       points,
       decoration.diameterMm,
       decoration.spacingMm,
       decoration.offsetMm,
+      circleInfo,
     )) {
       pairs.push(...circleEntity(baseFor(alloc, owner), center, radius));
     }
+    if (circleInfo.truncated && warnings) warnings.circlesTruncated = true;
   } else if (decoration) {
     // damageTypes.js의 decoration은 string으로 넓혀지므로(타입 주석 참고) 새 kind가 추가되면
     // 여기서 캐스팅이 조용히 아무 것도 안 그리고 넘어갈 수 있다 — 기호가 빠진 도면을 산출해

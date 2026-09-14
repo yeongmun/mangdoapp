@@ -54,10 +54,12 @@ function baseFor(alloc: HandleAllocator, owner: string): EntityBase {
 }
 
 // 넘침 표 k장째(k ≥ 1)가 원본에서 오른쪽으로 얼마나 떨어지는지(표 로컬 단위).
-// 원본 표 오른쪽 끝에서 첫 열 너비(번호 열)만큼 띄운다.
+// 원본 표 오른쪽 끝에서 번호 열 너비만큼 띄운다. (번호 열이 항상 첫 열이라 지금은
+// colBoundaries[1]과 값이 같지만, grid.numberColumn을 직접 써서 뜻을 분명히 한다.)
 function offsetOf(grid: TableGrid, tableIndex: number): number {
   const width = grid.colBoundaries[grid.colBoundaries.length - 1];
-  return tableIndex * (width + grid.colBoundaries[1]);
+  const numberColumnWidth = grid.colBoundaries[grid.numberColumn + 1] - grid.colBoundaries[grid.numberColumn];
+  return tableIndex * (width + numberColumnWidth);
 }
 
 function localToModel(grid: TableGrid, local: Point, dx: number): Point {
@@ -88,7 +90,12 @@ function overflowFrame(grid: TableGrid, tableIndex: number, alloc: HandleAllocat
   const pairs: DxfPair[] = [];
 
   for (const line of grid.headerLines) pairs.push(...lineAt(grid, line.from, line.to, dx, alloc, owner));
-  for (const text of grid.headerTexts) pairs.push(...textAt(grid, text.position, dx, text.text, alloc, owner));
+  // 머리글 글자는 각자 원래 높이(BlockText.height × 배율)로 그린다 — 데이터 칸의 글자 높이
+  // (grid.textHeight)를 그대로 쓰면 원본에서 머리글과 데이터 칸의 글자 크기가 다를 때 어긋난다.
+  for (const text of grid.headerTexts) {
+    const height = text.height * Math.abs(grid.transform.scaleX);
+    pairs.push(...textEntity(baseFor(alloc, owner), localToModel(grid, text.position, dx), height, text.text, 'center'));
+  }
 
   const left = grid.colBoundaries[0];
   const right = grid.colBoundaries[grid.colBoundaries.length - 1];

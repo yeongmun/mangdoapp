@@ -149,6 +149,13 @@ describe('표 레코드 핸들', () => {
     expect(recordHandle(doc, 'BLOCK_RECORD', '망도틀')).toBe('30');
     expect(recordHandle(doc, 'BLOCK_RECORD', '없는블록')).toBeNull();
   });
+
+  // R17(minor): 다른 캐드/버전이 *MODEL_SPACE로 쓰기도 한다 — 이름은 대소문자를 가리지 않는다.
+  it('레코드 이름은 대소문자를 가리지 않는다 (*MODEL_SPACE도 찾는다)', async () => {
+    const text = (await templateText()).replace('  2\n*Model_Space\n', '  2\n*MODEL_SPACE\n');
+    const doc = parseDxf(text);
+    expect(recordHandle(doc, 'BLOCK_RECORD', '*Model_Space')).toBe('1F');
+  });
 });
 
 describe('HandleAllocator', () => {
@@ -258,5 +265,22 @@ describe('ensureLayer', () => {
     ensureLayer(doc, createHandleAllocator(doc), '0', 1);
     expect(layerNames(doc)).toEqual(['0']);
     expect(serializeDxf(doc)).toBe(await templateText());
+  });
+
+  // R17(minor): 390(플롯 스타일)은 하드코딩한 'F'가 아니라 기존 LAYER 레코드에서 그대로 복사한다.
+  it('390은 기존 LAYER 레코드에서 그대로 복사한다', async () => {
+    const text = (await templateText()).replace('370\n    -3\n390\nF\n', '370\n    -3\n390\n15\n');
+    const doc = parseDxf(text);
+    ensureLayer(doc, createHandleAllocator(doc), DAMAGE_LAYER, 1);
+    const out = serializeDxf(doc);
+    // 원본 레이어 '0'의 것 + 새로 추가한 레이어의 것, 둘 다 390=15여야 한다.
+    expect(out.split('390\n15\n').length - 1).toBe(2);
+  });
+
+  it('390이 있는 레코드가 없으면 새 레코드에도 390을 쓰지 않는다', async () => {
+    const text = (await templateText()).replace('370\n    -3\n390\nF\n', '370\n    -3\n');
+    const doc = parseDxf(text);
+    ensureLayer(doc, createHandleAllocator(doc), DAMAGE_LAYER, 1);
+    expect(serializeDxf(doc)).not.toContain('390');
   });
 });

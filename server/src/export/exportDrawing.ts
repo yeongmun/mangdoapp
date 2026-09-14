@@ -4,7 +4,7 @@
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 4~8·10장
 
 import { computeNumbers } from '../../public/viewer/quantities.js';
-import { damageEntities, dwgPointsOf } from './damageEntities.js';
+import { damageEntities, dwgPointsOf, type DamageEntitiesWarnings } from './damageEntities.js';
 import {
   createHandleAllocator,
   DAMAGE_COLOR,
@@ -37,6 +37,7 @@ export const EXPORT_WARNINGS = {
   noTable: '표 없음',
   unknownTable: '표 모양을 알 수 없음',
   units: '도면 단위 확인 필요',
+  circlesTruncated: '균열/백태 원이 1000개에서 잘렸습니다',
 } as const;
 
 export interface ExportResult {
@@ -62,6 +63,10 @@ function boundsCenter(pointGroups: Point[][]): Point {
       maxY = Math.max(maxY, y);
     }
   }
+  // 손상이 하나도 없거나(이 시점에선 도달하지 않는다) 전부 dwg가 없어 건너뛰면 점이 하나도
+  // 없다. 원점 (0,0)을 기준으로 보면 원점에 가장 가까운 표가 골라질 뿐, 그 표에는 아무 값도
+  // 쓰이지 않는다(rows가 비어 있으므로) — 엉뚱한 표를 "고른" 것처럼 보이지만 결과에는 영향이
+  // 없다.
   if (minX === Infinity) return [0, 0];
   return [(minX + maxX) / 2, (minY + maxY) / 2];
 }
@@ -114,11 +119,13 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   const owner = recordHandleOrThrow(doc);
 
   const pairs: DxfPair[] = [];
+  const circleWarnings: DamageEntitiesWarnings = { circlesTruncated: false };
   for (const entry of included) {
-    pairs.push(...damageEntities(entry.damage, alloc, owner));
+    pairs.push(...damageEntities(entry.damage, alloc, owner, circleWarnings));
     const label = damageLabel(entry.damage, entry.number > 0 ? entry.number : null);
     if (label) pairs.push(...labelEntities(label, alloc, owner));
   }
+  if (circleWarnings.circlesTruncated) warnings.push(EXPORT_WARNINGS.circlesTruncated);
 
   const candidates = findTableCandidates(doc);
   if (candidates.length === 0) {

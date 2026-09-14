@@ -165,7 +165,6 @@ export const HATCH_PATTERNS = {
   ANSI31: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth)],
   ANSI33: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth), line(0, size / 2, size / 2, 0, strokeWidth)],
   ANSI37: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth), line(0, 0, size, size, strokeWidth)],
-  NET: (size, strokeWidth) => [line(0, 0, size, 0, strokeWidth), line(0, 0, 0, size, strokeWidth)],
   CORK: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth), dot(size / 2, size / 2, 1)],
   TRIANG: (size, strokeWidth) => [
     line(0, size, size / 2, 0, strokeWidth),

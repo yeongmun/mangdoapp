@@ -122,6 +122,8 @@ export function setHeaderValue(doc: DxfDocument, name: string, value: string): b
 export function recordHandle(doc: DxfDocument, tableName: string, recordName: string): string | null {
   const table = findTable(doc, tableName);
   if (!table) return null;
+  // 레코드 이름은 대소문자를 가리지 않는다 — 다른 캐드/버전이 *MODEL_SPACE처럼 쓰기도 한다.
+  const target = recordName.toLowerCase();
   for (let i = table.start + 2; i < table.end; i++) {
     if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== tableName) continue;
     let handle: string | null = null;
@@ -131,7 +133,7 @@ export function recordHandle(doc: DxfDocument, tableName: string, recordName: st
       if (p.code === 5 && handle === null) handle = p.value.trim();
       else if (p.code === 2 && name === null) name = p.value;
     }
-    if (name === recordName) return handle;
+    if (name !== null && name.toLowerCase() === target) return handle;
   }
   return null;
 }
@@ -205,6 +207,18 @@ export function insertEntities(doc: DxfDocument, pairs: DxfPair[]): void {
   doc.pairs = doc.pairs.slice(0, entities.end).concat(pairs, doc.pairs.slice(entities.end));
 }
 
+// LAYER 레코드 하나에서 390(플롯 스타일) 값을 찾는다. 있는 레코드에서 그대로 복사해 쓴다 —
+// 값을 지어내지 않는다. 어떤 레코드에도 없으면 null(새 레코드에는 390 자체를 쓰지 않는다).
+function existingPlotStyle(doc: DxfDocument, table: SectionRange): string | null {
+  for (let i = table.start + 2; i < table.end; i++) {
+    if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== 'LAYER') continue;
+    for (let j = i + 1; j < table.end && doc.pairs[j].code !== 0; j++) {
+      if (doc.pairs[j].code === 390) return doc.pairs[j].value;
+    }
+  }
+  return null;
+}
+
 // LAYER 표에 레이어를 추가한다. 표의 항목 수(코드 70)는 캐드가 무시하므로 손대지 않는다.
 export function ensureLayer(doc: DxfDocument, alloc: HandleAllocator, name: string, colorIndex: number): void {
   if (layerNames(doc).includes(name)) return;
@@ -221,6 +235,7 @@ export function ensureLayer(doc: DxfDocument, alloc: HandleAllocator, name: stri
     }
   }
 
+  const plotStyle = existingPlotStyle(doc, table);
   const record: DxfPair[] = [
     pair(0, 'LAYER'),
     pair(5, alloc.next()),
@@ -232,7 +247,7 @@ export function ensureLayer(doc: DxfDocument, alloc: HandleAllocator, name: stri
     pair(62, String(colorIndex).padStart(6, ' ')),
     pair(6, 'Continuous'),
     pair(370, '    -3'),
-    pair(390, 'F'),
+    ...(plotStyle !== null ? [pair(390, plotStyle)] : []),
   ];
   doc.pairs.splice(table.end, 0, ...record);
 }
