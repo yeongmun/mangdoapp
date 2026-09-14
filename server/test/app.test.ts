@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { DamagesStore } from '../src/damagesStore.js';
 import { DrawingsStore, newDrawingId, type DrawingRecord } from '../src/drawingsStore.js';
+import { OriginalsStore } from '../src/originalsStore.js';
 
 const KEY = 'test-access-key';
 const NOW = Date.parse('2026-09-10T00:00:00.000Z');
@@ -39,16 +40,18 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
   const aps = fakeAps(apsOverrides);
   const drawings = new DrawingsStore(join(dir, 'data', 'drawings.json'));
   const damages = new DamagesStore(join(dir, 'data', 'damages'));
+  const originals = new OriginalsStore(join(dir, 'data', 'drawings'));
   const app = createApp({
     accessKey: KEY,
     aps,
     drawings,
     damages,
+    originals,
     publicDir: join(dir, 'public'),
     now: () => NOW,
     maxUploadBytes,
   });
-  return { app, aps, drawings, damages };
+  return { app, aps, drawings, damages, originals };
 }
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
@@ -209,6 +212,24 @@ describe('POST /api/drawings', () => {
     expect(res.status).toBe(502);
     expect(res.body).toEqual({ error: 'APS 업로드 또는 변환 요청에 실패했습니다: boom' });
     expect(await drawings.list()).toEqual([]);
+  });
+
+  it('업로드한 DXF 원본을 서버에도 보관한다', async () => {
+    const { app, originals } = setup();
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('name', '교량.dxf')
+      .attach('file', Buffer.from('  0\nSECTION\n'), 'bridge.dxf');
+
+    expect(res.status).toBe(201);
+    expect(await originals.read(`${res.body.id}.dxf`)).toEqual(Buffer.from('  0\nSECTION\n'));
+  });
+
+  it('DWG 원본도 보관한다', async () => {
+    const { app, originals } = setup();
+    const res = await request(app).post('/api/drawings').set('x-access-key', KEY).attach('file', Buffer.from('dwg'), 'a.dwg');
+    expect(await originals.read(`${res.body.id}.dwg`)).toEqual(Buffer.from('dwg'));
   });
 });
 

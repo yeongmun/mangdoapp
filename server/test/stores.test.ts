@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DamagesStore } from '../src/damagesStore.js';
 import { DrawingsStore, isDrawingId, newDrawingId, type DrawingRecord } from '../src/drawingsStore.js';
 import { readJsonFile, renameWithRetry, writeJsonFileAtomic } from '../src/jsonFile.js';
+import { OriginalsStore } from '../src/originalsStore.js';
 
 let dir: string;
 
@@ -276,5 +277,36 @@ describe('DamagesStore', () => {
   it('잘못된 id는 예외', async () => {
     const store = new DamagesStore(join(dir, 'damages'));
     await expect(store.get('../x')).rejects.toThrow('잘못된 도면 id: ../x');
+  });
+});
+
+describe('OriginalsStore', () => {
+  it('저장한 원본을 바이트 그대로 읽는다', async () => {
+    const store = new OriginalsStore(join(dir, 'drawings'));
+    const id = newDrawingId();
+    const data = Buffer.from('  0\nSECTION\n한글\n', 'utf8');
+    await store.save(`${id}.dxf`, data);
+    expect(await store.read(`${id}.dxf`)).toEqual(data);
+  });
+
+  it('없는 파일은 null', async () => {
+    const store = new OriginalsStore(join(dir, 'drawings'));
+    expect(await store.read(`${newDrawingId()}.dxf`)).toBeNull();
+  });
+
+  it('형식이 틀린 objectKey는 던진다', async () => {
+    const store = new OriginalsStore(join(dir, 'drawings'));
+    for (const key of ['../secret.dxf', 'a.dxf', `${newDrawingId()}.txt`, newDrawingId()]) {
+      await expect(store.save(key, Buffer.from('x'))).rejects.toThrow(/잘못된 파일 이름/);
+      await expect(store.read(key)).rejects.toThrow(/잘못된 파일 이름/);
+    }
+  });
+
+  it('덮어써도 깨지지 않는다', async () => {
+    const store = new OriginalsStore(join(dir, 'drawings'));
+    const id = newDrawingId();
+    await store.save(`${id}.dxf`, Buffer.from('처음'));
+    await store.save(`${id}.dxf`, Buffer.from('나중'));
+    expect((await store.read(`${id}.dxf`))?.toString('utf8')).toBe('나중');
   });
 });

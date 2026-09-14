@@ -5,6 +5,7 @@ import type { ApsService } from './aps.js';
 import { requireAccessKey } from './auth.js';
 import type { DamageDoc, DamagesStore } from './damagesStore.js';
 import { isDrawingId, newDrawingId, type DrawingRecord, type DrawingsStore } from './drawingsStore.js';
+import type { OriginalsStore } from './originalsStore.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -13,6 +14,7 @@ export interface AppDeps {
   aps: Pick<ApsService, 'getViewerToken' | 'uploadDrawing' | 'startTranslation' | 'getTranslationStatus'>;
   drawings: DrawingsStore;
   damages: DamagesStore;
+  originals: OriginalsStore;
   publicDir: string;
   now?: () => number;
   maxUploadBytes?: number;
@@ -99,6 +101,8 @@ export function createApp(deps: AppDeps) {
     try {
       const { urn } = await deps.aps.uploadDrawing(file.buffer, objectKey);
       await deps.aps.startTranslation(urn);
+      // 산출은 이 사본에서 시작한다(스펙 2장). APS가 성공한 뒤에만 남긴다.
+      await deps.originals.save(objectKey, file.buffer);
       const record: DrawingRecord = {
         id,
         name,
