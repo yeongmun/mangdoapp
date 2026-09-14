@@ -143,3 +143,42 @@ export function formatQuantity(value) {
   if (value === null || !Number.isFinite(value)) return '-';
   return String(Number(value.toFixed(3)));
 }
+
+// 도면 라벨의 둘째 줄: 치수 문구. width와 length가 모두 있을 때만 문자열을 만든다.
+// 구분자는 물량 단위로 정한다: 'm' → '/', 'm2' → 'x'.
+// 개소가 2 이상이면 뒤에 ' ${count}EA'를 붙인다.
+export function dimensionTextOf(damage) {
+  const measured = damage?.measured ?? {};
+  const width = measured.width;
+  const length = measured.length;
+  const count = measured.count;
+
+  // width나 length 중 하나라도 null이면 빈 문자열
+  if (!isAmount(width) || !isAmount(length)) return '';
+
+  const type = getDamageType(damage?.type);
+  const separator = type && type.quantityUnit === 'm' ? '/' : 'x';
+  const formattedWidth = formatQuantity(width);
+  const formattedLength = formatQuantity(length);
+  let result = `${formattedWidth}${separator}${formattedLength}`;
+
+  // 개소가 2 이상이면 ' ${count}EA' 붙이기
+  if (isCount(count) && count >= 2) {
+    result += ` ${count}EA`;
+  }
+
+  return result;
+}
+
+// 도면 라벨의 첫 줄: 손상 이름. 폭 구간을 붙이지 않는다.
+// statusTextOf와 다르다 — 구간이 붙은 이름은 물량표에서 쓴다.
+export function drawingNameOf(damage) {
+  const type = getDamageType(damage?.type);
+  if (!type) return String(damage?.type ?? '');
+  if (type.id === 'etc') {
+    const written = typeof damage?.attrs?.statusText === 'string' ? damage.attrs.statusText.trim() : '';
+    return written === '' ? type.label : written;
+  }
+  // 균열류도 구간 없이 유형 이름만 돌려준다
+  return type.label;
+}
