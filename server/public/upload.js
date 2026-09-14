@@ -40,6 +40,39 @@ async function api(path, options = {}) {
   return body;
 }
 
+// 산출은 JSON이 아니라 파일이라 별도 함수로 받는다. 접근키는 다른 API와 같은 헤더로 보낸다.
+async function download(path, fallbackName) {
+  const res = await fetch(`/api${path}`, {
+    headers: { 'x-access-key': getKey() || $('accessKey').value.trim() },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(res.status === 401 ? '접근키를 확인하세요.' : body.error ?? `요청에 실패했습니다 (${res.status}).`);
+  }
+  // 한글 파일명은 RFC 5987 filename*으로 온다.
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const name = match ? decodeURIComponent(match[1]) : fallbackName;
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // 브라우저가 내려받기를 시작할 시간을 주고 정리한다.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
+  const warning = res.headers.get('x-mangdo-warning');
+  return {
+    name,
+    skipped: Number(res.headers.get('x-mangdo-skipped') ?? '0'),
+    warning: warning ? decodeURIComponent(warning) : '',
+  };
+}
+
 function textCell(text) {
   const td = document.createElement('td');
   td.textContent = text;
@@ -70,6 +103,18 @@ function renderRows(drawings) {
 
     tr.append(textCell(drawing.progress || '-'));
     tr.append(textCell(new Date(drawing.uploadedAt).toLocaleString('ko-KR')));
+
+    const exportTd = document.createElement('td');
+    if (drawing.objectKey && drawing.objectKey.toLowerCase().endsWith('.dxf')) {
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button';
+      exportButton.textContent = 'DXF 내려받기';
+      exportButton.addEventListener('click', () => exportDxf(drawing, exportButton));
+      exportTd.append(exportButton);
+    } else {
+      exportTd.textContent = 'DXF로 올린 도면만';
+    }
+    tr.append(exportTd);
 
     const actionTd = document.createElement('td');
     if (drawing.status === 'failed') {
@@ -105,6 +150,22 @@ async function retry(id, button) {
     await loadList();
   } catch (err) {
     showMessage(err.message, true);
+    button.disabled = false;
+  }
+}
+
+async function exportDxf(drawing, button) {
+  button.disabled = true;
+  showMessage('산출 중…');
+  try {
+    const result = await download(`/drawings/${drawing.id}/export.dxf`, 'damage.dxf');
+    const notes = [];
+    if (result.skipped > 0) notes.push(`도면 좌표를 구하지 못한 손상 ${result.skipped}개는 빠졌습니다.`);
+    if (result.warning) notes.push(result.warning);
+    showMessage(`내려받았습니다: ${result.name}${notes.length > 0 ? ` — ${notes.join(' / ')}` : ''}`);
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
     button.disabled = false;
   }
 }

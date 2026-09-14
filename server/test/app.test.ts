@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -56,10 +57,12 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
   const id = newDrawingId();
+  const name = patch.name ?? '교량.dwg';
+  const extension = name.toLowerCase().endsWith('.dxf') ? '.dxf' : '.dwg';
   const record: DrawingRecord = {
     id,
-    name: '교량.dwg',
-    objectKey: `${id}.dwg`,
+    name,
+    objectKey: `${id}${extension}`,
     urn: `urn-${id}`,
     status: 'pending',
     progress: '',
@@ -379,5 +382,122 @@ describe('손상 문서 API', () => {
       .send('{"broken":');
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'JSON 형식이 올바르지 않습니다.' });
+  });
+});
+
+const templatePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
+
+const RECT_DWG = [[0, 0], [1000, 0], [1000, 400], [0, 400]];
+
+function exportDoc(drawingId: string) {
+  return {
+    schemaVersion: 4,
+    drawingId,
+    updatedAt: '2026-09-15T01:00:00.000Z',
+    damages: [
+      {
+        id: 'e1',
+        type: 'spalling',
+        createdAt: '2026-09-15T01:00:00.000Z',
+        geometry: { kind: 'rect', world: RECT_DWG, dwg: RECT_DWG as number[][] | null },
+        measured: { width: 1.2, length: 1.5, count: 1 },
+        computed: { lengthDwg: null, areaDwg: null },
+        attrs: { note: '', statusText: '', photoNumbers: [] as string[] },
+      },
+    ],
+  };
+}
+
+// application/dxf는 supertest가 파싱하지 않는다. 텍스트로 왔든 버퍼로 왔든 글자로 읽는다.
+function bodyText(res: { text?: string; body: unknown }): string {
+  if (typeof res.text === 'string' && res.text.length > 0) return res.text;
+  return Buffer.isBuffer(res.body) ? res.body.toString('utf8') : String(res.body);
+}
+
+describe('GET /api/drawings/:id/export.dxf', () => {
+  it('손상을 얹은 DXF를 파일로 돌려준다', async () => {
+    const { app, drawings, originals } = setup();
+    const drawing = await seed(drawings, { name: '교량 A.dxf' });
+    await originals.save(drawing.objectKey, await readFile(templatePath));
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(exportDoc(drawing.id));
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dxf`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/dxf');
+    expect(res.headers['content-disposition']).toContain(`filename*=UTF-8''${encodeURIComponent('교량 A_손상.dxf')}`);
+    expect(res.headers['x-mangdo-skipped']).toBe('0');
+    expect(res.headers['x-mangdo-warning']).toBeUndefined();
+    expect(bodyText(res)).toContain('신규손상');
+    expect(bodyText(res)).toContain('ANSI37');
+  });
+
+  it('손상이 없으면 400', async () => {
+    const { app, drawings, originals } = setup();
+    const drawing = await seed(drawings, { name: 'a.dxf' });
+    await originals.save(drawing.objectKey, await readFile(templatePath));
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dxf`).set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: '표기한 손상이 없습니다' });
+  });
+
+  it('DWG로 올린 도면은 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { name: '교량.dwg' });
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(exportDoc(drawing.id));
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dxf`).set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'DXF로 올린 도면만 산출할 수 있습니다' });
+  });
+
+  it('사본이 없으면 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { name: 'a.dxf' });
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(exportDoc(drawing.id));
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dxf`).set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: '원본 파일이 없습니다. 도면을 다시 올려 주세요' });
+  });
+
+  it('없는 도면은 404', async () => {
+    const { app } = setup();
+    const res = await request(app).get(`/api/drawings/${newDrawingId()}/export.dxf`).set('x-access-key', KEY);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: '도면을 찾을 수 없습니다.' });
+  });
+
+  it('접근키가 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { name: 'a.dxf' });
+    expect((await request(app).get(`/api/drawings/${drawing.id}/export.dxf`)).status).toBe(401);
+  });
+
+  it('dwg 좌표가 없는 손상은 헤더로 개수를 알린다', async () => {
+    const { app, drawings, originals } = setup();
+    const drawing = await seed(drawings, { name: 'a.dxf' });
+    await originals.save(drawing.objectKey, await readFile(templatePath));
+    const doc = exportDoc(drawing.id);
+    doc.damages.push({
+      ...doc.damages[0],
+      id: 'e2',
+      geometry: { kind: 'rect', world: RECT_DWG, dwg: null },
+    });
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(doc);
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dxf`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.headers['x-mangdo-skipped']).toBe('1');
+  });
+
+  it('표가 없으면 경고 헤더를 퍼센트 인코딩해 붙인다', async () => {
+    const { app, drawings, originals } = setup();
+    const drawing = await seed(drawings, { name: 'a.dxf' });
+    const template = (await readFile(templatePath, 'utf8')).replace('  0\nACAD_TABLE\n', '  0\nPOINT\n');
+    await originals.save(drawing.objectKey, Buffer.from(template, 'utf8'));
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(exportDoc(drawing.id));
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dxf`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(decodeURIComponent(res.headers['x-mangdo-warning'])).toBe('표 없음');
   });
 });
