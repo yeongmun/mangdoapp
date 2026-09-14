@@ -435,6 +435,18 @@ async function start() {
     $('coordCheck').setAttribute('aria-pressed', String(coordCheck));
     if (!coordCheck) $('coordPanel').hidden = true;
   });
+  // 번호는 이미 추가·삭제 때마다 자동으로 다시 계산된다(overlay.setDamages). 이 버튼은 문서를
+  // 바꾸지 않고 같은 계산을 강제로 다시 돌려 화면에 확인시켜 주는 용도일 뿐이다 — 저장도,
+  // updatedAt 변경도, 서버 요청도 하지 않는다. 도구막대에 있으므로 속성 패널이 열려 있어도
+  // 동작한다(R3는 도면 입력에만 적용된다).
+  // 메시지 자리는 #coordPanel을 재사용한다: #propsError(속성 패널 전용)·#saveError(동기화 상태)는
+  // 각자 주인이 있어 건드리지 않는다. #coordPanel은 좌표 확인 모드에서 탭할 때만 채워지는,
+  // 이미 hidden/표시를 토글하는 임시 텍스트 자리라 다른 기능과 부딪히지 않는다.
+  $('renumber').addEventListener('click', () => {
+    const count = overlay.recomputeNumbers();
+    $('coordPanel').textContent = count === 0 ? '손상이 없습니다' : `번호를 다시 매겼습니다 (${count}개)`;
+    $('coordPanel').hidden = false;
+  });
   $('undo').addEventListener('click', () => {
     setSelection(null);
     apply(undo(editor, nowIso()));

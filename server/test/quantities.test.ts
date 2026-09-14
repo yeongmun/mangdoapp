@@ -6,7 +6,6 @@ import {
   dimensionTextOf,
   drawingNameOf,
   formatQuantity,
-  medianHeight,
   quantityOf,
   statusTextOf,
   unitOf,
@@ -62,21 +61,6 @@ function numbersOf(damages: unknown[]) {
   return Object.fromEntries(map.entries());
 }
 
-describe('medianHeight', () => {
-  it('손상이 없으면 0', () => {
-    expect(medianHeight([])).toBe(0);
-  });
-
-  it('하나면 그 높이', () => {
-    expect(medianHeight([rectAt('a', 0, 0, 7)])).toBeCloseTo(7, 10);
-  });
-
-  it('홀수 개는 가운데, 짝수 개는 가운데 둘의 평균', () => {
-    expect(medianHeight([rectAt('a', 0, 0, 2), rectAt('b', 0, 0, 10), rectAt('c', 0, 0, 6)])).toBeCloseTo(6, 10);
-    expect(medianHeight([rectAt('a', 0, 0, 2), rectAt('b', 0, 0, 10)])).toBeCloseTo(6, 10);
-  });
-});
-
 describe('computeNumbers', () => {
   it('손상이 없으면 빈 결과', () => {
     expect(computeNumbers([]).size).toBe(0);
@@ -86,56 +70,41 @@ describe('computeNumbers', () => {
     expect(numbersOf([rectAt('only', -500, -900, 4)])).toEqual({ only: 1 });
   });
 
-  it('위쪽 줄부터, 줄 안에서는 왼쪽부터 매긴다', () => {
-    // 높이는 모두 10 → 허용 폭(중앙값) 10.
+  it('x가 다른 손상 3개가 위아래로 흩어져도 높이·Y와 무관하게 x 순서대로 매긴다', () => {
+    // Y 순서(위→아래)는 b, c, a인데 X 순서(왼쪽→오른쪽)는 a, b, c다 — 줄 단위 규칙이었다면
+    // Y 순서대로 b·c·a가 나왔을 자리에서, 왼쪽 우선 규칙은 X 순서 a·b·c를 내야 한다.
     const damages = [
-      rectAt('d', 60, 88, 10),
-      rectAt('b', 50, 95, 10),
-      rectAt('a', 0, 100, 10),
-      rectAt('c', 0, 88, 10),
+      rectAt('c', 100, 0, 4),
+      rectAt('a', 0, -900, 1),
+      rectAt('b', 50, 500, 30),
     ];
-    // 윗줄 기준 Y = 100. b는 차이 5라 같은 줄, c·d는 차이 12라 다음 줄.
-    expect(numbersOf(damages)).toEqual({ a: 1, b: 2, c: 3, d: 4 });
-  });
-
-  it('허용 폭과 차이가 정확히 같으면 같은 줄, 조금이라도 넘으면 다음 줄', () => {
-    const sameRow = [rectAt('top', 100, 100, 10), rectAt('edge', 0, 90, 10)];
-    // 차이 10 = 허용 폭 10 → 같은 줄이므로 X가 작은 edge가 1번.
-    expect(numbersOf(sameRow)).toEqual({ edge: 1, top: 2 });
-
-    const nextRow = [rectAt('top', 100, 100, 10), rectAt('edge', 0, 89.9, 10)];
-    // 차이 10.1 > 허용 폭 10 → 다음 줄이므로 위에 있는 top이 1번.
-    expect(numbersOf(nextRow)).toEqual({ top: 1, edge: 2 });
-  });
-
-  it('같은 줄에서 X가 같으면 Y가 큰 것이 앞, 그것도 같으면 id 오름차순', () => {
-    const sameX = [rectAt('low', 10, 95, 10), rectAt('high', 10, 100, 10)];
-    expect(numbersOf(sameX)).toEqual({ high: 1, low: 2 });
-
-    const samePoint = [rectAt('b2', 10, 100, 10), rectAt('a1', 10, 100, 10)];
-    expect(numbersOf(samePoint)).toEqual({ a1: 1, b2: 2 });
-  });
-
-  it('높이 중앙값이 0이면 Y가 정확히 같을 때만 같은 줄', () => {
-    // 가로선 세 개는 높이가 0 → 허용 폭 0.
-    const flat = (id: string, x: number, y: number) => ({
-      id,
-      type: 'crack',
-      geometry: { kind: 'polyline', world: [[x - 5, y], [x + 5, y]] as Pt[], dwg: null },
-      measured: { width: null, length: null, count: null },
-      attrs: { note: '', statusText: '' },
-    });
-    const damages = [flat('c', 0, 10), flat('b', 50, 20), flat('a', 0, 20)];
     expect(numbersOf(damages)).toEqual({ a: 1, b: 2, c: 3 });
+  });
+
+  it('X가 같고 Y가 다르면 Y가 큰(위쪽) 쪽이 앞번호', () => {
+    const damages = [rectAt('low', 10, 0, 10), rectAt('high', 10, 500, 10)];
+    expect(numbersOf(damages)).toEqual({ high: 1, low: 2 });
+  });
+
+  it('X도 Y도 같으면 id 오름차순', () => {
+    const damages = [rectAt('b2', 10, 100, 10), rectAt('a1', 10, 100, 10)];
+    expect(numbersOf(damages)).toEqual({ a1: 1, b2: 2 });
+  });
+
+  it('X가 아주 조금만 달라도 허용 폭 없이 그 차이대로 갈린다', () => {
+    // 같은 수직선상으로 보이는 높이 차이라도(둘 다 높이 10) 줄 개념이 없으므로
+    // X가 조금이라도 작은 쪽이 그대로 앞번호다.
+    const damages = [rectAt('right', 0.001, 100, 10), rectAt('left', 0, 90, 10)];
+    expect(numbersOf(damages)).toEqual({ left: 1, right: 2 });
   });
 
   it('같은 손상 집합이면 순서를 바꿔 넣어도 같은 번호가 나온다', () => {
     const damages = [
       rectAt('a', 0, 100, 10),
-      rectAt('b', 50, 95, 10),
-      rectAt('c', 0, 88, 10),
-      rectAt('d', 60, 88, 10),
-      rectAt('e', 30, 40, 30),
+      rectAt('b', 50, 95, 30),
+      rectAt('c', 0, -200, 10),
+      rectAt('d', 60, 5, 4),
+      rectAt('e', 30, 40, 1),
     ];
     const first = numbersOf(damages);
     const shuffled = [damages[3], damages[0], damages[4], damages[2], damages[1]];
@@ -146,6 +115,24 @@ describe('computeNumbers', () => {
   it('좌표가 없는 손상도 번호를 받는다', () => {
     const broken = { id: 'x', type: 'crack', geometry: { kind: 'polyline', world: [], dwg: null } };
     expect(computeNumbers([broken]).get('x')).toBe(1);
+  });
+
+  it('비유한 좌표가 섞인 손상은 유한한 점만으로 중심을 구한다', () => {
+    const nanMixed = {
+      id: 'y',
+      type: 'crack',
+      geometry: { kind: 'polyline', world: [[NaN, NaN], [10, 10], [20, 20]], dwg: null },
+    };
+    // NaN인 점은 걸러지고 남은 (10,10)-(20,20)의 중심 x=15 → x=0인 손상보다 뒤.
+    const damages = [rectAt('left', 0, 0, 10), nanMixed];
+    expect(numbersOf(damages)).toEqual({ left: 1, y: 2 });
+  });
+
+  it('원본 배열과 각 손상 객체를 바꾸지 않는다', () => {
+    const damages = [rectAt('a', 10, 10, 10), rectAt('b', 0, 0, 10)];
+    const snapshot = JSON.parse(JSON.stringify(damages));
+    computeNumbers(damages);
+    expect(damages).toEqual(snapshot);
   });
 });
 

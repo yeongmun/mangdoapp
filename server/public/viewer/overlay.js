@@ -350,7 +350,7 @@ export function createOverlay(svg, mapper) {
   let frame = 0;
   // 번호는 damages가 실제로 바뀔 때만(setDamages) 다시 계산해 여기 담아 둔다. CAMERA_CHANGE는
   // 팬·줌마다 한 번씩(때로는 초당 여러 번) requestRender를 부르므로, render()마다 다시 계산하면
-  // 손상 수에 대해 최악 O(n²)(중앙값 높이가 0일 때) 비용이 매 프레임 반복된다.
+  // 값은 같더라도 매 프레임 불필요한 계산이 반복된다.
   let numbers = new Map();
 
   function renderDamage(damage, number, elements, sizes, patternsNeeded) {
@@ -448,6 +448,15 @@ export function createOverlay(svg, mapper) {
     // 따로 computeNumbers를 다시 부르면 캐시를 둔 의미가 없다.
     numberOf(id) {
       return numbers.get(id) ?? null;
+    },
+    // "번호정렬" 버튼 전용. setDamages는 damages 배열 참조가 그대로면(문서가 안 바뀌었으면) 위
+    // 캐시를 그대로 두므로, 아무것도 안 바뀐 상태에서도 사용자가 재계산을 직접 확인할 수 있도록
+    // 참조 비교 없이 강제로 다시 계산한다. damages 자체는 여기서도 바꾸지 않는다 — 문서에는
+    // 손대지 않고 번호만 다시 매긴 뒤 화면을 새로 그린다.
+    recomputeNumbers() {
+      numbers = computeNumbers(damages);
+      requestRender();
+      return numbers.size;
     },
   };
 }
