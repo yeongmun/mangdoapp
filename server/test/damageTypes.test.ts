@@ -62,13 +62,33 @@ describe('DAMAGE_TYPES', () => {
     ]);
   });
 
-  it('해치는 패턴 이름·축척·각도를 모두 갖는다', () => {
+  it('해치는 패턴 이름·축척·각도·도면상 무늬 간격을 모두 갖는다', () => {
     for (const type of DAMAGE_TYPES) {
       if (!type.fill) continue;
       expect(type.fill.kind).toBe('hatch');
       expect(type.fill.pattern).toMatch(/^[A-Z0-9_-]+$/);
       expect(typeof type.fill.scale).toBe('number');
+      expect(type.fill.scale).toBeGreaterThan(0);
       expect(typeof type.fill.angle).toBe('number');
+      expect(typeof type.fill.spacingMm).toBe('number');
+      expect(type.fill.spacingMm).toBeGreaterThan(0);
+    }
+  });
+
+  it('해치 축척과 무늬 간격은 스펙과 같다', () => {
+    const hatchSpec = [
+      ['map_crack', 'NET', 50, 3.175 * 50],
+      ['segregation', 'CORK', 35, 3.175 * 35],
+      ['delamination', 'ANSI31', 50, 3.175 * 50],
+      ['spalling', 'ANSI37', 60, 3.175 * 60],
+      ['efflorescence', 'TRIANG', 25, 9.525 * 25],
+      ['etc', 'ANSI33', 50, 6.35 * 50],
+    ] as const;
+    for (const [typeId, pattern, scale, spacingMm] of hatchSpec) {
+      const type = getDamageType(typeId);
+      expect(type?.fill?.pattern).toBe(pattern);
+      expect(type?.fill?.scale).toBe(scale);
+      expect(type?.fill?.spacingMm).toBeCloseTo(spacingMm, 5);
     }
   });
 

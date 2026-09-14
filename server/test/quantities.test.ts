@@ -3,6 +3,8 @@ import { getDamageType } from '../public/viewer/damageTypes.js';
 import {
   computeNumbers,
   CRACK_WIDTH_BREAKS,
+  dimensionTextOf,
+  drawingNameOf,
   formatQuantity,
   medianHeight,
   quantityOf,
@@ -266,5 +268,106 @@ describe('formatQuantity', () => {
     expect(formatQuantity(0)).toBe('0');
     expect(formatQuantity(1.5)).toBe('1.5');
     expect(formatQuantity(null)).toBe('-');
+  });
+});
+
+describe('dimensionTextOf', () => {
+  it('균열(m)의 치수 문구는 / 구분자를 쓴다', () => {
+    expect(dimensionTextOf(crack('a', { width: 0.2, length: 0.8, count: 1 }))).toBe('0.2/0.8');
+  });
+
+  it('개소가 2 이상이면 뒤에  2EA를 붙인다', () => {
+    expect(dimensionTextOf(crack('a', { width: 0.2, length: 0.8, count: 2 }))).toBe('0.2/0.8 2EA');
+    expect(dimensionTextOf(crack('b', { width: 1.2, length: 1.2, count: 3 }))).toBe('1.2/1.2 3EA');
+  });
+
+  it('개소가 1이거나 null이면 EA를 붙이지 않는다', () => {
+    expect(dimensionTextOf(crack('a', { width: 0.2, length: 0.8, count: 1 }))).toBe('0.2/0.8');
+    expect(dimensionTextOf(crack('b', { width: 0.2, length: 0.8, count: null }))).toBe('0.2/0.8');
+  });
+
+  it('면형(m2)의 치수 문구는 x 구분자를 쓴다', () => {
+    expect(dimensionTextOf(area('a', { width: 1.2, length: 1.2, count: 1 }))).toBe('1.2x1.2');
+    expect(dimensionTextOf(area('b', { width: 1.2, length: 1.2, count: 3 }))).toBe('1.2x1.2 3EA');
+  });
+
+  it('width나 length 중 하나라도 null이면 빈 문자열을 돌려준다', () => {
+    expect(dimensionTextOf(crack('a', { width: null, length: 0.8, count: 1 }))).toBe('');
+    expect(dimensionTextOf(crack('b', { width: 0.2, length: null, count: 1 }))).toBe('');
+    expect(dimensionTextOf(area('c', { width: null, length: 1.2, count: 1 }))).toBe('');
+    expect(dimensionTextOf(area('d', { width: 1.2, length: null, count: 1 }))).toBe('');
+  });
+
+  it('0은 유효한 값이다', () => {
+    expect(dimensionTextOf(crack('a', { width: 0, length: 0.5, count: 1 }))).toBe('0/0.5');
+    expect(dimensionTextOf(area('b', { width: 0, length: 0.5, count: 1 }))).toBe('0x0.5');
+  });
+
+  it('숫자는 formatQuantity로 다듬는다(소수 3자리, 뒤 0 제거)', () => {
+    const damage = {
+      id: 'a',
+      type: 'crack',
+      geometry: { kind: 'polyline', world: [[0, 0], [1, 0]] as Pt[], dwg: null },
+      measured: { width: 0.20000000000000004, length: 0.80000000000000004, count: 1 },
+      attrs: { note: '', statusText: '' },
+    };
+    expect(dimensionTextOf(damage)).toBe('0.2/0.8');
+  });
+
+  it('유형을 찾을 수 없으면 구분자는 x를 쓴다', () => {
+    const damage = {
+      id: 'a',
+      type: 'no_such_type',
+      geometry: { kind: 'polyline', world: [[0, 0], [1, 0]] as Pt[], dwg: null },
+      measured: { width: 0.2, length: 0.8, count: 1 },
+      attrs: { note: '', statusText: '' },
+    };
+    expect(dimensionTextOf(damage)).toBe('0.2x0.8');
+  });
+});
+
+describe('drawingNameOf', () => {
+  it('균열류(quantityUnit이 m)는 유형 이름 그대로, 구간 없이', () => {
+    expect(drawingNameOf(crack('a', { width: 0.2, length: null, count: null }))).toBe('균열');
+    const ceType = {
+      id: 'a',
+      type: 'crack_efflorescence',
+      geometry: { kind: 'polyline', world: [[0, 0], [1, 0]] as Pt[], dwg: null },
+      measured: { width: 0.6, length: null, count: null },
+      attrs: { note: '', statusText: '' },
+    };
+    expect(drawingNameOf(ceType)).toBe('균열/백태');
+  });
+
+  it('면형 유형(quantityUnit이 m2)은 유형 이름 그대로', () => {
+    expect(drawingNameOf(area('a', { width: 1, length: 1, count: 1 }))).toBe('박락');
+    expect(drawingNameOf(area('b', { width: null, length: null, count: null }, 'map_crack'))).toBe('망상균열');
+    expect(drawingNameOf(area('c', { width: null, length: null, count: null }, 'efflorescence'))).toBe('백태·열화');
+  });
+
+  it('기타는 사용자가 적은 손상현황을 이름으로 쓴다', () => {
+    const written = area('a', { width: null, length: null, count: null }, 'etc');
+    written.attrs.statusText = '표면 오염';
+    expect(drawingNameOf(written)).toBe('표면 오염');
+  });
+
+  it('기타에서 손상현황이 비어 있으면 유형 이름을 쓴다', () => {
+    const blank = area('b', { width: null, length: null, count: null }, 'etc');
+    expect(drawingNameOf(blank)).toBe('기타');
+
+    const spaces = area('c', { width: null, length: null, count: null }, 'etc');
+    spaces.attrs.statusText = '   ';
+    expect(drawingNameOf(spaces)).toBe('기타');
+  });
+
+  it('유형을 찾을 수 없으면 저장된 type 문자열을 그대로 돌려준다', () => {
+    const damage = {
+      id: 'x',
+      type: 'no_such_type',
+      geometry: { kind: 'polyline', world: [[0, 0], [1, 0]] as Pt[], dwg: null },
+      measured: { width: null, length: null, count: null },
+      attrs: { note: '', statusText: '' },
+    };
+    expect(drawingNameOf(damage)).toBe('no_such_type');
   });
 });
