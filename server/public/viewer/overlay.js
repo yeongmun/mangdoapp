@@ -45,7 +45,10 @@ function distance(a, b) {
 
 // 렌더할 때마다 화면 배율(px/world)과 도면 배율(mm/world)을 구해, 그 비율(px/mm)을 계산한다.
 // mapper.worldToDwg가 null을 주는 도면(좌표 변환을 못 구한 경우)은 pxPerMm도 null이다 —
-// 기준 삼을 실치수가 없으므로 화면 고정 크기로 그려야 한다.
+// 기준 삼을 실치수가 없으므로 화면 고정 크기로 그려야 한다. mmPerWorld가 0에 아주 가까운(특이에
+// 가까운) 변환에서는 나눗셈이 Infinity로 넘칠 수 있다 — 그 경우도 "기준 삼을 실치수가 없다"와
+// 같게 보고 null로 떨어뜨린다. Infinity가 그대로 나가면 이후 크기 계산이 전부 Infinity가 되고
+// labelLayout의 좌표 계산(Infinity - Infinity)이 NaN을 만들어 SVG에 잘못된 속성이 들어간다.
 export function computeScale(mapper) {
   const clientOrigin = mapper.worldToClient([0, 0]);
   const clientUnit = mapper.worldToClient([1, 0]);
@@ -55,15 +58,18 @@ export function computeScale(mapper) {
   const dwgUnit = mapper.worldToDwg([1, 0]);
   const mmPerWorld = dwgOrigin && dwgUnit ? distance(dwgOrigin, dwgUnit) : null;
 
-  const pxPerMm = mmPerWorld !== null && mmPerWorld > 0 ? pxPerWorld / mmPerWorld : null;
+  const rawPxPerMm = mmPerWorld !== null && mmPerWorld > 0 ? pxPerWorld / mmPerWorld : null;
+  const pxPerMm = rawPxPerMm !== null && Number.isFinite(rawPxPerMm) ? rawPxPerMm : null;
 
   return { pxPerWorld, mmPerWorld, pxPerMm };
 }
 
 // pxPerMm으로 이번 렌더에 쓸 화면 픽셀값들을 정한다. pxPerMm이 없으면(도면 좌표 변환 불가)
-// 기존 화면 고정값을 그대로 쓴다.
+// 기존 화면 고정값을 그대로 쓴다. computeScale이 이미 Infinity/NaN을 null로 걸러 주지만, 이 함수를
+// 다른 곳에서 직접 부를 수도 있으므로(Infinity > 0은 참이라 !(pxPerMm > 0)만으로는 못 거른다)
+// 여기서도 한 번 더 막는다.
 export function computeRenderSizes(pxPerMm) {
-  if (pxPerMm === null || !(pxPerMm > 0)) {
+  if (pxPerMm === null || !Number.isFinite(pxPerMm) || !(pxPerMm > 0)) {
     return {
       pxPerMm: null,
       lineWidthPx: CRACK_WIDTH_PX,
@@ -85,9 +91,10 @@ export function computeRenderSizes(pxPerMm) {
   };
 }
 
-// 해치 무늬 한 칸의 화면 픽셀 간격. pxPerMm이 없으면 기존 화면 고정 간격을 쓴다.
+// 해치 무늬 한 칸의 화면 픽셀 간격. pxPerMm이 없거나(도면 좌표 변환 불가) 유한하지 않으면(특이에
+// 가까운 변환이 Infinity로 넘친 경우) 기존 화면 고정 간격을 쓴다.
 export function patternSpacingPx(spacingMm, pxPerMm) {
-  if (pxPerMm === null || !(pxPerMm > 0)) return PATTERN_SIZE_PX;
+  if (pxPerMm === null || !Number.isFinite(pxPerMm) || !(pxPerMm > 0)) return PATTERN_SIZE_PX;
   return spacingMm * pxPerMm;
 }
 
@@ -95,6 +102,18 @@ export function patternSpacingPx(spacingMm, pxPerMm) {
 // 중 사소한 소수점 차이로 매 프레임 새 id가 생기는 것을 막는다.
 export function hatchPatternId(pattern, spacingPx) {
   return `mangdo-hatch-${pattern}-${Math.round(spacingPx)}`;
+}
+
+// 면형 유형의 채우기 무늬를 이번 렌더에 실제로 그릴지, 어떤 크기로 그릴지 정하는 순수 함수.
+// 간격이 MIN_PATTERN_SPACING_PX(1px) 미만이면 null을 돌려줘 무늬를 건너뛰고 테두리만 그리게 한다 —
+// 1px 미만 간격은 화면을 거의 단색으로 칠하고 브라우저도 느리게 만드는, 화면이 "빨갛게 뒤덮이는"
+// 상황을 막는 유일한 장치라 별도 함수로 빼서 경계값을 직접 테스트한다.
+export function resolveFillPattern(pattern, spacingMm, pxPerMm) {
+  const spacingPx = patternSpacingPx(spacingMm, pxPerMm);
+  // spacingPx가 NaN이어도(예: spacingMm이 숫자가 아님) '>= ' 비교가 거짓이 되어 안전하게 걸러진다.
+  if (!(spacingPx >= MIN_PATTERN_SPACING_PX)) return null;
+  const { lineWidthPx } = computeRenderSizes(pxPerMm);
+  return { id: hatchPatternId(pattern, spacingPx), sizePx: Math.round(spacingPx), lineWidthPx };
 }
 
 // 브라우저에 실제 글자 폭을 물어볼 수 없어(DOM 밖에서도 계산해야 함) 어림한다.
@@ -341,18 +360,14 @@ export function createOverlay(svg, mapper) {
 
     let fillPatternId = null;
     if (plan.fillPattern) {
-      const spacingPx = patternSpacingPx(plan.fillSpacingMm, sizes.pxPerMm);
-      if (spacingPx >= MIN_PATTERN_SPACING_PX) {
-        fillPatternId = hatchPatternId(plan.fillPattern, spacingPx);
-        if (!patternsNeeded.has(fillPatternId)) {
-          patternsNeeded.set(fillPatternId, {
-            pattern: plan.fillPattern,
-            sizePx: Math.round(spacingPx),
-            lineWidthPx: sizes.lineWidthPx,
-          });
+      // resolveFillPattern이 null이면(간격이 1px 미만) 무늬를 그리지 않고 테두리만 그린다.
+      const resolved = resolveFillPattern(plan.fillPattern, plan.fillSpacingMm, sizes.pxPerMm);
+      if (resolved) {
+        fillPatternId = resolved.id;
+        if (!patternsNeeded.has(resolved.id)) {
+          patternsNeeded.set(resolved.id, { pattern: plan.fillPattern, sizePx: resolved.sizePx, lineWidthPx: resolved.lineWidthPx });
         }
       }
-      // spacingPx < MIN_PATTERN_SPACING_PX: 무늬를 그리지 않고 테두리만 그린다(fillPatternId는 null로 둔다).
     }
 
     if (plan.shape === 'polyline') {

@@ -14,10 +14,10 @@ import {
   labelLayout,
   LABEL_OFFSET_PX,
   MIN_LINE_WIDTH_PX,
-  MIN_PATTERN_SPACING_PX,
   patternSpacingPx,
   PATTERN_SIZE_PX,
   rectHandlePositions,
+  resolveFillPattern,
   ROTATE_HANDLE_OFFSET_PX,
   SELECTED_COLOR,
   SELECTED_WIDTH_PX,
@@ -158,6 +158,17 @@ describe('computeScale', () => {
     expect(scale.mmPerWorld).toBeCloseTo(0, 9);
     expect(scale.pxPerMm).toBeNull();
   });
+
+  it('mmPerWorld가 특이에 가깝게 작아 나눗셈이 Infinity로 넘치면 pxPerMm은 null이다', () => {
+    // pxPerWorld / mmPerWorld = 1e10 / 1e-300 = 1e310 → Number.MAX_VALUE(~1.8e308)를 넘어 Infinity.
+    // 이걸 그대로 흘리면 computeRenderSizes의 모든 값이 Infinity가 되고, labelLayout의
+    // "Infinity - Infinity" 계산이 NaN을 만들어 <circle cx="NaN">이 SVG에 그대로 들어간다.
+    const mapper = fakeMapper({ pxPerUnit: 1e10, mmPerUnit: 1e-300 });
+    const scale = computeScale(mapper);
+    expect(Number.isFinite(scale.pxPerWorld)).toBe(true);
+    expect(Number.isFinite(scale.mmPerWorld as number)).toBe(true);
+    expect(scale.pxPerMm).toBeNull();
+  });
 });
 
 describe('computeRenderSizes', () => {
@@ -188,6 +199,15 @@ describe('computeRenderSizes', () => {
     expect(sizes.fontPx).toBeCloseTo(300 * 0.001, 9);
     expect(sizes.circleRPx).toBeCloseTo(300 * 0.001 * 0.85, 9);
   });
+
+  it('pxPerMm이 Infinity면(특이에 가까운 변환) null과 똑같이 화면 고정값으로 떨어진다', () => {
+    const sizes = computeRenderSizes(Infinity);
+    expect(sizes.pxPerMm).toBeNull();
+    expect(sizes.lineWidthPx).toBe(CRACK_WIDTH_PX);
+    expect(sizes.fontPx).toBe(11);
+    expect(Number.isFinite(sizes.circleRPx)).toBe(true);
+    expect(Number.isFinite(sizes.labelGapPx)).toBe(true);
+  });
 });
 
 describe('patternSpacingPx', () => {
@@ -205,9 +225,46 @@ describe('hatchPatternId', () => {
     expect(hatchPatternId('ANSI31', 42.4)).toBe('mangdo-hatch-ANSI31-42');
     expect(hatchPatternId('ANSI31', 42.6)).toBe('mangdo-hatch-ANSI31-43');
   });
+});
 
-  it('MIN_PATTERN_SPACING_PX는 1이다 — 이보다 작으면 무늬를 그리지 않는다', () => {
-    expect(MIN_PATTERN_SPACING_PX).toBe(1);
+describe('resolveFillPattern', () => {
+  // spacingMm * pxPerMm(=1)으로 spacingPx를 그대로 조절해 MIN_PATTERN_SPACING_PX(1px) 경계를 겨냥한다.
+  // 이 판정은 화면이 거의 단색으로 칠해지고 브라우저가 느려지는 것을 막는 유일한 장치이므로
+  // 경계 양쪽(0.99px 건너뜀 / 1.0px·1.5px 그림)을 직접 확인한다.
+  it('간격이 1px보다 작으면(0.99px) null을 돌려줘 무늬를 건너뛴다', () => {
+    expect(resolveFillPattern('ANSI31', 0.99, 1)).toBeNull();
+  });
+
+  it('간격이 정확히 1px이면 그린다(경계 포함)', () => {
+    const resolved = resolveFillPattern('ANSI31', 1, 1);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.sizePx).toBe(1);
+    expect(resolved!.id).toBe('mangdo-hatch-ANSI31-1');
+  });
+
+  it('간격이 1px보다 크면(1.5px) 그린다', () => {
+    const resolved = resolveFillPattern('ANSI31', 1.5, 1);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.sizePx).toBe(2); // Math.round(1.5)
+  });
+
+  it('선 굵기는 같은 pxPerMm으로 computeRenderSizes가 계산한 값과 같다', () => {
+    const resolved = resolveFillPattern('ANSI31', 158.75, 2);
+    expect(resolved!.lineWidthPx).toBeCloseTo(computeRenderSizes(2).lineWidthPx, 6);
+  });
+
+  it('pxPerMm이 null이면(좌표 변환 불가) 화면 고정 간격(PATTERN_SIZE_PX=10)을 쓰고, 이는 1px보다 크므로 그린다', () => {
+    const resolved = resolveFillPattern('ANSI31', 158.75, null);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.sizePx).toBe(PATTERN_SIZE_PX);
+    expect(resolved!.lineWidthPx).toBe(CRACK_WIDTH_PX);
+  });
+
+  it('pxPerMm이 Infinity면(특이에 가까운 변환) 간격 판정이 깨지지 않고 화면 고정 경로로 떨어진다', () => {
+    const resolved = resolveFillPattern('ANSI31', 158.75, Infinity);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.sizePx).toBe(PATTERN_SIZE_PX);
+    expect(Number.isFinite(resolved!.lineWidthPx)).toBe(true);
   });
 });
 
@@ -302,6 +359,18 @@ describe('labelLayout', () => {
     const left = layout.circle!.cx - circleRPx;
     const right = nameLine.x + nameWidth;
     expect((left + right) / 2).toBeCloseTo(anchor[0], 1);
+  });
+
+  it('원의 세로 중심은 이름줄 베이스라인에서 글자 높이의 0.35배 위에 있다 (근사 상수를 테스트로 묶어둔다)', () => {
+    // 이름 줄만 있을 때(치수 없음) 이름줄 베이스라인은 anchor.y 그대로다.
+    const layout = labelLayout({ anchor, name: '균열', dimension: '', number: 5, fontPx, circleRPx });
+    expect(layout.circle!.cy).toBeCloseTo(anchor[1] - fontPx * 0.35, 6);
+  });
+
+  it('두 줄일 때는 이름줄(anchor.y보다 위)을 기준으로 원 중심을 잡는다', () => {
+    const layout = labelLayout({ anchor, name: '망상균열', dimension: '1.2x1.2', number: 17, fontPx, circleRPx });
+    const nameLine = layout.lines.find((l) => l.text === '망상균열')!;
+    expect(layout.circle!.cy).toBeCloseTo(nameLine.y - fontPx * 0.35, 6);
   });
 
   it('이름도 치수도 없으면 아무것도 그리지 않는다', () => {
