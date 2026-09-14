@@ -4,7 +4,7 @@
 
 import { getDamageType } from './damageTypes.js';
 import { rectCenter } from './geometry.js';
-import { computeNumbers, dimensionTextOf, drawingNameOf } from './quantities.js';
+import { computeNumbers, dimensionTextOf, drawingNameOf, photoTextOf } from './quantities.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 export const CRACK_COLOR = '#e53935';
@@ -212,41 +212,51 @@ export function labelAnchor(screenPoints, gapPx) {
   return [(minX + maxX) / 2, minY - gapPx];
 }
 
-// 두 줄 라벨(첫 줄: 원+이름, 둘째 줄: 치수)의 배치를 정하는 순수 함수. DOM을 만들지 않아 테스트하기
-// 쉽다. anchor는 labelAnchor가 돌려준, 도형에서 gapPx만큼 떨어진 기준점(라벨 블록에서 도형에 가장
-// 가까운 줄의 기준선)이다.
-// 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2
-export function labelLayout({ anchor, name, dimension, number, fontPx, circleRPx }) {
+// 세 줄 라벨(첫 줄: 원+이름, 둘째 줄: 치수, 셋째 줄: 사진번호)의 배치를 정하는 순수 함수. DOM을
+// 만들지 않아 테스트하기 쉽다. anchor는 labelAnchor가 돌려준, 도형에서 gapPx만큼 떨어진 기준점
+// (라벨 블록에서 도형에 가장 가까운 줄의 기준선)이다.
+//
+// 줄 순서는 이름/치수/사진이고, 없는 줄은 건너뛰어 빈 줄을 남기지 않는다 — 예를 들어 치수가 없고
+// 사진만 있으면 사진이 둘째 줄(치수가 있었다면 있었을 자리, anchor.y) 자리로 올라간다. 라벨
+// 전체는 도형 위쪽 바깥에 놓이므로, 줄이 늘수록 위(작은 y)로 쌓이고 맨 아래 줄(가장 큰 y)이
+// 항상 anchor.y — 도형에 가장 가까운 자리를 차지한다.
+// 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2, §9.5
+export function labelLayout({ anchor, name, dimension, photo = '', number, fontPx, circleRPx }) {
   const [ax, ay] = anchor;
   const hasName = typeof name === 'string' && name.length > 0;
   const hasDimension = typeof dimension === 'string' && dimension.length > 0;
+  const hasPhoto = typeof photo === 'string' && photo.length > 0;
   const hasNumber = number !== null && number !== undefined;
 
-  if (!hasName && !hasDimension) return { circle: null, lines: [] };
+  // 위(이름)에서 아래(사진)로, 실제로 있는 줄만 남긴다. 이 순서 그대로 화면에 위→아래로 그려진다.
+  const rows = [];
+  if (hasName) rows.push({ key: 'name', text: name });
+  if (hasDimension) rows.push({ key: 'dimension', text: dimension });
+  if (hasPhoto) rows.push({ key: 'photo', text: photo });
+
+  if (rows.length === 0) return { circle: null, lines: [] };
 
   const lines = [];
   let circle = null;
-  // 이름이 위(작은 y), 치수가 아래(anchor.y, 도형에 더 가까움). 이름 줄만 있으면 그 줄이 곧 anchor다.
-  const nameY = hasName && hasDimension ? ay - fontPx * LINE_GAP_FACTOR : ay;
+  const lastIndex = rows.length - 1;
 
-  if (hasName) {
-    if (hasNumber) {
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    // 맨 아래 줄(lastIndex)이 anchor.y 그대로다. 위로 갈수록 한 줄 간격(LINE_GAP_FACTOR)씩 뺀다.
+    const y = ay - (lastIndex - index) * fontPx * LINE_GAP_FACTOR;
+    if (row.key === 'name' && hasNumber) {
       const gapPx = circleRPx * CIRCLE_TEXT_GAP_FACTOR;
-      const nameWidth = estimateTextWidthPx(name, fontPx);
+      const nameWidth = estimateTextWidthPx(row.text, fontPx);
       const totalWidth = circleRPx * 2 + gapPx + nameWidth;
       const left = ax - totalWidth / 2;
       const cx = left + circleRPx;
-      const cy = nameY - fontPx * BASELINE_CENTER_FACTOR;
+      const cy = y - fontPx * BASELINE_CENTER_FACTOR;
       circle = { cx, cy, r: circleRPx };
-      lines.push({ x: cx, y: nameY, text: String(number), anchor: 'middle' });
-      lines.push({ x: left + circleRPx * 2 + gapPx, y: nameY, text: name, anchor: 'start' });
+      lines.push({ x: cx, y, text: String(number), anchor: 'middle' });
+      lines.push({ x: left + circleRPx * 2 + gapPx, y, text: row.text, anchor: 'start' });
     } else {
-      lines.push({ x: ax, y: nameY, text: name, anchor: 'middle' });
+      lines.push({ x: ax, y, text: row.text, anchor: 'middle' });
     }
-  }
-
-  if (hasDimension) {
-    lines.push({ x: ax, y: ay, text: dimension, anchor: 'middle' });
   }
 
   return { circle, lines };
@@ -338,6 +348,7 @@ export function describeDamageRender(damage, selectedId, number = null) {
     fillSpacingMm: type && type.fill ? type.fill.spacingMm : null,
     name: drawingNameOf(damage),
     dimension: dimensionTextOf(damage),
+    photo: photoTextOf(damage),
     number,
     showHandles: selected && isRect,
   };
@@ -381,6 +392,7 @@ export function createOverlay(svg, mapper) {
       anchor,
       name: plan.name,
       dimension: plan.dimension,
+      photo: plan.photo,
       number: plan.number,
       fontPx: sizes.fontPx,
       circleRPx: sizes.circleRPx,

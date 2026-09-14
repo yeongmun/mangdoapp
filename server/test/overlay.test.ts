@@ -121,6 +121,26 @@ describe('describeDamageRender', () => {
     const filled = { id: 'a', type: 'spalling', geometry: { kind: 'rect', world: [] } };
     expect(describeDamageRender(filled, null).number).toBeNull();
   });
+
+  it('photo는 photoTextOf를 그대로 쓴다', () => {
+    const withPhotos = {
+      id: 'a',
+      type: 'crack',
+      geometry: { kind: 'polyline', world: [] },
+      measured: { width: 0.2, length: 1.5, count: 1 },
+      attrs: { note: '', statusText: '', photoNumbers: ['12', '13'] },
+    };
+    expect(describeDamageRender(withPhotos, null).photo).toBe('사진 12, 13');
+
+    const noPhotos = {
+      id: 'b',
+      type: 'crack',
+      geometry: { kind: 'polyline', world: [] },
+      measured: { width: 0.2, length: 1.5, count: 1 },
+      attrs: { note: '', statusText: '', photoNumbers: [] },
+    };
+    expect(describeDamageRender(noPhotos, null).photo).toBe('');
+  });
 });
 
 describe('computeScale', () => {
@@ -377,5 +397,54 @@ describe('labelLayout', () => {
     const layout = labelLayout({ anchor, name: '', dimension: '', number: 1, fontPx, circleRPx });
     expect(layout.circle).toBeNull();
     expect(layout.lines).toEqual([]);
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md 9.5
+  // 줄 순서는 이름/치수/사진이고, 라벨은 도형 위쪽 바깥에 놓인다 — 줄이 늘면 위로(작은 y) 쌓이고
+  // 맨 아래 줄(가장 큰 y, anchor.y)이 도형에 가장 가깝다.
+  it('세 줄 모두 있으면 이름(맨 위)·치수(가운데)·사진(맨 아래, anchor.y)순으로 쌓인다', () => {
+    const layout = labelLayout({
+      anchor,
+      name: '균열/백태',
+      dimension: '0.2/0.8',
+      photo: '사진 12, 13',
+      number: 17,
+      fontPx,
+      circleRPx,
+    });
+    const nameLine = layout.lines.find((l) => l.text === '균열/백태')!;
+    const dimensionLine = layout.lines.find((l) => l.text === '0.2/0.8')!;
+    const photoLine = layout.lines.find((l) => l.text === '사진 12, 13')!;
+    expect(photoLine.y).toBe(anchor[1]);
+    expect(dimensionLine.y).toBeCloseTo(anchor[1] - fontPx * 1.3, 6);
+    expect(nameLine.y).toBeCloseTo(anchor[1] - fontPx * 1.3 * 2, 6);
+    expect(dimensionLine.y).toBeLessThan(photoLine.y);
+    expect(nameLine.y).toBeLessThan(dimensionLine.y);
+    expect(photoLine.anchor).toBe('middle');
+    expect(photoLine.x).toBe(anchor[0]);
+  });
+
+  it('치수가 없고 사진만 있으면 사진이 둘째 줄(치수 자리, anchor.y)로 올라가 빈 줄을 남기지 않는다', () => {
+    const layout = labelLayout({ anchor, name: '망상균열', dimension: '', photo: '사진 5', number: 3, fontPx, circleRPx });
+    expect(layout.lines).toHaveLength(3); // 번호줄의 원 텍스트 + 이름 + 사진(치수 줄 없음)
+    const photoLine = layout.lines.find((l) => l.text === '사진 5')!;
+    const nameLine = layout.lines.find((l) => l.text === '망상균열')!;
+    expect(photoLine.y).toBe(anchor[1]);
+    expect(nameLine.y).toBeCloseTo(anchor[1] - fontPx * 1.3, 6);
+  });
+
+  it('사진이 없으면 지금과 같이 두 줄(이름·치수)만 그린다', () => {
+    const layout = labelLayout({ anchor, name: '망상균열', dimension: '1.2x1.2', photo: '', number: 17, fontPx, circleRPx });
+    expect(layout.lines.map((l) => l.text)).toEqual(['17', '망상균열', '1.2x1.2']);
+    const dimensionLine = layout.lines.find((l) => l.text === '1.2x1.2')!;
+    expect(dimensionLine.y).toBe(anchor[1]);
+  });
+
+  it('번호가 없어도 세 줄이 같은 순서로 쌓이고 원은 그리지 않는다', () => {
+    const layout = labelLayout({ anchor, name: '박락', dimension: '1.2x1.2', photo: '사진 1', number: null, fontPx, circleRPx });
+    expect(layout.circle).toBeNull();
+    expect(layout.lines.map((l) => l.text)).toEqual(['박락', '1.2x1.2', '사진 1']);
+    expect(layout.lines[0].anchor).toBe('middle');
+    expect(layout.lines[2].y).toBe(anchor[1]);
   });
 });
