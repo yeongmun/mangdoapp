@@ -6,6 +6,8 @@ import {
   dimensionTextOf,
   drawingNameOf,
   formatQuantity,
+  parsePhotoNumbers,
+  photoTextOf,
   quantityOf,
   statusTextOf,
   unitOf,
@@ -314,8 +316,13 @@ describe('dimensionTextOf', () => {
 });
 
 describe('drawingNameOf', () => {
-  it('균열류(quantityUnit이 m)는 유형 이름 그대로, 구간 없이', () => {
-    expect(drawingNameOf(crack('a', { width: 0.2, length: null, count: null }))).toBe('균열');
+  // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2 예외.
+  // 균열(crack)만 이름을 빼고 번호 원만 그린다 — 사내 망도의 `(17) 0.2/1.5` 표기와 같다.
+  it('균열(crack)은 이름 없이 빈 문자열을 돌려준다', () => {
+    expect(drawingNameOf(crack('a', { width: 0.2, length: null, count: null }))).toBe('');
+  });
+
+  it('균열/백태(crack_efflorescence)는 균열류지만 이름을 그대로 둔다(구간 없이)', () => {
     const ceType = {
       id: 'a',
       type: 'crack_efflorescence',
@@ -356,5 +363,54 @@ describe('drawingNameOf', () => {
       attrs: { note: '', statusText: '' },
     };
     expect(drawingNameOf(damage)).toBe('no_such_type');
+  });
+});
+
+// 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md 9.2
+describe('parsePhotoNumbers', () => {
+  it('쉼표로 나누고 앞뒤 공백을 지운다', () => {
+    expect(parsePhotoNumbers('12, 13, 15')).toEqual(['12', '13', '15']);
+    expect(parsePhotoNumbers(' 12 ,13,  15 ')).toEqual(['12', '13', '15']);
+  });
+
+  it('빈 항목은 버린다', () => {
+    expect(parsePhotoNumbers('12,,13,')).toEqual(['12', '13']);
+  });
+
+  it('같은 번호가 두 번 나오면 처음 나온 것만 남긴다', () => {
+    expect(parsePhotoNumbers('12, 13, 12')).toEqual(['12', '13']);
+  });
+
+  it('숫자로 바꾸지 않는다 — 앞자리 0과 접두어를 보존한다', () => {
+    expect(parsePhotoNumbers('012, P-013')).toEqual(['012', 'P-013']);
+  });
+
+  it('빈 문자열·공백뿐인 문자열·쉼표뿐인 문자열은 빈 배열', () => {
+    expect(parsePhotoNumbers('')).toEqual([]);
+    expect(parsePhotoNumbers('   ')).toEqual([]);
+    expect(parsePhotoNumbers(',')).toEqual([]);
+  });
+
+  it('null·undefined·문자열이 아닌 값은 빈 배열', () => {
+    expect(parsePhotoNumbers(null)).toEqual([]);
+    expect(parsePhotoNumbers(undefined)).toEqual([]);
+    expect(parsePhotoNumbers(42)).toEqual([]);
+  });
+});
+
+describe('photoTextOf', () => {
+  it('photoNumbers가 있으면 "사진 "으로 시작해 쉼표+공백으로 잇는다', () => {
+    const damage = { id: 'a', type: 'crack', attrs: { note: '', statusText: '', photoNumbers: ['12', '13', '15'] } };
+    expect(photoTextOf(damage)).toBe('사진 12, 13, 15');
+  });
+
+  it('photoNumbers가 빈 배열이면 빈 문자열', () => {
+    const damage = { id: 'a', type: 'crack', attrs: { note: '', statusText: '', photoNumbers: [] } };
+    expect(photoTextOf(damage)).toBe('');
+  });
+
+  it('attrs나 photoNumbers가 없어도 던지지 않고 빈 문자열', () => {
+    expect(photoTextOf({ id: 'a', type: 'crack' })).toBe('');
+    expect(photoTextOf({ id: 'a', type: 'crack', attrs: {} })).toBe('');
   });
 });

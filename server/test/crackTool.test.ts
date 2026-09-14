@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { polylineLength } from '../public/viewer/geometry.js';
-import { finalizeRect, finalizeStroke, hitHandle, MIN_RECT_PX, MIN_STROKE_PX, pickDamage } from '../public/viewer/crackTool.js';
+import {
+  finalizeRect,
+  finalizeStroke,
+  hitHandle,
+  hitSelectedShape,
+  MIN_RECT_PX,
+  MIN_STROKE_PX,
+  pickDamage,
+} from '../public/viewer/crackTool.js';
 import { validateDamageDoc } from '../public/viewer/damageDoc.js';
 
 type Pt = [number, number];
@@ -29,7 +37,7 @@ describe('finalizeStroke', () => {
     expect(finalizeStroke(stroke, mapper, options)).toBeNull();
   });
 
-  it('선형 손상을 v3 형태로 만든다', () => {
+  it('선형 손상을 v4 형태로 만든다', () => {
     const stroke: Pt[] = [];
     for (let i = 0; i <= 100; i++) stroke.push([i, i % 2 === 0 ? 50 : 50.5]);
     expect(finalizeStroke(stroke, mapper, options)).toEqual({
@@ -39,7 +47,7 @@ describe('finalizeStroke', () => {
       geometry: { kind: 'polyline', world: [[0, -5], [10, -5]], dwg: [[1000, 1995], [1010, 1995]] },
       measured: { width: null, length: null, count: null },
       computed: { lengthDwg: 10, areaDwg: null },
-      attrs: { note: '', statusText: '' },
+      attrs: { note: '', statusText: '', photoNumbers: [] },
     });
   });
 
@@ -68,7 +76,7 @@ describe('finalizeRect', () => {
       },
       measured: { width: null, length: null, count: null },
       computed: { lengthDwg: null, areaDwg: 2 },
-      attrs: { note: '', statusText: '' },
+      attrs: { note: '', statusText: '', photoNumbers: [] },
     });
   });
 
@@ -148,15 +156,42 @@ describe('hitHandle', () => {
   });
 });
 
-describe('v3 document validation', () => {
-  it('새로 만든 선형 손상이 v3 문서에서 검증을 통과한다', () => {
+// 근거: docs/superpowers/specs/2026-09-12-damage-types-design.md §4 "선택한 손상 이동".
+// 선택된 손상의 몸통(사각형은 안쪽, 선은 선 위) 위에서 시작하면 이동 제스처가 된다.
+describe('hitSelectedShape', () => {
+  const rectShape = { kind: 'rect', points: [[0, 0], [40, 0], [40, 20], [0, 20]] as Pt[] };
+  const lineShape = { kind: 'polyline', points: [[0, 0], [40, 0]] as Pt[] };
+
+  it('사각형은 안쪽이면 true', () => {
+    expect(hitSelectedShape([20, 10], rectShape)).toBe(true);
+  });
+
+  it('사각형은 바깥이면 false', () => {
+    expect(hitSelectedShape([200, 200], rectShape)).toBe(false);
+  });
+
+  it('선은 근처(PICK_RADIUS_PX 이내)면 true', () => {
+    expect(hitSelectedShape([20, 5], lineShape)).toBe(true);
+  });
+
+  it('선은 멀면 false', () => {
+    expect(hitSelectedShape([20, 100], lineShape)).toBe(false);
+  });
+
+  it('shape가 null이면 false', () => {
+    expect(hitSelectedShape([0, 0], null)).toBe(false);
+  });
+});
+
+describe('v4 document validation', () => {
+  it('새로 만든 선형 손상이 v4 문서에서 검증을 통과한다', () => {
     const stroke: Pt[] = [];
     for (let i = 0; i <= 100; i++) stroke.push([i, i % 2 === 0 ? 50 : 50.5]);
     const damage = finalizeStroke(stroke, mapper, options);
     expect(damage).not.toBeNull();
 
     const doc = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       drawingId: 'test-drawing',
       updatedAt: '2026-09-12T03:00:00.000Z',
       damages: [damage!],
@@ -165,12 +200,12 @@ describe('v3 document validation', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('새로 만든 면형 손상이 v3 문서에서 검증을 통과한다', () => {
+  it('새로 만든 면형 손상이 v4 문서에서 검증을 통과한다', () => {
     const damage = finalizeRect([0, 0], [20, 10], mapper, areaOptions);
     expect(damage).not.toBeNull();
 
     const doc = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       drawingId: 'test-drawing',
       updatedAt: '2026-09-12T03:00:00.000Z',
       damages: [damage!],

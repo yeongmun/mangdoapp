@@ -129,6 +129,13 @@ export function polygonArea(points) {
   return Math.abs(sum) / 2;
 }
 
+// 선택한 손상을 끌어서 옮길 때 쓴다(2026-09-14 추가). 모든 점에 같은 이동량(dx, dy)을 더한
+// 새 배열을 돌려주고 입력은 바꾸지 않는다 — 선(여러 점)·사각형(네 점) 모두에 똑같이 쓸 수 있다.
+// 근거: docs/superpowers/specs/2026-09-12-damage-types-design.md §4.
+export function translatePoints(points, dx, dy) {
+  return points.map(([x, y]) => [x + dx, y + dy]);
+}
+
 // 광선 교차 방식. 경계선 위의 점은 안쪽으로 본다(탭으로 고를 때 가장자리를 놓치지 않도록).
 export function pointInPolygon(point, polygon) {
   const [px, py] = point;

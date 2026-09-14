@@ -11,6 +11,7 @@ import {
   resizeRect,
   rotatePoints,
   simplifyPolyline,
+  translatePoints,
 } from '../public/viewer/geometry.js';
 
 type Pt = [number, number];
@@ -180,5 +181,38 @@ describe('pointInPolygon', () => {
     const rotated = rotatePoints(rect, rectCenter(rect), Math.PI / 4);
     expect(pointInPolygon(rectCenter(rect), rotated)).toBe(true);
     expect(pointInPolygon([rectCenter(rect)[0] + 3, rectCenter(rect)[1] + 3], rotated)).toBe(false);
+  });
+});
+
+// 근거: docs/superpowers/specs/2026-09-12-damage-types-design.md §4 "선택한 손상 이동".
+// 이동 제스처의 화면 이동량을 선택된 손상의 모든 점에 더하는 데 쓰는 순수 함수.
+describe('translatePoints', () => {
+  it('모든 점에 같은 이동량(dx, dy)을 더한다', () => {
+    const points: Pt[] = [[0, 0], [10, 0], [10, 5], [0, 5]];
+    expect(translatePoints(points, 3, -2)).toEqual([[3, -2], [13, -2], [13, 3], [3, 3]]);
+  });
+
+  it('선(점 2개)에도 똑같이 동작한다', () => {
+    const points: Pt[] = [[1, 1], [4, 8]];
+    expect(translatePoints(points, 1, 1)).toEqual([[2, 2], [5, 9]]);
+  });
+
+  it('이동량이 0이면 값은 같지만 새 배열을 돌려준다', () => {
+    const points: Pt[] = [[1, 1], [4, 8]];
+    const result = translatePoints(points, 0, 0);
+    expect(result).toEqual(points);
+    expect(result).not.toBe(points);
+  });
+
+  it('입력 배열과 점 객체를 바꾸지 않는다', () => {
+    const points: Pt[] = [[0, 0], [10, 0]];
+    const result = translatePoints(points, 5, 5);
+    expect(result[0]).not.toBe(points[0]);
+    result[0][0] = 999;
+    expect(points[0]).toEqual([0, 0]);
+  });
+
+  it('빈 배열은 빈 배열', () => {
+    expect(translatePoints([], 1, 1)).toEqual([]);
   });
 });

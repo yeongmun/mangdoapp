@@ -151,6 +151,9 @@ export function dimensionTextOf(damage) {
 
 // 도면 라벨의 첫 줄: 손상 이름. 폭 구간을 붙이지 않는다.
 // statusTextOf와 다르다 — 구간이 붙은 이름은 물량표에서 쓴다.
+// 예외: 균열(crack)은 이름을 아예 빼고 번호 원만 그린다(사내 망도 `(17) 0.2/1.5` 표기와 같음).
+// 균열/백태(crack_efflorescence)는 같은 균열류(quantityUnit 'm')지만 이름을 그대로 둔다 —
+// 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2.
 export function drawingNameOf(damage) {
   const type = getDamageType(damage?.type);
   if (!type) return String(damage?.type ?? '');
@@ -158,6 +161,32 @@ export function drawingNameOf(damage) {
     const written = typeof damage?.attrs?.statusText === 'string' ? damage.attrs.statusText.trim() : '';
     return written === '' ? type.label : written;
   }
-  // 균열류도 구간 없이 유형 이름만 돌려준다
+  if (type.id === 'crack') return '';
+  // 균열류(균열/백태 포함)도 구간 없이 유형 이름만 돌려준다
   return type.label;
+}
+
+// 사진번호 입력 문자열을 배열로 나눈다(설계 9.2). 쉼표로 나누고 앞뒤 공백을 지우고 빈 항목은
+// 버린다. 같은 번호가 두 번 나오면 처음 나온 것만 남기고 순서는 그대로 둔다. 숫자로 바꾸지
+// 않는다 — '012'를 숫자로 바꾸면 '12'가 되어 사진 파일 이름과 짝이 안 맞고, 'P-013' 같은
+// 접두어 형식도 그대로 담아야 한다. text가 문자열이 아니면(null·undefined 포함) 빈 배열이다.
+export function parsePhotoNumbers(text) {
+  if (typeof text !== 'string') return [];
+  const seen = new Set();
+  const result = [];
+  for (const raw of text.split(',')) {
+    const trimmed = raw.trim();
+    if (trimmed === '' || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+// 도면 라벨의 맨 아래 줄: 사진번호 문구(설계 9.5). photoNumbers가 비어 있지 않으면
+// '사진 12, 13, 15', 없거나 비어 있으면 빈 문자열. attrs가 없는 손상도 던지지 않는다.
+export function photoTextOf(damage) {
+  const photoNumbers = damage?.attrs?.photoNumbers;
+  if (!Array.isArray(photoNumbers) || photoNumbers.length === 0) return '';
+  return `사진 ${photoNumbers.join(', ')}`;
 }
