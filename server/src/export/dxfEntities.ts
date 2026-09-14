@@ -73,11 +73,15 @@ export function textEntity(
   align: 'center' | 'left',
 ): DxfPair[] {
   const pairs = head(base, 'TEXT', 'AcDbText');
+  // 값에 줄바꿈이 섞여 들어오면(사용자 입력·MTEXT \P 변환 등) 코드 1 줄이 그대로 둘 이상의
+  // 줄로 쓰여 이후 모든 코드·값 쌍이 한 줄씩 밀린다 — 캐드가 파일을 열지 못한다. 한 줄로
+  // 눕혀서 쓴다.
+  const singleLine = value.replace(/[\r\n]+/g, ' ');
   pairs.push(
     ...xy(position, 10, 20),
     pair(30, '0.0'),
     pair(40, formatReal(height)),
-    pair(1, value),
+    pair(1, singleLine),
     pair(72, int16(align === 'center' ? 1 : 0)),
     ...xy(position, 11, 21),
     pair(31, '0.0'),

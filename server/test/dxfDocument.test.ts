@@ -19,6 +19,7 @@ import {
   recordHandle,
   serializeDxf,
   setHeaderValue,
+  type DxfPair,
 } from '../src/export/dxfDocument.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
@@ -176,6 +177,24 @@ describe('insertEntities', () => {
   it('ENTITIES 구역이 없으면 던진다', () => {
     const doc = parseDxf('  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n  0\nEOF\n');
     expect(() => insertEntities(doc, [pair(0, 'CIRCLE')])).toThrow(/ENTITIES 구역/);
+  });
+
+  // R14: splice(i, 0, ...pairs)의 인자 전개는 pairs가 수만 개면 콜스택 상한에 걸려
+  // "Maximum call stack size exceeded"로 던진다(실측 n=450 부근). 균열/백태 하나가 원
+  // 1,000개(≈11,000쌍)를 낼 수 있어 손상 수십 개로도 도달한다.
+  it('아주 큰 배열도 인자 전개 없이 끼워 넣고 다시 읽힌다', async () => {
+    const doc = parseDxf(await templateText());
+    const many: DxfPair[] = [];
+    for (let i = 0; i < 100_000; i++) {
+      many.push(pair(0, 'POINT'), pair(10, '0.0'));
+    }
+    expect(() => insertEntities(doc, many)).not.toThrow();
+
+    const range = findSection(doc, 'ENTITIES')!;
+    const count = doc.pairs.slice(range.start, range.end).filter((p) => p.code === 0 && p.value === 'POINT').length;
+    expect(count).toBe(100_000);
+    expect(doc.pairs.length).toBeGreaterThanOrEqual(200_000);
+    expect(() => parseDxf(serializeDxf(doc))).not.toThrow();
   });
 });
 

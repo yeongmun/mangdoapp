@@ -164,6 +164,17 @@ describe('exportDamagesToDxf', () => {
     expect(/[^\r]\n/.test(result.dxfText)).toBe(false);
   });
 
+  // R13: statusText(기타 유형)의 줄바꿈이 표 칸의 TEXT 코드 1에 그대로 실리면 그 줄이 갈라져
+  // 이후 모든 코드·값 쌍이 밀린다. textEntity에서 줄바꿈을 공백으로 바꾸므로 다시 읽힌다.
+  it('손상현황에 줄바꿈이 있어도(옛 문서·API를 직접 호출한 경우) 다시 읽히는 DXF가 나온다', async () => {
+    const withNewline = damage('a', 'etc', 0, RECT_A, { width: 1, length: 1, count: 1 });
+    withNewline.attrs.statusText = '들뜸\n파손';
+    const result = exportDamagesToDxf(await template(), [withNewline]);
+    expect(() => parseDxf(result.dxfText)).not.toThrow();
+    expect(result.dxfText).toContain('들뜸 파손');
+    expect(result.dxfText).not.toContain('들뜸\n파손');
+  });
+
   it('가운데 번호가 도면 좌표가 없어 건너뛴 손상이어도 그 뒤 번호의 빈 행과 넘침 표가 그려진다', async () => {
     // 표 데이터 행 수는 이 픽스처에서 4행(90mm씩). 번호 1은 빠지고(도면좌표 없음), 2~5는 도면좌표가
     // 있어 5번이 넘침 표(2번째 표)로 가야 한다. 2번 손상이 표에서 빠지면 넘침 표 자체가 그려지지

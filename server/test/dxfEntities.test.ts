@@ -111,6 +111,17 @@ describe('textEntity', () => {
   it('글꼴 스타일(코드 7)은 쓰지 않는다 — Standard', () => {
     expect(codes(textEntity(base, [0, 0], 300, 'a', 'center'))).not.toContain(7);
   });
+
+  // R13: 줄바꿈이 그대로 코드 1에 실리면 그 줄이 갈라져 이후 모든 코드·값 쌍이 밀린다.
+  it('줄바꿈은 공백으로 바꿔 한 줄로 남긴다', () => {
+    const pairs = textEntity(base, [0, 0], 300, '들뜸\n파손', 'center');
+    expect(valueOf(pairs, 1)).toBe('들뜸 파손');
+    expect(pairs.filter((p) => p.code === 1)).toHaveLength(1);
+  });
+
+  it('\\r\\n도 공백 하나로 바꾼다', () => {
+    expect(valueOf(textEntity(base, [0, 0], 300, '들뜸\r\n파손', 'center'), 1)).toBe('들뜸 파손');
+  });
 });
 
 describe('hatchEntity', () => {

@@ -188,7 +188,10 @@ export function insertEntities(doc: DxfDocument, pairs: DxfPair[]): void {
   const entities = findSection(doc, 'ENTITIES');
   if (!entities) throw new Error('DXF 파일에서 ENTITIES 구역을 찾을 수 없습니다');
   if (pairs.length === 0) return;
-  doc.pairs.splice(entities.end, 0, ...pairs);
+  // splice(i, 0, ...pairs)는 pairs를 인자로 펼친다 — 손상 하나(균열/백태)가 원을 1,000개까지
+  // 낼 수 있어 pairs가 수만 개에 이르면 인자 개수 상한에 걸려 "Maximum call stack size
+  // exceeded"로 죽는다. 배열을 새로 이어 붙여 넣는다(인자 전개 없음).
+  doc.pairs = doc.pairs.slice(0, entities.end).concat(pairs, doc.pairs.slice(entities.end));
 }
 
 // LAYER 표에 레이어를 추가한다. 표의 항목 수(코드 70)는 캐드가 무시하므로 손대지 않는다.

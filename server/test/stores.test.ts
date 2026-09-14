@@ -236,7 +236,7 @@ describe('DamagesStore', () => {
       },
       measured: { width: null, length: null, count: null },
       computed: { lengthDwg: null, areaDwg: 2 },
-      attrs: { note: '이전 면적 입력값: 1.8㎡\n부재명: 기둥', statusText: '', photoNumbers: [] },
+      attrs: { note: '이전 면적 입력값: 1.8㎡ / 부재명: 기둥', statusText: '', photoNumbers: [] },
     });
   });
 

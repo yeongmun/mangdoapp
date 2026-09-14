@@ -3,9 +3,13 @@
 //
 // 2단계 DWG 물량표도 같은 함수를 쓴다. 표 한 행의 칸은 다음과 같이 대응한다.
 //   번호 computeNumbers / 손상현황 statusTextOf
-//   / 가로·폭 measured.width (단위는 유형마다 다르다 — widthUnitOf(type)이 'mm'|'m'을 돌려준다.
-//     균열류(quantityUnit이 'm'인 유형)는 mm, 나머지는 m. 표 생성기가 이 칸을 한 열에 그대로 쓰면
-//     균열의 0.3과 박락의 1.2가 단위 표시 없이 같은 칸에 섞이므로, 반드시 widthUnitOf로 단위를 붙여야 한다)
+//   / 가로·폭 measured.width — 표 칸에는 단위를 붙이지 않는다. 컨트롤러 판정 R2(2026-09-15,
+//     사용자 확인): 표는 8번째 칸에 이미 "단위" 열이 따로 있고, 사내 표기 관행이 그 칸에는
+//     숫자만 적는다(설계 §7.2). 그래서 표 생성기(server/src/export/tableFill.ts의 rowValuesOf)는
+//     formatQuantity(measured.width) 숫자만 그대로 쓰고 widthUnitOf는 쓰지 않는다.
+//     widthUnitOf(type)('mm'|'m')는 화면의 라벨·속성 패널에서만 쓴다 — 균열류(quantityUnit이
+//     'm'인 유형)의 0.3과 박락 같은 면형 유형의 1.2가 화면에서 단위 없이 같은 칸처럼 보이면
+//     헷갈리기 때문이다. 표에는 이 구분이 필요 없다.
 //   / 세로·길이 measured.length / 개소 measured.count / 물량 quantityOf / 단위 unitOf / 비고 attrs.note
 //
 // computeNumbers는 geometry.world 좌표로 번호를 매긴다(3.1). geometry.dwg로 다시 매기면 안 된다 —
