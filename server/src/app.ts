@@ -209,7 +209,7 @@ export function createApp(deps: AppDeps) {
         return;
       }
       console.error('[export]', drawing.id, err);
-      res.status(500).json({ error: `DXF 산출에 실패했습니다: ${messageOf(err)}` });
+      res.status(500).json({ error: 'DXF 산출에 실패했습니다.' });
       return;
     }
 

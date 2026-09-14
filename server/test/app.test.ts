@@ -500,4 +500,22 @@ describe('GET /api/drawings/:id/export.dxf', () => {
     expect(res.status).toBe(200);
     expect(decodeURIComponent(res.headers['x-mangdo-warning'])).toBe('표 없음');
   });
+
+  it('내부 오류는 500이고 상세 메시지를 응답에 남기지 않는다', async () => {
+    // exportDamagesToDxf가 parseDxf에서 ExportError가 아닌 순수 Error를 던지도록,
+    // 코드·값 짝이 맞지 않는(홀수 줄) 원본을 저장해 둔다. damages.get/originals.read는
+    // 라우트의 try/catch 밖에서 불리므로(이미 400으로 처리됨) 여기서 스텁해도 이 경로를
+    // 타지 않는다 — 실제로 고친 catch 블록을 지나가도록 parseDxf 실패를 직접 유도한다.
+    const { app, drawings, originals } = setup();
+    const drawing = await seed(drawings, { name: 'a.dxf' });
+    await originals.save(drawing.objectKey, Buffer.from('  0', 'utf8'));
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(exportDoc(drawing.id));
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dxf`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'DXF 산출에 실패했습니다.' });
+    expect(JSON.stringify(res.body)).not.toContain('홀수');
+    expect(JSON.stringify(res.body)).not.toContain('코드와 값의 짝');
+  });
 });
