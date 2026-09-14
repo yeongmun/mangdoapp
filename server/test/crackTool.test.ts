@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { polylineLength } from '../public/viewer/geometry.js';
-import { finalizeRect, finalizeStroke, hitHandle, MIN_RECT_PX, MIN_STROKE_PX, pickDamage } from '../public/viewer/crackTool.js';
+import {
+  finalizeRect,
+  finalizeStroke,
+  hitHandle,
+  hitSelectedShape,
+  MIN_RECT_PX,
+  MIN_STROKE_PX,
+  pickDamage,
+} from '../public/viewer/crackTool.js';
 import { validateDamageDoc } from '../public/viewer/damageDoc.js';
 
 type Pt = [number, number];
@@ -145,6 +153,33 @@ describe('hitHandle', () => {
 
   it('사각형이 없으면 null', () => {
     expect(hitHandle([0, 0], null)).toBeNull();
+  });
+});
+
+// 근거: docs/superpowers/specs/2026-09-12-damage-types-design.md §4 "선택한 손상 이동".
+// 선택된 손상의 몸통(사각형은 안쪽, 선은 선 위) 위에서 시작하면 이동 제스처가 된다.
+describe('hitSelectedShape', () => {
+  const rectShape = { kind: 'rect', points: [[0, 0], [40, 0], [40, 20], [0, 20]] as Pt[] };
+  const lineShape = { kind: 'polyline', points: [[0, 0], [40, 0]] as Pt[] };
+
+  it('사각형은 안쪽이면 true', () => {
+    expect(hitSelectedShape([20, 10], rectShape)).toBe(true);
+  });
+
+  it('사각형은 바깥이면 false', () => {
+    expect(hitSelectedShape([200, 200], rectShape)).toBe(false);
+  });
+
+  it('선은 근처(PICK_RADIUS_PX 이내)면 true', () => {
+    expect(hitSelectedShape([20, 5], lineShape)).toBe(true);
+  });
+
+  it('선은 멀면 false', () => {
+    expect(hitSelectedShape([20, 100], lineShape)).toBe(false);
+  });
+
+  it('shape가 null이면 false', () => {
+    expect(hitSelectedShape([0, 0], null)).toBe(false);
   });
 });
 

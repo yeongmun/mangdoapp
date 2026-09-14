@@ -479,6 +479,27 @@ describe('editor', () => {
     expect(canUndo(editor)).toBe(true);
   });
 
+  // 근거: docs/superpowers/specs/2026-09-12-damage-types-design.md §4 "선택한 손상 이동" —
+  // 이동은 measured(사용자가 입력한 물량)를 건드리지 않고 geometry·computed만 다시 계산한다.
+  // main.js의 onTransform(move commit)은 changes에 measured 키를 아예 넣지 않는다 — updateDamage가
+  // 없는 키는 병합에서 건드리지 않는지를 이 테스트로 고정해 둔다.
+  it('updateDamage는 changes에 measured가 없으면 기존 measured를 그대로 둔다(이동 제스처와 같은 패턴)', () => {
+    let editor = createEditor(createEmptyDoc(DRAWING, T0));
+    editor = addDamage(editor, areaDamage('a'), T1);
+    const before = editor.doc.damages[0].measured;
+
+    editor = updateDamage(
+      editor,
+      'a',
+      { geometry: { world: [[1, 1], [3, 1], [3, 2], [1, 2]] }, computed: { lengthDwg: null, areaDwg: 99 } },
+      T2,
+    );
+
+    expect(editor.doc.damages[0].measured).toEqual(before);
+    expect(editor.doc.damages[0].geometry.world).toEqual([[1, 1], [3, 1], [3, 2], [1, 2]]);
+    expect(editor.doc.damages[0].computed.areaDwg).toBe(99);
+  });
+
   it('updateDamage는 없는 id면 같은 editor를 돌려준다', () => {
     const editor = createEditor(createEmptyDoc(DRAWING, T0));
     expect(updateDamage(editor, 'nope', { measured: { count: 1 } }, T1)).toBe(editor);

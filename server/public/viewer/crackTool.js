@@ -14,6 +14,7 @@ import {
   resizeRect,
   rotatePoints,
   simplifyPolyline,
+  translatePoints,
 } from './geometry.js';
 
 export const SIMPLIFY_TOLERANCE_PX = 1.5;
@@ -122,6 +123,15 @@ export function hitHandle(clientPoint, screenRect, sizePx = HANDLE_SIZE_PX) {
   return near(rotate) ? { kind: 'rotate' } : null;
 }
 
+// 선택된 손상의 몸통 위에서 시작했는지 본다 — 사각형은 안쪽(pointInPolygon), 선은 선 근처
+// (pickDamage가 쓰는 것과 같은 거리 기준, PICK_RADIUS_PX). 이동 제스처를 시작할지 정하는 데 쓴다.
+// 근거: docs/superpowers/specs/2026-09-12-damage-types-design.md §4 "선택한 손상 이동".
+export function hitSelectedShape(clientPoint, shape, radiusPx = PICK_RADIUS_PX) {
+  if (!shape) return false;
+  if (shape.kind === 'rect') return pointInPolygon(clientPoint, shape.points);
+  return distanceToPolyline(clientPoint, shape.points) <= radiusPx;
+}
+
 export function createCrackInput({
   viewer,
   container,
@@ -132,7 +142,10 @@ export function createCrackInput({
   // 여기서 이벤트를 삼키지 않고(스크롤/네비게이션 이벤트는 그대로 두고) false를 돌려주는 방식으로 넘긴다.
   isPropsOpen,
   getActiveTypeKind,
-  getSelectedScreenRect,
+  // getSelectedScreenShape(): { kind: 'polyline' | 'rect', points } | null — 선택된 손상의 화면 좌표.
+  // 모서리·회전 핸들 판정(hitHandle)은 kind === 'rect'일 때만 하고, 몸통 이동 판정(hitSelectedShape)은
+  // 두 kind 모두에서 한다.
+  getSelectedScreenShape,
   onDraft,
   onStroke,
   onRect,
@@ -149,6 +162,7 @@ export function createCrackInput({
   const swallowedPointers = new Set();
   // 지금 진행 중인 동작: null | { kind: 'stroke' } | { kind: 'rect', start }
   //   | { kind: 'resize', index, rect } | { kind: 'rotate', rect, center, startAngle }
+  //   | { kind: 'move', start, points }
   let gesture = null;
 
   function toCanvas(event) {
@@ -171,14 +185,23 @@ export function createCrackInput({
     return event.pointerType === 'mouse' && event.button === 0 && isFingerDrawEnabled();
   }
 
+  // 입력 우선순위(설계 §4): ① 선택된 사각형의 모서리·회전 핸들 ② 선택된 손상의 몸통(이동)
+  // ③ 유형이 면형이면 사각형 드래그 ④ 선형이면 획 그리기. 선택하지 않은 상태에서 끌면 ②를
+  // 건너뛰고 그대로 새 손상을 그린다(getSelectedScreenShape가 null을 주므로 hitSelectedShape도
+  // 항상 false).
   function startGesture(point) {
-    const selectedRect = getSelectedScreenRect();
-    const handle = hitHandle(point, selectedRect);
+    const selectedShape = getSelectedScreenShape();
+    const handle = selectedShape && selectedShape.kind === 'rect' ? hitHandle(point, selectedShape.points) : null;
     if (handle) {
+      const rect = selectedShape.points;
       gesture =
         handle.kind === 'corner'
-          ? { kind: 'resize', index: handle.index, rect: selectedRect }
-          : { kind: 'rotate', rect: selectedRect, center: rectCenter(selectedRect), startAngle: angleOf(rectCenter(selectedRect), point) };
+          ? { kind: 'resize', index: handle.index, rect }
+          : { kind: 'rotate', rect, center: rectCenter(rect), startAngle: angleOf(rectCenter(rect), point) };
+      return;
+    }
+    if (hitSelectedShape(point, selectedShape)) {
+      gesture = { kind: 'move', start: point, points: selectedShape.points };
       return;
     }
     if (getActiveTypeKind() === 'area') {
@@ -206,7 +229,14 @@ export function createCrackInput({
       onTransform(resizeRect(gesture.rect, gesture.index, point), 'preview');
       return;
     }
-    onTransform(rotatePoints(gesture.rect, gesture.center, angleOf(gesture.center, point) - gesture.startAngle), 'preview');
+    if (gesture.kind === 'rotate') {
+      onTransform(rotatePoints(gesture.rect, gesture.center, angleOf(gesture.center, point) - gesture.startAngle), 'preview');
+      return;
+    }
+    // move: 시작점에서 지금 점까지의 화면 이동량을 선택된 손상의 모든 점에 더한다.
+    const dx = point[0] - gesture.start[0];
+    const dy = point[1] - gesture.start[1];
+    onTransform(translatePoints(gesture.points, dx, dy), 'preview');
   }
 
   function endGesture(point, cancelled) {
@@ -219,6 +249,7 @@ export function createCrackInput({
       onDraft(null);
       // 취소는 저장하지 않는다 — draft를 지우는 것만으로 화면이 원래 문서로 복원된다.
       if (current.kind === 'resize' || current.kind === 'rotate') onTransform(current.rect, 'cancel');
+      else if (current.kind === 'move') onTransform(current.points, 'cancel');
       return;
     }
     if (current.kind === 'stroke') {
@@ -235,7 +266,19 @@ export function createCrackInput({
       onTransform(resizeRect(current.rect, current.index, point), 'commit');
       return;
     }
-    onTransform(rotatePoints(current.rect, current.center, angleOf(current.center, point) - current.startAngle), 'commit');
+    if (current.kind === 'rotate') {
+      onTransform(rotatePoints(current.rect, current.center, angleOf(current.center, point) - current.startAngle), 'commit');
+      return;
+    }
+    // move: 이동량이 0이면(탭만 하고 뗌) 커밋하지 않고 취소로 끝낸다 — 탭으로 선택만 하는 동작이
+    // 이동 이력을 남기지 않아야 한다.
+    const dx = point[0] - current.start[0];
+    const dy = point[1] - current.start[1];
+    if (dx === 0 && dy === 0) {
+      onTransform(current.points, 'cancel');
+      return;
+    }
+    onTransform(translatePoints(current.points, dx, dy), 'commit');
   }
 
   function onPointerDown(event) {

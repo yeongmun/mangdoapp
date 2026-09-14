@@ -1,6 +1,6 @@
 import { addDamage, canUndo, createEditor, migrateDoc, removeDamage, undo, updateDamage, validateDamageDoc } from './damageDoc.js';
 import { DAMAGE_TYPES, DEFAULT_DAMAGE_TYPE_ID, getDamageType } from './damageTypes.js';
-import { polygonArea } from './geometry.js';
+import { polygonArea, polylineLength } from './geometry.js';
 import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
@@ -185,10 +185,13 @@ async function start() {
 
   const selectedDamage = () => editor.doc.damages.find((damage) => damage.id === selectedId) ?? null;
 
-  function selectedScreenRect() {
+  // 선택된 손상의 화면 좌표 도형. crackTool의 getSelectedScreenShape로 넘긴다 — 모서리·회전 핸들
+  // 판정은 kind === 'rect'일 때만 하고, 몸통을 끌어 옮기는 판정(hitSelectedShape)은 선·사각형
+  // 모두에서 한다(설계 §4 "선택한 손상 이동").
+  function selectedScreenShape() {
     const damage = selectedDamage();
-    if (!damage || damage.geometry.kind !== 'rect') return null;
-    return damage.geometry.world.map((point) => mapper.worldToClient(point));
+    if (!damage) return null;
+    return { kind: damage.geometry.kind, points: damage.geometry.world.map((point) => mapper.worldToClient(point)) };
   }
 
   // 선택 상태를 바꾸는 유일한 곳. 속성창은 선택이 바뀔 때마다 닫는다(다른 손상의 값이 남아있지 않도록).
@@ -245,7 +248,7 @@ async function start() {
     isFingerDrawEnabled: () => fingerDraw,
     isPropsOpen,
     getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
-    getSelectedScreenRect: selectedScreenRect,
+    getSelectedScreenShape: selectedScreenShape,
     onDraft: (draft) => overlay.setDraft(draft),
     onTap: handleTap,
     onStroke: (points) => {
@@ -278,29 +281,32 @@ async function start() {
       setSelection(null);
       apply(addDamage(editor, damage, nowIso()));
     },
-    onTransform: (screenRect, status) => {
+    // screenPoints: 화면 좌표 점들. 크기 조절·회전은 항상 사각형(네 점)이고, 이동은 선택된 손상의
+    // geometry.kind를 그대로 따른다(선이면 여러 점, 사각형이면 네 점) — 점 개수를 가정하지 않는다.
+    onTransform: (screenPoints, status) => {
+      const damage = selectedDamage();
       if (status === 'preview') {
-        // activeId를 같이 넘겨, 움직이는 draft 밑에 손 떼기 전 원래 사각형·핸들이 겹쳐 보이지 않게 한다.
-        overlay.setDraft({ kind: 'rect', points: screenRect, activeId: selectedId });
+        // activeId를 같이 넘겨, 움직이는 draft 밑에 손 떼기 전 원래 도형·핸들이 겹쳐 보이지 않게 한다.
+        const kind = damage ? damage.geometry.kind : 'rect';
+        overlay.setDraft({ kind, points: screenPoints, activeId: selectedId });
         return;
       }
       overlay.setDraft(null);
       // 취소는 아무것도 저장하지 않는다 — draft를 지운 것만으로 원래 문서 그대로 복원된다.
       if (status === 'cancel') return;
-      const damage = selectedDamage();
       if (!damage) return;
-      const world = screenRect.map(([x, y]) => mapper.clientToWorld(x, y));
+      const world = screenPoints.map(([x, y]) => mapper.clientToWorld(x, y));
       if (world.some((point) => point === null || !isFinitePoint(point))) return;
       const dwgPoints = world.map((point) => mapper.worldToDwg(point));
       const dwg = dwgPoints.every((point) => point !== null && isFinitePoint(point)) ? dwgPoints : null;
-      apply(
-        updateDamage(
-          editor,
-          damage.id,
-          { geometry: { world, dwg }, computed: { lengthDwg: null, areaDwg: dwg ? polygonArea(dwg) : null } },
-          nowIso(),
-        ),
-      );
+      // computed는 선택된 손상의 geometry.kind에 따라 lengthDwg 또는 areaDwg만 채운다.
+      // measured(사용자가 입력한 물량)는 여기서 건드리지 않는다 — updateDamage는 changes에 없는
+      // 키를 그대로 둔다(damageDoc.test.ts의 "changes에 measured가 없으면..." 테스트로 고정해 둠).
+      const computed =
+        damage.geometry.kind === 'polyline'
+          ? { lengthDwg: dwg ? polylineLength(dwg) : null, areaDwg: null }
+          : { lengthDwg: null, areaDwg: dwg ? polygonArea(dwg) : null };
+      apply(updateDamage(editor, damage.id, { geometry: { world, dwg }, computed }, nowIso()));
     },
   });
 
