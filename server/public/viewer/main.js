@@ -5,7 +5,7 @@ import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
-import { formatQuantity, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
+import { formatQuantity, parsePhotoNumbers, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
 
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
@@ -319,6 +319,9 @@ async function start() {
     $('countInput').value = damage.measured.count ?? '';
     $('noteInput').value = damage.attrs.note;
     $('statusInput').value = damage.attrs.statusText;
+    // 사진번호는 모든 유형에서 입력받는다(statusRow와 달리 숨기지 않는다). 저장된 배열을
+    // 쉼표로 이어 보여주고, 저장할 때 parsePhotoNumbers로 다시 나눈다(설계 9.1~9.2).
+    $('photoInput').value = damage.attrs.photoNumbers.join(', ');
     // 참고값은 도면 단위(설계 8장 미해결)가 정해질 때까지 숨긴다. 도면 단위를 모르는 채 그대로 보여주면
     // (예: mm 도면의 1.8㎡가 1800000.0으로) 실제 크기와 자릿수가 크게 달라 보여 오히려 오해를 준다.
     $('computedHint').hidden = true;
@@ -417,6 +420,9 @@ async function start() {
             note: $('noteInput').value.trim(),
             // 손상현황은 기타에서만 저장한다. 다른 유형에 값이 남아 있으면 검증에서 막힌다.
             statusText: type.id === 'etc' ? $('statusInput').value.trim() : '',
+            // 사진번호는 거부할 입력이 없다 — 어떤 문자열이든 parsePhotoNumbers의 결과가 유효하므로
+            // width·length·count와 달리 검증 오류 경로가 없다.
+            photoNumbers: parsePhotoNumbers($('photoInput').value),
           },
         },
         nowIso(),
