@@ -35,9 +35,9 @@ function compareId(a, b) {
   return a > b ? 1 : 0;
 }
 
-// 번호 규칙은 경계상자의 중심과 높이만 본다. 좌표계는 geometry.world 하나로 통일한다
+// 번호 규칙은 경계상자의 중심만 본다. 좌표계는 geometry.world 하나로 통일한다
 // (모든 손상이 항상 갖고 있고, 도면을 확대·회전해도 값이 변하지 않는다).
-function centerAndHeight(damage) {
+function centerOf(damage) {
   const world = Array.isArray(damage?.geometry?.world) ? damage.geometry.world : [];
   let minX = Infinity;
   let maxX = -Infinity;
@@ -50,46 +50,25 @@ function centerAndHeight(damage) {
     minY = Math.min(minY, point[1]);
     maxY = Math.max(maxY, point[1]);
   }
-  // 좌표가 없거나 숫자가 아니면 원점·높이 0으로 본다. 번호를 못 받는 손상이 생기면
+  // 좌표가 없거나 숫자가 아니면 원점으로 본다. 번호를 못 받는 손상이 생기면
   // 화면에 라벨이 비고 물량표에서도 빠지므로, 값을 정해서라도 번호는 매긴다.
-  if (minX === Infinity) return { x: 0, y: 0, height: 0 };
-  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, height: maxY - minY };
+  if (minX === Infinity) return { x: 0, y: 0 };
+  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
 }
 
-// 줄의 허용 폭. 도면마다 손상 크기가 달라 고정값을 쓰면 어떤 도면에서는 전부 한 줄이 되고
-// 어떤 도면에서는 전부 따로 놀게 된다.
-export function medianHeight(damages) {
-  const list = Array.isArray(damages) ? damages : [];
-  if (list.length === 0) return 0;
-  const heights = list.map((damage) => centerAndHeight(damage).height).sort((a, b) => a - b);
-  const middle = Math.floor(heights.length / 2);
-  return heights.length % 2 === 1 ? heights[middle] : (heights[middle - 1] + heights[middle]) / 2;
-}
-
-// 도면 위 위치로 번호를 정한다. 같은 손상 집합이면 넣은 순서와 상관없이 항상 같은 번호가 나온다.
+// 도면 위 위치로 번호를 정한다(왼쪽 우선, 2026-09-14 변경). 왼쪽(X가 작은 쪽)이 앞번호,
+// X가 같으면 위쪽(Y가 큰 쪽)이 앞, 그것도 같으면 id 오름차순. 사내 망도가 교량 입면도처럼
+// 가로로 길어 줄을 나누지 않고 왼쪽부터 훑는 편이 실제 보는 순서와 맞는다(설계 3.1).
+// 같은 손상 집합이면 넣은 순서와 상관없이 항상 같은 번호가 나온다.
 export function computeNumbers(damages) {
   const list = Array.isArray(damages) ? damages : [];
-  const tolerance = medianHeight(list);
-  // 위(Y가 큰 쪽)에서 아래로. 이 정렬 덕분에 남은 것 중 첫 번째가 언제나 다음 줄의 기준이 된다.
-  let remaining = list
-    .map((damage) => ({ id: String(damage?.id), ...centerAndHeight(damage) }))
-    .sort((a, b) => b.y - a.y || a.x - b.x || compareId(a.id, b.id));
+  const sorted = list
+    .map((damage) => ({ id: String(damage?.id), ...centerOf(damage) }))
+    .sort((a, b) => a.x - b.x || b.y - a.y || compareId(a.id, b.id));
 
   const numbers = new Map();
   let next = 1;
-  while (remaining.length > 0) {
-    const rowY = remaining[0].y;
-    const row = [];
-    const rest = [];
-    for (const entry of remaining) {
-      if (rowY - entry.y <= tolerance) row.push(entry);
-      else rest.push(entry);
-    }
-    // 한 줄 안에서는 왼쪽부터. X가 같으면 위쪽이 앞, 그것도 같으면 id 오름차순.
-    row.sort((a, b) => a.x - b.x || b.y - a.y || compareId(a.id, b.id));
-    for (const entry of row) numbers.set(entry.id, next++);
-    remaining = rest;
-  }
+  for (const entry of sorted) numbers.set(entry.id, next++);
   return numbers;
 }
 
