@@ -159,6 +159,13 @@ export function damageEntities(damage: unknown, alloc: HandleAllocator, owner: s
     )) {
       pairs.push(...circleEntity(baseFor(alloc, owner), center, radius));
     }
+  } else if (decoration) {
+    // damageTypes.js의 decoration은 string으로 넓혀지므로(타입 주석 참고) 새 kind가 추가되면
+    // 여기서 캐스팅이 조용히 아무 것도 안 그리고 넘어갈 수 있다 — 기호가 빠진 도면을 산출해
+    // 버리기 전에 알아챌 수 있도록 경고를 남긴다.
+    console.warn(
+      `[damageEntities] 알 수 없는 decoration.kind이라 기호를 그리지 않습니다: ${JSON.stringify((decoration as { kind?: unknown }).kind)}`,
+    );
   }
 
   return pairs;

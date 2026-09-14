@@ -43,6 +43,11 @@ export function formatInt(value: number): string {
   return String(Math.trunc(value) + 0);
 }
 
+// R6(미룬 항목): 파일 전체에 줄바꿈 방식 하나만 적용한다고 본다 — \r\n이 한 번이라도 있으면
+// 파일 전체를 CRLF로, 없으면 LF로 본다. 실제 사내 파일은 한 방식으로 일관되어 지금은 나타나지
+// 않지만, 두 방식이 섞인 파일(예: 대부분 LF에 CRLF 한 줄)을 다시 쓰면 원래 LF였던 줄도 선택된
+// 방식(CRLF)으로 바뀐다 — 원본 바이트가 달라지지만 캐드는 그래도 연다. 아래 테스트가 이 동작을
+// 고정해 둔다.
 export function parseDxf(text: string): DxfDocument {
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   const lines = text.split(/\r\n|\n/);
@@ -170,6 +175,10 @@ export class HandleAllocator {
 // HEADER 구역은 스캔에서 뺀다 — $HANDSEED 자신도 그룹 코드 5로 저장되어 있어서,
 // 그걸 엔티티 핸들로 잘못 세면 최대값이 부풀어 $HANDSEED보다 하나 큰 값에서
 // 시작해 버린다(실제 핸들은 비어 있는 값에서).
+// 순수 16진 문자열만 핸들로 본다. parseInt는 '12G4' 같은 값을 앞부분만 읽어 0x12로
+// 잘못 파싱한다 — 잘못된 값을 통째로 걸러 최댓값 계산에서 빼는 편이 안전하다.
+const HEX_HANDLE = /^[0-9A-Fa-f]+$/;
+
 export function createHandleAllocator(doc: DxfDocument): HandleAllocator {
   const seed = Number.parseInt(headerValue(doc, '$HANDSEED')?.trim() ?? '', 16);
   const header = findSection(doc, 'HEADER');
@@ -178,8 +187,10 @@ export function createHandleAllocator(doc: DxfDocument): HandleAllocator {
     if (header && i >= header.start && i <= header.end) continue;
     const p = doc.pairs[i];
     if (p.code !== 5 && p.code !== 105) continue;
-    const value = Number.parseInt(p.value.trim(), 16);
-    if (Number.isFinite(value) && value > max) max = value;
+    const raw = p.value.trim();
+    if (!HEX_HANDLE.test(raw)) continue;
+    const value = Number.parseInt(raw, 16);
+    if (value > max) max = value;
   }
   return new HandleAllocator(Math.max(Number.isFinite(seed) ? seed : 0, max + 1));
 }

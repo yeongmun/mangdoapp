@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HandleAllocator, type DxfPair } from '../src/export/dxfDocument.js';
 import {
   damageEntities,
@@ -6,6 +6,29 @@ import {
   dwgPointsOf,
   rebarSymbolSegments,
 } from '../src/export/damageEntities.js';
+
+// damageEntities.ts는 '../../public/viewer/damageTypes.js'(= server/public/viewer/damageTypes.js)를
+// 읽는다. 알 수 없는 decoration.kind는 고정 유형 목록으로는 만들 수 없으므로, 이 파일에서만
+// getDamageType을 가로채 그런 유형을 하나 흉내 낸다. 다른 id는 실제 구현으로 넘긴다.
+vi.mock('../public/viewer/damageTypes.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../public/viewer/damageTypes.js')>();
+  return {
+    ...actual,
+    getDamageType: (id: unknown) =>
+      id === 'unknown_decoration'
+        ? {
+            id: 'unknown_decoration',
+            label: '테스트',
+            kind: 'area',
+            fill: null,
+            decoration: { kind: 'triangle' },
+            layer: '신규손상',
+            colorIndex: 1,
+            quantityUnit: 'm2',
+          }
+        : actual.getDamageType(id as string),
+  };
+});
 
 type Pt = [number, number];
 
@@ -166,5 +189,16 @@ describe('damageEntities', () => {
     const pairs = damageEntities(damage('없는유형', 'rect', RECT), new HandleAllocator(0x100), owner);
     expect(entityTypes(pairs)).toEqual(['LWPOLYLINE']);
     expect(valuesOf(pairs, 70)).toEqual(['     1']);
+  });
+
+  // R17: rebar·circles가 아닌 decoration.kind가 들어오면(새 유형 추가 등) 캐스팅이 조용히
+  // 기호를 빼먹지 않도록 경고를 남긴다.
+  it('알 수 없는 decoration.kind는 경고를 남기고 테두리만 그린다', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pairs = damageEntities(damage('unknown_decoration', 'rect', RECT), new HandleAllocator(0x100), owner);
+    expect(entityTypes(pairs)).toEqual(['LWPOLYLINE']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('triangle');
+    warn.mockRestore();
   });
 });

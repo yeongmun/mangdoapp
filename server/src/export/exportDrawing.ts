@@ -23,7 +23,7 @@ import {
 } from './dxfDocument.js';
 import type { Point } from './dxfEntities.js';
 import { damageLabel, labelEntities } from './labelPlacement.js';
-import { fillTable, rowValuesOf, type TableRow } from './tableFill.js';
+import { COLUMN_COUNT, fillTable, rowValuesOf, type TableRow } from './tableFill.js';
 import { buildGrid, findTableCandidates, hasUniformScale, nearestTable } from './tableGrid.js';
 
 export class ExportError extends Error {
@@ -48,8 +48,6 @@ export interface ExportResult {
 
 // mm(4), 없음(0), 인치(1)만 허용한다. 인치는 캐드 기본값이 남은 것이라 실제로는 mm다(스펙 10장).
 const ALLOWED_INSUNITS = new Set([0, 1, 4]);
-
-const BLANK_ROW_CELLS = 8;
 
 function boundsCenter(pointGroups: Point[][]): Point {
   let minX = Infinity;
@@ -143,7 +141,7 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
       const rows: TableRow[] = [];
       for (let number = 1; number <= maxNumber; number++) {
         const damage = byNumber.get(number);
-        rows.push(damage !== undefined ? rowValuesOf(damage, number) : { number, cells: new Array(BLANK_ROW_CELLS).fill('') });
+        rows.push(damage !== undefined ? rowValuesOf(damage, number) : { number, cells: new Array(COLUMN_COUNT).fill('') });
       }
       pairs.push(...fillTable(grid, rows, alloc, owner));
     }

@@ -59,6 +59,15 @@ describe('parseDxf / serializeDxf', () => {
   it('코드가 숫자가 아니면 던진다', () => {
     expect(() => parseDxf('abc\nSECTION\n')).toThrow(/코드가 숫자가 아닙니다/);
   });
+
+  // R6: 파일에 \r\n이 하나라도 있으면 전체를 CRLF로 본다. 원래 LF였던 줄도 다시 쓰면
+  // CRLF로 바뀐다(원본 바이트가 바뀌지만 캐드는 그래도 연다) — 현재 동작을 고정해 둔다.
+  it('섞인 줄바꿈은 하나로 통일된다 (현재 동작을 고정)', () => {
+    const mixed = '  0\nSECTION\n  2\r\nHEADER\n  0\nENDSEC\n';
+    const doc = parseDxf(mixed);
+    expect(doc.eol).toBe('\r\n');
+    expect(serializeDxf(doc)).toBe('  0\r\nSECTION\r\n  2\r\nHEADER\r\n  0\r\nENDSEC\r\n');
+  });
 });
 
 describe('formatReal / formatInt', () => {
@@ -159,6 +168,37 @@ describe('HandleAllocator', () => {
     const bumped = parseDxf((await templateText()).replace('$HANDSEED\n  5\n200\n', '$HANDSEED\n  5\n10\n'));
     // $HANDSEED가 최대 핸들보다 작으면 최대 핸들 + 1에서 시작한다
     expect(createHandleAllocator(bumped).next()).toBe('82');
+  });
+
+  // R16(미룬 항목): parseInt는 '12G4' 같은 잘못된 16진 문자열을 '12'까지만 읽어 부분 파싱한다.
+  // 엄격한 정규식 검사로 바꿔 이런 값은 통째로 무시해야 한다.
+  function docWithHandle(handle: string, handseed = '1'): string {
+    return [
+      '  0', 'SECTION', '  2', 'HEADER',
+      '  9', '$HANDSEED', '  5', handseed,
+      '  0', 'ENDSEC',
+      '  0', 'SECTION', '  2', 'ENTITIES',
+      '  0', 'LINE', '  5', handle,
+      '  0', 'ENDSEC',
+      '  0', 'EOF',
+    ].join('\n') + '\n';
+  }
+
+  it('소문자 핸들도 16진수로 읽는다 (abc → 0xABC)', () => {
+    const doc = parseDxf(docWithHandle('abc', '1'));
+    expect(createHandleAllocator(doc).next()).toBe('ABD');
+  });
+
+  it('앞자리 0이 있는 핸들도 16진수로 읽는다 (00A1 → 0xA1)', () => {
+    const doc = parseDxf(docWithHandle('00A1', '1'));
+    expect(createHandleAllocator(doc).next()).toBe('A2');
+  });
+
+  it('잘못된 16진 핸들은 부분 파싱하지 않고 통째로 무시한다', () => {
+    // 옛 parseInt였다면 '12G4'를 '12'(0x12=18)까지 읽어 최댓값이 올라갔을 것이다.
+    // 엄격 검사에서는 이 핸들이 무시되어 $HANDSEED(5)에서 그대로 시작한다.
+    const doc = parseDxf(docWithHandle('12G4', '5'));
+    expect(createHandleAllocator(doc).next()).toBe('5');
   });
 });
 

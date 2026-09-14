@@ -19,7 +19,7 @@ export const TABLE_COLUMN = {
   unit: 7,
 } as const;
 
-const COLUMN_COUNT = 8;
+export const COLUMN_COUNT = 8;
 
 export interface TableRow {
   number: number;

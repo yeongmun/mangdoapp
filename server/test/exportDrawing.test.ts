@@ -157,6 +157,46 @@ describe('exportDamagesToDxf', () => {
     expect(() => exportDamagesToDxf(text, [damage('a', 'crack', 0, RECT_A)])).toThrow(/ENTITIES 구역/);
   });
 
+  // R16(미룬 항목): ExportError 가드 3종이 실제로 검증되지 않았다. 손으로 쓴 최소 DXF가 아니라
+  // 픽스처에서 해당 구역·표·레코드만 들어낸 파생 픽스처로, 정확한 한글 문구까지 확인한다.
+  describe('ExportError 가드 3종 (픽스처에서 해당 부분을 들어낸 파생 픽스처)', () => {
+    it('ENTITIES 구역이 없으면 정확한 문구로 던진다', async () => {
+      const text = await template();
+      const start = text.indexOf('  0\nSECTION\n  2\nENTITIES\n');
+      const end = text.indexOf('  0\nENDSEC\n  0\nEOF\n');
+      expect(start).toBeGreaterThan(0);
+      expect(end).toBeGreaterThan(start);
+      const withoutEntities = text.slice(0, start) + text.slice(end + '  0\nENDSEC\n'.length);
+      expect(() => exportDamagesToDxf(withoutEntities, [damage('a', 'crack', 0, RECT_A)])).toThrow(
+        'DXF 파일에서 ENTITIES 구역을 찾을 수 없습니다',
+      );
+    });
+
+    it('LAYER 표가 없으면 정확한 문구로 던진다', async () => {
+      const text = await template();
+      const start = text.indexOf('  0\nTABLE\n  2\nLAYER\n');
+      const endtab = text.indexOf('  0\nENDTAB\n', start);
+      expect(start).toBeGreaterThan(0);
+      expect(endtab).toBeGreaterThan(start);
+      const withoutLayer = text.slice(0, start) + text.slice(endtab + '  0\nENDTAB\n'.length);
+      expect(() => exportDamagesToDxf(withoutLayer, [damage('a', 'crack', 0, RECT_A)])).toThrow(
+        'DXF 파일에서 LAYER 표를 찾을 수 없습니다',
+      );
+    });
+
+    it('모델 공간 블록 레코드(*Model_Space)가 없으면 정확한 문구로 던진다', async () => {
+      const text = await template();
+      const start = text.indexOf('  0\nBLOCK_RECORD\n  5\n1F\n');
+      const end = text.indexOf('  0\nBLOCK_RECORD\n  5\n30\n');
+      expect(start).toBeGreaterThan(0);
+      expect(end).toBeGreaterThan(start);
+      const withoutModelSpace = text.slice(0, start) + text.slice(end);
+      expect(() => exportDamagesToDxf(withoutModelSpace, [damage('a', 'crack', 0, RECT_A)])).toThrow(
+        'DXF 파일에서 모델 공간 블록 레코드를 찾을 수 없습니다',
+      );
+    });
+  });
+
   it('CRLF 원본은 CRLF로 돌려준다', async () => {
     const text = (await template()).replace(/\n/g, '\r\n');
     const result = exportDamagesToDxf(text, [damage('a', 'crack', 0, RECT_A)]);
@@ -175,28 +215,33 @@ describe('exportDamagesToDxf', () => {
     expect(result.dxfText).not.toContain('들뜸\n파손');
   });
 
-  it('가운데 번호가 도면 좌표가 없어 건너뛴 손상이어도 그 뒤 번호의 빈 행과 넘침 표가 그려진다', async () => {
-    // 표 데이터 행 수는 이 픽스처에서 4행(90mm씩). 번호 1은 빠지고(도면좌표 없음), 2~5는 도면좌표가
-    // 있어 5번이 넘침 표(2번째 표)로 가야 한다. 2번 손상이 표에서 빠지면 넘침 표 자체가 그려지지
-    // 않을 수 있으므로 그 상황을 구체적으로 검사한다.
+  // R9(미룬 항목): 이전 테스트(번호 하나만 건너뜀)는 "rows에 실제로 있는 번호로만 넘침 표를
+  // 그리는" 잘못된 구현도 우연히 통과시킨다 — 건너뛴 번호의 앞뒤에 같은 표에 속한 번호가 남아
+  // 있으면 그 표는 어차피 그려지기 때문이다. 구별되는 시나리오는 표 하나(3행, tableFill.test.ts
+  // 실측) 전체의 번호가 통째로 건너뛰는 경우다: 1~3(있음) / 4~6(전부 건너뜀=두 번째 표 전체) /
+  // 7~9(있음). 두 번째 표의 번호가 하나도 rows에 "있는" 채로 안 들어오면(잘못된 구현) 그 표의
+  // 틀 자체가 안 그려지고, 세 번째 표(7~9)는 원래 자리(tableIndex=2)에 그대로 남는다 — 즉
+  // 세 번째 표 위치는 이 버그로는 흔들리지 않으므로, 반드시 두 번째 표 틀 자체를 검사해야 한다.
+  it('넘침 표 하나 전체의 번호가 통째로 건너뛰어도 그 표의 틀이 그려진다', async () => {
     const damages = [
-      damage('n1', 'spalling', 0, null, { width: 1, length: 1, count: 1 }), // 번호 1, dwg 없음 → 건너뜀
-      damage('n2', 'spalling', 100, RECT_A, { width: 1, length: 1, count: 1 }), // 번호 2
-      damage('n3', 'spalling', 200, RECT_A, { width: 1, length: 1, count: 1 }), // 번호 3
-      damage('n4', 'spalling', 300, RECT_A, { width: 1, length: 1, count: 1 }), // 번호 4
-      damage('n5', 'spalling', 400, RECT_A, { width: 1, length: 1, count: 1 }), // 번호 5 → 넘침 표
+      ...[1, 2, 3].map((n) => damage(`p${n}`, 'spalling', n * 10, RECT_A, { width: 1, length: 1, count: 1 })),
+      ...[4, 5, 6].map((n) => damage(`s${n}`, 'spalling', n * 10, null, { width: 1, length: 1, count: 1 })),
+      ...[7, 8, 9].map((n) => damage(`q${n}`, 'spalling', n * 10, RECT_A, { width: 1, length: 1, count: 1 })),
     ];
     const result = exportDamagesToDxf(await template(), damages);
-    expect(result.skipped).toBe(1);
+    expect(result.skipped).toBe(3);
     expect(result.warnings).toEqual([]);
 
     const doc = parseDxf(result.dxfText);
-    // 넘침 표의 틀(번호 열의 '5' 글자)이 그려져 있어야 한다 — 2번 손상이 빠졌다는 이유로
-    // 넘침 표 판단이 흔들리면 이 글자가 없다.
-    const texts = doc.pairs
+    const numberTexts = doc.pairs
       .map((p, i) => (p.code === 0 && p.value === 'TEXT' ? i : -1))
       .filter((i) => i >= 0)
-      .map((i) => doc.pairs.slice(i, i + 20).find((p) => p.code === 1)!.value);
-    expect(texts).toContain('5');
+      .map((i) => doc.pairs.slice(i, i + 20).find((p) => p.code === 1)!.value)
+      .filter((t) => /^\d+$/.test(t));
+
+    // 두 번째 표(4~6)는 손상이 전부 건너뛰었어도 번호 칸은 표 틀과 함께 인쇄된다.
+    expect(numberTexts).toEqual(expect.arrayContaining(['4', '5', '6']));
+    // 세 번째 표(7~9)도 제자리에 그려진다.
+    expect(numberTexts).toEqual(expect.arrayContaining(['7', '8', '9']));
   });
 });
