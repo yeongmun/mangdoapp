@@ -25,6 +25,9 @@ server/data/
 # macOS
 .DS_Store
 
+# 컨트롤러 작업공간 — 절대 커밋하지 않는다
+.superpowers/
+
 # 사내 도면 원본은 커밋하지 않는다 (치수는 스펙에 적어 둔다)
 *.dwg
 *.dxf
