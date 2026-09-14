@@ -151,6 +151,9 @@ export function dimensionTextOf(damage) {
 
 // 도면 라벨의 첫 줄: 손상 이름. 폭 구간을 붙이지 않는다.
 // statusTextOf와 다르다 — 구간이 붙은 이름은 물량표에서 쓴다.
+// 예외: 균열(crack)은 이름을 아예 빼고 번호 원만 그린다(사내 망도 `(17) 0.2/1.5` 표기와 같음).
+// 균열/백태(crack_efflorescence)는 같은 균열류(quantityUnit 'm')지만 이름을 그대로 둔다 —
+// 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2.
 export function drawingNameOf(damage) {
   const type = getDamageType(damage?.type);
   if (!type) return String(damage?.type ?? '');
@@ -158,7 +161,8 @@ export function drawingNameOf(damage) {
     const written = typeof damage?.attrs?.statusText === 'string' ? damage.attrs.statusText.trim() : '';
     return written === '' ? type.label : written;
   }
-  // 균열류도 구간 없이 유형 이름만 돌려준다
+  if (type.id === 'crack') return '';
+  // 균열류(균열/백태 포함)도 구간 없이 유형 이름만 돌려준다
   return type.label;
 }
 

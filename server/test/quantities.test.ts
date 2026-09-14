@@ -316,8 +316,13 @@ describe('dimensionTextOf', () => {
 });
 
 describe('drawingNameOf', () => {
-  it('균열류(quantityUnit이 m)는 유형 이름 그대로, 구간 없이', () => {
-    expect(drawingNameOf(crack('a', { width: 0.2, length: null, count: null }))).toBe('균열');
+  // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2 예외.
+  // 균열(crack)만 이름을 빼고 번호 원만 그린다 — 사내 망도의 `(17) 0.2/1.5` 표기와 같다.
+  it('균열(crack)은 이름 없이 빈 문자열을 돌려준다', () => {
+    expect(drawingNameOf(crack('a', { width: 0.2, length: null, count: null }))).toBe('');
+  });
+
+  it('균열/백태(crack_efflorescence)는 균열류지만 이름을 그대로 둔다(구간 없이)', () => {
     const ceType = {
       id: 'a',
       type: 'crack_efflorescence',

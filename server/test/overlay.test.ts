@@ -94,6 +94,21 @@ describe('describeDamageRender', () => {
   });
 
   it('이름은 drawingNameOf(폭 구간 없이), 치수는 dimensionTextOf를 그대로 쓴다', () => {
+    const crackEfflorescence = {
+      id: 'a',
+      type: 'crack_efflorescence',
+      geometry: { kind: 'polyline', world: [] },
+      measured: { width: 0.2, length: 1.5, count: 1 },
+      attrs: { note: '', statusText: '' },
+    };
+    const plan = describeDamageRender(crackEfflorescence, null, 17);
+    expect(plan.name).toBe('균열/백태');
+    expect(plan.dimension).toBe('0.2/1.5');
+    expect(plan.number).toBe(17);
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2 예외.
+  it('균열(crack)은 이름이 빈 문자열이다 — 라벨은 번호 원만 그린다', () => {
     const crack = {
       id: 'a',
       type: 'crack',
@@ -102,9 +117,8 @@ describe('describeDamageRender', () => {
       attrs: { note: '', statusText: '' },
     };
     const plan = describeDamageRender(crack, null, 17);
-    expect(plan.name).toBe('균열');
+    expect(plan.name).toBe('');
     expect(plan.dimension).toBe('0.2/1.5');
-    expect(plan.number).toBe(17);
   });
 
   it('채우기가 있는 면형은 fillPattern과 fillSpacingMm을 함께 준다', () => {
@@ -338,10 +352,18 @@ describe('labelLayout', () => {
     expect(layout.lines).toEqual([{ x: 100, y: 50, text: '균열/백태', anchor: 'middle' }]);
   });
 
-  it('이름이 빈 문자열이면 첫 줄을 그리지 않는다', () => {
+  // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2 예외(균열 라벨).
+  // 이름이 없어도 번호가 있으면 번호 원은 그린다 — 이름·번호가 둘 다 없을 때만 첫 줄을 건너뛴다.
+  it('이름이 없어도 번호가 있으면 번호 원만 가운데에 그린다', () => {
     const layout = labelLayout({ anchor, name: '', dimension: '0.2/0.8', number: 17, fontPx, circleRPx });
-    expect(layout.circle).toBeNull();
-    expect(layout.lines).toEqual([{ x: 100, y: 50, text: '0.2/0.8', anchor: 'middle' }]);
+    expect(layout.circle).not.toBeNull();
+    expect(layout.circle!.r).toBe(circleRPx);
+    // 이름이 없으므로 원의 폭만으로 가운데 정렬 — 원 중심이 anchor.x와 같다.
+    expect(layout.circle!.cx).toBeCloseTo(anchor[0], 6);
+    expect(layout.lines.map((l) => l.text)).toEqual(['17', '0.2/0.8']);
+    const numberLine = layout.lines.find((l) => l.text === '17')!;
+    expect(numberLine.anchor).toBe('middle');
+    expect(numberLine.x).toBeCloseTo(anchor[0], 6);
   });
 
   it('둘째 줄(치수)이 빈 문자열이면 그리지 않는다', () => {
@@ -393,8 +415,14 @@ describe('labelLayout', () => {
     expect(layout.circle!.cy).toBeCloseTo(nameLine.y - fontPx * 0.35, 6);
   });
 
-  it('이름도 치수도 없으면 아무것도 그리지 않는다', () => {
+  it('이름·치수가 없어도 번호가 있으면 번호 원만 그린다', () => {
     const layout = labelLayout({ anchor, name: '', dimension: '', number: 1, fontPx, circleRPx });
+    expect(layout.circle).not.toBeNull();
+    expect(layout.lines).toEqual([{ x: layout.circle!.cx, y: anchor[1], text: '1', anchor: 'middle' }]);
+  });
+
+  it('이름·번호가 둘 다 없으면 아무것도 그리지 않는다', () => {
+    const layout = labelLayout({ anchor, name: '', dimension: '', number: null, fontPx, circleRPx });
     expect(layout.circle).toBeNull();
     expect(layout.lines).toEqual([]);
   });
