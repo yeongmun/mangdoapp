@@ -1,0 +1,4 @@
+# DXF 테스트 픽스처는 줄 끝(LF/CRLF) 자체가 테스트 대상이다.
+# core.autocrlf가 켜진 환경(Windows)에서 체크아웃할 때 조용히 CRLF로
+# 바뀌면 안 되므로 LF로 고정한다.
+server/test/fixtures/*.dxf text eol=lf

@@ -50,8 +50,8 @@ describe('DAMAGE_TYPES', () => {
     ]);
     expect(summary).toEqual([
       ['crack', '균열', 'line', null],
-      ['map_crack', '망상균열', 'area', 'NET'],
-      ['breakage', '파손', 'area', null],
+      ['map_crack', '망상균열', 'area', 'ANCHORLK'],
+      ['breakage', '파손', 'area', 'ANSI33'],
       ['segregation', '재료분리', 'area', 'CORK'],
       ['delamination', '박리', 'area', 'ANSI31'],
       ['spalling', '박락', 'area', 'ANSI37'],
@@ -77,7 +77,8 @@ describe('DAMAGE_TYPES', () => {
 
   it('해치 축척과 무늬 간격은 스펙과 같다', () => {
     const hatchSpec = [
-      ['map_crack', 'NET', 50, 3.175 * 50],
+      ['map_crack', 'ANCHORLK', 50, 3.952854 * 50],
+      ['breakage', 'ANSI33', 50, 6.35 * 50],
       ['segregation', 'CORK', 35, 3.175 * 35],
       ['delamination', 'ANSI31', 50, 3.175 * 50],
       ['spalling', 'ANSI37', 60, 3.175 * 60],
@@ -92,12 +93,20 @@ describe('DAMAGE_TYPES', () => {
     }
   });
 
-  it('선·원 도형 유형만 decoration을 갖고, 숫자는 아직 비어 있다', () => {
+  it('기호 유형의 decoration은 사내 망도 실측 치수를 담는다', () => {
     const withDecoration = DAMAGE_TYPES.filter((t: { decoration: unknown }) => t.decoration !== null);
     expect(withDecoration.map((t: { id: string }) => t.id)).toEqual(['rebar_exposure', 'crack_efflorescence']);
-    for (const type of withDecoration) {
-      expect(type.decoration).toEqual({ kind: 'circles', diameterMm: null, spacingMm: null });
-    }
+    expect(getDamageType('rebar_exposure')?.decoration).toEqual({
+      kind: 'rebar',
+      lineGapMm: 57.4,
+      crossSizeMm: 212,
+    });
+    expect(getDamageType('crack_efflorescence')?.decoration).toEqual({
+      kind: 'circles',
+      diameterMm: 54.4,
+      spacingMm: 158,
+      offsetMm: 77,
+    });
   });
 });
 

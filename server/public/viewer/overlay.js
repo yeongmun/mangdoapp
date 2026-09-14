@@ -37,7 +37,9 @@ const ASCII_CHAR_WIDTH_FACTOR = 0.55;
 const WIDE_CHAR_WIDTH_FACTOR = 1.0;
 const CIRCLE_TEXT_GAP_FACTOR = 0.5; // 원과 이름 사이 간격 (원 반지름의 배수)
 const LINE_GAP_FACTOR = 1.3; // 이름줄~치수줄 간격 (글자 높이의 배수)
-const BASELINE_CENTER_FACTOR = 0.35; // 텍스트 베이스라인에서 원 중심까지 거리 (글자 높이의 배수)
+// 텍스트 베이스라인에서 원 중심까지 거리 (글자 높이의 배수).
+// 산출 DXF는 TEXT를 중간 정렬(73=2)로 놓으므로 이 값을 그대로 쓴다 — server/src/export/labelPlacement.ts
+export const BASELINE_CENTER_FACTOR = 0.35;
 
 function distance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -163,12 +165,17 @@ export const HATCH_PATTERNS = {
   ANSI31: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth)],
   ANSI33: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth), line(0, size / 2, size / 2, 0, strokeWidth)],
   ANSI37: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth), line(0, 0, size, size, strokeWidth)],
-  NET: (size, strokeWidth) => [line(0, 0, size, 0, strokeWidth), line(0, 0, 0, size, strokeWidth)],
   CORK: (size, strokeWidth) => [line(0, size, size, 0, strokeWidth), dot(size / 2, size / 2, 1)],
   TRIANG: (size, strokeWidth) => [
     line(0, size, size / 2, 0, strokeWidth),
     line(size / 2, 0, size, size, strokeWidth),
     line(0, size, size, size, strokeWidth),
+  ],
+  ANCHORLK: (size, strokeWidth) => [
+    line(0, size / 2, size / 2, 0, strokeWidth),
+    line(size / 2, 0, size, size / 2, strokeWidth),
+    line(size, size / 2, size / 2, size, strokeWidth),
+    line(size / 2, size, 0, size / 2, strokeWidth),
   ],
 };
 

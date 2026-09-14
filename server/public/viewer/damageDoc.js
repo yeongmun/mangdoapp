@@ -103,6 +103,12 @@ function isValidPhotoNumbers(value) {
   return true;
 }
 
+// R13: 손상현황·비고·사진번호에 줄바꿈이 섞여 있으면 DXF 산출의 TEXT 엔티티(코드 1은 한
+// 줄이어야 한다)가 깨진다. 값이 서버까지 오기 전에 여기서 막는다.
+function hasLineBreak(value) {
+  return typeof value === 'string' && /[\r\n]/.test(value);
+}
+
 function validateAttrs(damage, type, path, errors) {
   const attrs = damage.attrs;
   if (typeof attrs !== 'object' || attrs === null) {
@@ -113,6 +119,9 @@ function validateAttrs(damage, type, path, errors) {
     errors.push(`${path}.attrs.note와 statusText는 문자열이어야 합니다.`);
     return;
   }
+  if (hasLineBreak(attrs.note) || hasLineBreak(attrs.statusText)) {
+    errors.push(`${path}.attrs.note와 statusText에는 줄바꿈을 쓸 수 없습니다.`);
+  }
   // 손상현황은 기타에서만 사용자가 적는다. 다른 유형은 유형 이름·균열 폭 구간으로 계산되므로
   // 값이 들어 있으면 화면에 보이지 않는 값이 조용히 남아 물량표와 어긋난다.
   if (type !== null && type.id !== 'etc' && attrs.statusText !== '') {
@@ -120,6 +129,8 @@ function validateAttrs(damage, type, path, errors) {
   }
   if (!isValidPhotoNumbers(attrs.photoNumbers)) {
     errors.push(`${path}.attrs.photoNumbers는 문자열 배열이며 앞뒤 공백 없는 빈 문자열 아닌 값, 중복 없이 있어야 합니다.`);
+  } else if (attrs.photoNumbers.some(hasLineBreak)) {
+    errors.push(`${path}.attrs.photoNumbers 항목에는 줄바꿈을 쓸 수 없습니다.`);
   }
 }
 
@@ -198,7 +209,9 @@ function carriedNote(damage, isLineType) {
   if (Number.isFinite(measured.areaM2)) lines.push(`이전 면적 입력값: ${measured.areaM2}㎡`);
   if (typeof attrs.member === 'string' && attrs.member !== '') lines.push(`부재명: ${attrs.member}`);
   if (typeof attrs.note === 'string' && attrs.note !== '') lines.push(attrs.note);
-  return lines.join('\n');
+  // note는 화면에서 한 줄짜리 입력(viewer.html의 noteInput, type="text")이라 줄바꿈을 쓸 수
+  // 없다(R13). 옮겨 적을 값이 여럿이면 줄바꿈 대신 ' / '로 이어 한 줄로 남긴다.
+  return lines.join(' / ');
 }
 
 function migrateV2ToV3(doc) {

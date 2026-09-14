@@ -177,6 +177,21 @@ describe('validateDamageDoc', () => {
     expect(validateDamageDoc(docWith([etc]), DRAWING)).toEqual([]);
   });
 
+  // R13: note·statusText·photoNumbers의 줄바꿈은 DXF 산출의 TEXT 엔티티(코드 1은 한 줄)를
+  // 깨뜨린다. 저장 전에 막는다.
+  it('note에 줄바꿈이 있으면 오류', () => {
+    expect(
+      validateDamageDoc(docWith([lineDamage('a', { attrs: { note: '줄1\n줄2', statusText: '', photoNumbers: [] } })]), DRAWING),
+    ).toContain('damages[0].attrs.note와 statusText에는 줄바꿈을 쓸 수 없습니다.');
+  });
+
+  it('statusText(기타 유형)에 줄바꿈이 있으면 오류', () => {
+    const etc = areaDamage('a', { type: 'etc', attrs: { note: '', statusText: '들뜸\n파손', photoNumbers: [] } });
+    expect(validateDamageDoc(docWith([etc]), DRAWING)).toContain(
+      'damages[0].attrs.note와 statusText에는 줄바꿈을 쓸 수 없습니다.',
+    );
+  });
+
   it('중복 id를 거부한다', () => {
     expect(validateDamageDoc(docWith([lineDamage('a'), areaDamage('a')]), DRAWING)).toEqual([
       'damages[1].id가 중복됩니다: a',
@@ -213,6 +228,18 @@ describe('validateDamageDoc', () => {
       expect(
         validateDamageDoc(docWith([lineDamage('a', { attrs: { note: '', statusText: '', photoNumbers: ['12', '12'] } })]), DRAWING),
       ).toContain('damages[0].attrs.photoNumbers는 문자열 배열이며 앞뒤 공백 없는 빈 문자열 아닌 값, 중복 없이 있어야 합니다.');
+    });
+
+    it('항목에 줄바꿈(\\n)이 있으면 오류', () => {
+      expect(
+        validateDamageDoc(docWith([lineDamage('a', { attrs: { note: '', statusText: '', photoNumbers: ['1\n2'] } })]), DRAWING),
+      ).toContain('damages[0].attrs.photoNumbers 항목에는 줄바꿈을 쓸 수 없습니다.');
+    });
+
+    it('항목에 줄바꿈(\\r)이 있으면 오류', () => {
+      expect(
+        validateDamageDoc(docWith([lineDamage('a', { attrs: { note: '', statusText: '', photoNumbers: ['1\r2'] } })]), DRAWING),
+      ).toContain('damages[0].attrs.photoNumbers 항목에는 줄바꿈을 쓸 수 없습니다.');
     });
 
     it('앞자리 0과 접두어가 있는 문자열은 유효하다', () => {
@@ -304,11 +331,13 @@ describe('migrateDoc', () => {
     expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
   });
 
+  // R13: note는 화면에서 한 줄짜리 입력이라 줄바꿈을 쓸 수 없다 — carriedNote는 옮겨 적을 값이
+  // 여럿이면 줄바꿈 대신 ' / '로 이어 한 줄로 남긴다.
   it('면적과 부재명은 지어내지 않고 비고에 옮겨 적는다', () => {
     const migrated = migrateDoc(v2Doc, DRAWING);
     expect(migrated.damages[1].measured).toEqual({ width: null, length: null, count: null });
     expect(migrated.damages[1].attrs).toEqual({
-      note: '이전 면적 입력값: 1.8㎡\n부재명: 기둥\n사진 있음',
+      note: '이전 면적 입력값: 1.8㎡ / 부재명: 기둥 / 사진 있음',
       statusText: '',
       photoNumbers: [],
     });

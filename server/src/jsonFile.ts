@@ -37,14 +37,18 @@ export async function renameWithRetry(from: string, to: string, options: RenameR
 }
 
 // 임시 파일에 쓴 뒤 rename한다. 쓰는 도중 서버가 꺼져도 원래 파일은 깨지지 않는다.
-export async function writeJsonFileAtomic(filePath: string, data: unknown): Promise<void> {
+export async function writeFileAtomic(filePath: string, data: string | Uint8Array): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${randomUUID()}.tmp`;
   try {
-    await writeFile(tempPath, JSON.stringify(data, null, 2), 'utf8');
+    await writeFile(tempPath, data);
     await renameWithRetry(tempPath, filePath);
   } catch (err) {
     await rm(tempPath, { force: true }).catch(() => undefined);
     throw err;
   }
+}
+
+export async function writeJsonFileAtomic(filePath: string, data: unknown): Promise<void> {
+  await writeFileAtomic(filePath, JSON.stringify(data, null, 2));
 }

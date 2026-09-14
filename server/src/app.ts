@@ -5,6 +5,8 @@ import type { ApsService } from './aps.js';
 import { requireAccessKey } from './auth.js';
 import type { DamageDoc, DamagesStore } from './damagesStore.js';
 import { isDrawingId, newDrawingId, type DrawingRecord, type DrawingsStore } from './drawingsStore.js';
+import { ExportError, exportDamagesToDxf } from './export/exportDrawing.js';
+import type { OriginalsStore } from './originalsStore.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -13,6 +15,7 @@ export interface AppDeps {
   aps: Pick<ApsService, 'getViewerToken' | 'uploadDrawing' | 'startTranslation' | 'getTranslationStatus'>;
   drawings: DrawingsStore;
   damages: DamagesStore;
+  originals: OriginalsStore;
   publicDir: string;
   now?: () => number;
   maxUploadBytes?: number;
@@ -99,6 +102,15 @@ export function createApp(deps: AppDeps) {
     try {
       const { urn } = await deps.aps.uploadDrawing(file.buffer, objectKey);
       await deps.aps.startTranslation(urn);
+      // 산출은 이 사본에서 시작한다(스펙 2장). APS가 성공한 뒤에 시도한다. 디스크 저장이
+      // 실패해도(디스크 꽉 참 등) 업로드 자체(APS 업로드·변환 요청)는 이미 성공했으므로 여기서
+      // 502로 되돌리지 않는다 — 로그만 남기고 레코드는 그대로 만든다. 원본이 없다는 사실은
+      // 나중에 산출을 시도할 때 "원본 파일이 없습니다"로 드러난다(R17).
+      try {
+        await deps.originals.save(objectKey, file.buffer);
+      } catch (err) {
+        console.error('[upload] 원본 보관 실패', objectKey, err);
+      }
       const record: DrawingRecord = {
         id,
         name,
@@ -176,6 +188,51 @@ export function createApp(deps: AppDeps) {
     const doc = req.body as DamageDoc;
     await deps.damages.save(doc);
     res.json({ updatedAt: doc.updatedAt });
+  });
+
+  api.get('/drawings/:id/export.dxf', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    if (!drawing.objectKey.toLowerCase().endsWith('.dxf')) {
+      res.status(400).json({ error: 'DXF로 올린 도면만 산출할 수 있습니다' });
+      return;
+    }
+    const original = await deps.originals.read(drawing.objectKey);
+    if (!original) {
+      res.status(400).json({ error: '원본 파일이 없습니다. 도면을 다시 올려 주세요' });
+      return;
+    }
+
+    const doc = await deps.damages.get(drawing.id);
+    let result;
+    try {
+      result = exportDamagesToDxf(original.toString('utf8'), doc.damages);
+    } catch (err) {
+      if (err instanceof ExportError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      console.error('[export]', drawing.id, err);
+      res.status(500).json({ error: 'DXF 산출에 실패했습니다.' });
+      return;
+    }
+
+    // 한글은 HTTP 헤더 값에 그대로 넣을 수 없다(Node가 ERR_INVALID_CHAR로 던진다).
+    // 파일명은 RFC 5987 filename*, 경고 문구는 퍼센트 인코딩으로 보낸다.
+    const fileName = `${drawing.name.replace(/\.[^.]*$/, '')}_손상.dxf`;
+    res.setHeader('Content-Type', 'application/dxf; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="damage.dxf"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+    );
+    res.setHeader('X-Mangdo-Skipped', String(result.skipped));
+    if (result.warnings.length > 0) {
+      res.setHeader('X-Mangdo-Warning', encodeURIComponent(result.warnings.join('; ')));
+    }
+    res.send(Buffer.from(result.dxfText, 'utf8'));
   });
 
   api.use((_req, res) => {

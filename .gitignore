@@ -25,9 +25,14 @@ server/data/
 # macOS
 .DS_Store
 
+# 컨트롤러 작업공간 — 절대 커밋하지 않는다
+.superpowers/
+
 # 사내 도면 원본은 커밋하지 않는다 (치수는 스펙에 적어 둔다)
 *.dwg
 *.dxf
+# 테스트 픽스처 DXF는 손으로 쓴 작은 파일이라 커밋한다 (사내 도면이 아니다)
+!server/test/fixtures/*.dxf
 *.bak
 *.dwl
 *.dwl2
