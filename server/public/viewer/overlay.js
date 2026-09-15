@@ -313,21 +313,26 @@ export function describeDamageRender(damage, selectedId, number = null) {
  */
 
 // 손상 목록이 바뀔 때 한 번만 부른다(설계 4.5) — 확대·축소해도 결과가 같으므로 매 프레임 다시
-// 계산하지 않는다. 계산은 world 단위로 한다: 도면 mm 치수를 mmPerWorld로 나눠 넣고, 답도
-// world 좌표로 받아 그릴 때 화면 좌표로 옮긴다.
+// 계산하지 않는다.
 //
-// mmPerWorld를 구하지 못한 도면(도면 좌표 변환 불가)은 null을 돌려준다 — 그런 도면은 화면 고정
-// 크기로 그리고 겹침 방지를 하지 않는다(산출도 되지 않으므로 화면과 도면이 어긋날 일이 없다).
-/** @type {(damages: any[], numbers: Map<string, number>, mmPerWorld: number | null | undefined) => Map<string, LabelPlacement> | null} */
-export function computeLabelPlacements(damages, numbers, mmPerWorld) {
-  if (mmPerWorld === null || mmPerWorld === undefined || !Number.isFinite(mmPerWorld) || !(mmPerWorld > 0)) return null;
-  const font = FONT_HEIGHT_MM / mmPerWorld;
-  const circleR = font * CIRCLE_RADIUS_FACTOR;
-  const gap = LABEL_GAP_MM / mmPerWorld;
+// 배치 자체는 도면 mm 단위로 한다 — 산출 DXF(server/src/export/labelPlacement.ts)가 쓰는 것과
+// 글자 크기(FONT_HEIGHT_MM)·간격(LABEL_GAP_MM)·입력(geometry.dwg 경계상자)이 완전히 같다. 그래야
+// 도면 변환이 회전·반전을 포함해도(축 정렬 경계상자는 회전에서 보존되지 않는다) 화면과 DXF가 같은
+// 후보를 고른다. 답(anchor, leader의 from/to/head)만 dwgToWorld로 화면(world) 좌표로 되돌린다 —
+// 글자 자체는 여전히 화면 축에 맞춰 그린다(renderDamage가 그 결과를 다시 px 블록으로 감싼다).
+//
+// dwgToWorld가 함수가 아니면(도면 좌표 변환 불가) null을 돌려준다 — 그런 도면은 화면 고정 크기로
+// 그리고 겹침 방지를 하지 않는다(산출도 되지 않으므로 화면과 도면이 어긋날 일이 없다).
+/** @type {(damages: any[], numbers: Map<string, number>, dwgToWorld: ((point: number[]) => number[] | null) | null | undefined) => Map<string, LabelPlacement> | null} */
+export function computeLabelPlacements(damages, numbers, dwgToWorld) {
+  if (typeof dwgToWorld !== 'function') return null;
+  const circleR = FONT_HEIGHT_MM * CIRCLE_RADIUS_FACTOR;
 
   const items = [];
   for (const damage of Array.isArray(damages) ? damages : []) {
-    const bounds = boundsOf(damage?.geometry?.world);
+    // labelPlacement.ts의 dwgPointsOf/damageLabels와 같은 건너뛰기 규칙: dwg 좌표가 없는 손상은
+    // 도면에 놓지 못하므로 뺀다.
+    const bounds = boundsOf(damage?.geometry?.dwg);
     if (!bounds) continue;
     const id = String(damage?.id);
     const number = numbers.get(id) ?? null;
@@ -336,10 +341,30 @@ export function computeLabelPlacements(damages, numbers, mmPerWorld) {
       id,
       number,
       bounds,
-      block: labelBlock({ name: plan.name, dimension: plan.dimension, photo: plan.photo, number, font, circleR }),
+      block: labelBlock({ name: plan.name, dimension: plan.dimension, photo: plan.photo, number, font: FONT_HEIGHT_MM, circleR }),
     });
   }
-  return placeLabels(items, { gap, font });
+  const placements = placeLabels(items, { gap: LABEL_GAP_MM, font: FONT_HEIGHT_MM });
+
+  const result = new Map();
+  for (const [id, placement] of placements) {
+    const anchor = dwgToWorld(placement.anchor);
+    if (!anchor) continue; // 변환 실패 — 이 손상은 기본 자리(labelAnchor 폴백)로 그린다.
+    let leader = null;
+    if (placement.leader) {
+      const from = dwgToWorld(placement.leader.from);
+      const to = dwgToWorld(placement.leader.to);
+      const head0 = dwgToWorld(placement.leader.head[0]);
+      const head1 = dwgToWorld(placement.leader.head[1]);
+      if (!from || !to || !head0 || !head1) continue;
+      leader = { from, to, head: [head0, head1] };
+    }
+    // box는 dwg mm 그대로 둔다 — 아무도 읽지 않는다(draw loop는 anchor·leader만 쓴다). world로
+    // 옮기려면 네 모서리를 각각 변환해 다시 AABB를 구해야 하는데(회전에서 보존되지 않으므로)
+    // 쓰는 곳이 없어 그 비용을 들이지 않는다.
+    result.set(id, { anchor, box: placement.box, displaced: placement.displaced, leader });
+  }
+  return result;
 }
 
 export function createOverlay(svg, mapper) {
@@ -453,7 +478,13 @@ export function createOverlay(svg, mapper) {
         numbers = computeNumbers(damages);
         // 라벨 자리는 저장하지 않는다 — 목록이 바뀔 때마다 처음부터 다시 잡는다(설계 4.6).
         // 손상 하나를 옮기면 이웃 라벨의 자리도 바뀔 수 있고, 그게 맞는 동작이다.
-        placements = computeLabelPlacements(damages, numbers, computeScale(mapper).mmPerWorld);
+        //
+        // 도면 좌표 변환이 있는 도면에서만 dwgToWorld를 넘긴다 — mapper.dwgToWorld 자체는 항상
+        // 함수이지만(createCoordinateMapper), dwgStatus.matrix가 없으면 늘 null을 돌려줄 뿐이다.
+        // 여기서 미리 null로 걸러 둬야 computeLabelPlacements가 "변환 불가 = 겹침 방지 안 함"과
+        // "이 점만 변환 실패"를 구분할 수 있다(전자는 함수 자체가 없을 때만 판단한다).
+        const dwgToWorld = mapper.dwgStatus?.matrix ? (point) => mapper.dwgToWorld(point) : null;
+        placements = computeLabelPlacements(damages, numbers, dwgToWorld);
       }
       requestRender();
     },

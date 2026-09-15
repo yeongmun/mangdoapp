@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DAMAGE_TYPES } from '../public/viewer/damageTypes.js';
 import { computeNumbers } from '../public/viewer/quantities.js';
+import { damageLabels } from '../src/export/labelPlacement.js';
 import {
   computeLabelPlacements,
   computeRenderSizes,
@@ -438,12 +439,13 @@ describe('labelLayout (화면 어댑터)', () => {
 describe('computeLabelPlacements', () => {
   type Pt2 = [number, number];
 
-  function rectDamage(id: string, x: number): unknown {
+  // world와 dwg가 같은(항등 변환) 기본 픽스처. dwgToWorld = 항등 함수로 부른다.
+  function rectDamage(id: string, x: number, dwg?: Pt2[]): unknown {
     const world: Pt2[] = [[x, 0], [x + 1000, 0], [x + 1000, 400], [x, 400]];
     return {
       id,
       type: 'spalling',
-      geometry: { kind: 'rect', world, dwg: world },
+      geometry: { kind: 'rect', world, dwg: dwg ?? world },
       measured: { width: 1.2, length: 1.5, count: 1 },
       attrs: { note: '', statusText: '', photoNumbers: [] },
     };
@@ -451,16 +453,64 @@ describe('computeLabelPlacements', () => {
 
   const damages = [rectDamage('a', 0), rectDamage('b', 1050)];
   const numbers = computeNumbers(damages);
+  // computeLabelPlacements의 dwgToWorld 매개변수 타입은 number[]를 받는다(고정 길이 튜플이 아니다) —
+  // 아래 변환 함수들도 그 타입 그대로 선언해야 그 자리에 바로 넘길 수 있다.
+  const identity = ([x, y]: number[]): Pt2 => [x, y];
 
-  it('mmPerWorld가 없으면 null — 겹침 방지를 하지 않는다', () => {
+  // dwg에 transform을 적용한 픽스처를 만들고, screen(computeLabelPlacements)과 DXF(damageLabels)가
+  // 같은 자리를 고르는지 맞대본다 — DXF는 이미 검증된 대조군이라 손으로 좌표를 계산할 필요가 없다.
+  // gap·font가 (world 기준이 아니라) 고정된 실제 mm값이라 축척이 있으면 손으로 미리 답을 구하기
+  // 어렵다 — 특히 어느 라벨이 밀려나는지(displaced)는 축척에 따라 달라질 수 있어 DXF를 대조군으로
+  // 쓰는 쪽이 더 믿을 만하다.
+  function transformedDamages(transform: (p: Pt2) => Pt2) {
+    return [rectDamage('a', 0), rectDamage('b', 1050)].map((damage: any) => ({
+      ...damage,
+      geometry: { ...damage.geometry, dwg: (damage.geometry.world as Pt2[]).map(transform) },
+    }));
+  }
+
+  function crossCheckAgainstDxf(transform: (p: Pt2) => Pt2, inverse: (p: number[]) => Pt2) {
+    const dwgDamages = transformedDamages(transform);
+    const numbers2 = computeNumbers(dwgDamages);
+    const screen = computeLabelPlacements(dwgDamages, numbers2, inverse)!;
+
+    const items = dwgDamages.map((damage: any) => ({ id: damage.id, number: numbers2.get(damage.id) ?? null, damage }));
+    const dxf = damageLabels(items);
+
+    expect(screen.size).toBe(dwgDamages.length);
+    for (const damage of dwgDamages as any[]) {
+      const screenPlacement = screen.get(damage.id)!;
+      const dxfLabel = dxf.get(damage.id)!;
+      expect(screenPlacement).toBeDefined();
+      expect(dxfLabel).toBeDefined();
+      // displaced ⇔ leader가 있다(labelPlacement.ts는 leader만 노출한다).
+      expect(screenPlacement.displaced).toBe(dxfLabel.leader !== null);
+      if (dxfLabel.leader) {
+        const from = inverse(dxfLabel.leader.from as Pt2);
+        const to = inverse(dxfLabel.leader.to as Pt2);
+        const head0 = inverse(dxfLabel.leader.head[0] as Pt2);
+        const head1 = inverse(dxfLabel.leader.head[1] as Pt2);
+        expect(screenPlacement.leader!.from[0]).toBeCloseTo(from[0], 6);
+        expect(screenPlacement.leader!.from[1]).toBeCloseTo(from[1], 6);
+        expect(screenPlacement.leader!.to[0]).toBeCloseTo(to[0], 6);
+        expect(screenPlacement.leader!.to[1]).toBeCloseTo(to[1], 6);
+        expect(screenPlacement.leader!.head[0][0]).toBeCloseTo(head0[0], 6);
+        expect(screenPlacement.leader!.head[0][1]).toBeCloseTo(head0[1], 6);
+        expect(screenPlacement.leader!.head[1][0]).toBeCloseTo(head1[0], 6);
+        expect(screenPlacement.leader!.head[1][1]).toBeCloseTo(head1[1], 6);
+      }
+    }
+  }
+
+  it('dwgToWorld가 함수가 아니면 null — 겹침 방지를 하지 않는다', () => {
     expect(computeLabelPlacements(damages, numbers, null)).toBeNull();
-    expect(computeLabelPlacements(damages, numbers, 0)).toBeNull();
-    expect(computeLabelPlacements(damages, numbers, Infinity)).toBeNull();
+    expect(computeLabelPlacements(damages, numbers, undefined)).toBeNull();
+    expect(computeLabelPlacements(damages, numbers, 1 as any)).toBeNull();
   });
 
-  it('나란히 붙은 손상 둘이면 2번 라벨이 위로 블록 높이만큼 올라가고 화살표가 붙는다', () => {
-    // mmPerWorld = 1이면 world 단위가 곧 mm다. 블록 높이 750(labelLayout.test.ts 실측).
-    const placements = computeLabelPlacements(damages, numbers, 1)!;
+  it('나란히 붙은 손상 둘이면 2번 라벨이 위로 블록 높이만큼 올라가고 화살표가 붙는다 (항등 변환)', () => {
+    // 블록 높이 750(labelLayout.test.ts 실측).
+    const placements = computeLabelPlacements(damages, numbers, identity)!;
     expect(placements.get('a')!.anchor).toEqual([500, 500]);
     expect(placements.get('a')!.displaced).toBe(false);
     expect(placements.get('a')!.leader).toBeNull();
@@ -469,19 +519,47 @@ describe('computeLabelPlacements', () => {
     expect(placements.get('b')!.leader!.to[1]).toBe(400); // 손상 윗변을 가리킨다
   });
 
-  it('world 단위가 작아지면(mmPerWorld가 커지면) 라벨도 그만큼 작아진다', () => {
-    const half = computeLabelPlacements(damages, numbers, 2)!;
-    expect(half.get('a')!.box.width).toBeCloseTo(computeLabelPlacements(damages, numbers, 1)!.get('a')!.box.width / 2, 6);
+  it('dwg가 world의 2배 축척이면(dwgToWorld=절반) DXF와 같은 자리를 고른다', () => {
+    // gap(100mm)·font(300mm)는 축척과 무관한 고정 실치수라, world가 절반 크기(=dwg가 2배)로
+    // 잡힌 도면에서는 world 기준 결과가 항등 변환 때와 단순 비례하지 않는다(예: 어느 라벨이
+    // 밀려나는지부터 달라질 수 있다) — 그래서 DXF(damageLabels)를 대조군으로 맞대본다.
+    crossCheckAgainstDxf(
+      ([x, y]) => [x * 2, y * 2],
+      ([x, y]) => [x / 2, y / 2],
+    );
   });
 
-  it('world 좌표가 없는 손상은 건너뛴다', () => {
-    const broken = { id: 'x', type: 'spalling', geometry: { kind: 'rect', world: [] }, attrs: {} };
-    const placements = computeLabelPlacements([...damages, broken], computeNumbers([...damages, broken]), 1)!;
+  it('dwg 좌표가 없는 손상은 건너뛴다', () => {
+    const broken = { id: 'x', type: 'spalling', geometry: { kind: 'rect', world: [], dwg: [] }, attrs: {} };
+    const placements = computeLabelPlacements([...damages, broken], computeNumbers([...damages, broken]), identity)!;
     expect(placements.has('x')).toBe(false);
+  });
+
+  it('dwgToWorld가 어떤 손상에서 null을 주면 그 손상만 결과에서 빠진다', () => {
+    const flaky = (point: Pt2): Pt2 | null => (point[0] > 1000 ? null : point);
+    const placements = computeLabelPlacements(damages, numbers, flaky as any)!;
+    expect(placements.has('a')).toBe(true);
+    expect(placements.has('b')).toBe(false);
   });
 
   it('사진 줄 색은 선택과 상관없이 노란색이다', () => {
     expect(PHOTO_COLOR).toBe('#f5c400');
+  });
+
+  describe('회전·반전 교차검증 — 화면(computeLabelPlacements)과 DXF(damageLabels)는 같은 dwg 입력에서 같은 자리를 고른다', () => {
+    // 최종 리뷰 I-1: 축 정렬 경계상자는 회전에서 보존되지 않는다 — geometry.world를 그대로 쓰던
+    // 예전 화면 코드는 회전·반전이 있는 도면에서 DXF와 다른 후보를 골랐다(고친 대상 그 자체).
+    it('90도 회전에서도 화면과 DXF가 같은 자리를 고른다', () => {
+      crossCheckAgainstDxf(
+        ([x, y]) => [-y, x],
+        ([x, y]) => [y, -x],
+      );
+    });
+
+    it('y축 반전에서도 화면과 DXF가 같은 자리를 고른다', () => {
+      const yFlip = ([x, y]: number[]): Pt2 => [x, -y]; // 자기 자신이 역함수다
+      crossCheckAgainstDxf(yFlip, yFlip);
+    });
   });
 });
 

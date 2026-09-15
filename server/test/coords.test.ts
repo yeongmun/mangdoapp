@@ -1,9 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { applyMatrixToPoint, matricesEqual, resolvePageToModelMatrix } from '../public/viewer/coords.js';
+import {
+  applyMatrixToPoint,
+  createCoordinateMapper,
+  invertPointMatrix,
+  matricesEqual,
+  resolvePageToModelMatrix,
+} from '../public/viewer/coords.js';
 
 // THREE.Matrix4와 같은 열 우선(column-major) 배열
 function matrix(scale: number, tx: number, ty: number) {
   return { elements: [scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1] };
+}
+
+// 임의의 2×2 선형부 + 이동으로 열 우선 4×4를 만든다. [[a,c],[b,d]]가 선형부, [tx,ty]가 이동이다
+// (applyMatrixToPoint 기준: px = e0 x + e4 y + e12, py = e1 x + e5 y + e13).
+function affine(a: number, b: number, c: number, d: number, tx: number, ty: number) {
+  return { elements: [a, b, 0, 0, c, d, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1] };
+}
+
+function rotation90(tx: number, ty: number) {
+  // 반시계 90°: (x, y) -> (-y, x)
+  return affine(0, 1, -1, 0, tx, ty);
+}
+
+function yFlip(tx: number, ty: number) {
+  return affine(1, 0, 0, -1, tx, ty);
 }
 
 function fakeModel(data: Record<string, unknown>, transforms: Record<number, { elements: number[] }> = {}) {
@@ -31,6 +52,103 @@ describe('matricesEqual', () => {
   it('상대 오차 안이면 같다고 본다', () => {
     expect(matricesEqual(matrix(2, 100, 50), matrix(2, 100 + 1e-12, 50))).toBe(true);
     expect(matricesEqual(matrix(2, 100, 50), matrix(2, 101, 50))).toBe(false);
+  });
+});
+
+describe('invertPointMatrix', () => {
+  function roundTrip(m: { elements: number[] }, points: Array<[number, number]>) {
+    const inv = invertPointMatrix(m);
+    expect(inv).not.toBeNull();
+    for (const p of points) {
+      const forward = applyMatrixToPoint(m, p)! as [number, number];
+      const back = applyMatrixToPoint(inv!, forward)!;
+      expect(back[0]).toBeCloseTo(p[0], 6);
+      expect(back[1]).toBeCloseTo(p[1], 6);
+    }
+  }
+
+  const points: Array<[number, number]> = [[0, 0], [1, 0], [0, 1], [3.5, -2.25], [-100, 250]];
+
+  it('항등 행렬', () => {
+    roundTrip(affine(1, 0, 0, 1, 0, 0), points);
+  });
+
+  it('축척 + 이동', () => {
+    roundTrip(matrix(2, 100, 50), points);
+  });
+
+  it('90도 회전', () => {
+    roundTrip(rotation90(10, -20), points);
+  });
+
+  it('y축 반전', () => {
+    roundTrip(yFlip(5, 5), points);
+  });
+
+  it('행렬이 없으면(worldToDwg가 null) dwgToWorld도 null 근거 — 역행렬도 그와 같이 취급한다', () => {
+    // 특이(비가역) 행렬: 선형부가 모두 0이라 어떤 점도 되돌릴 수 없다.
+    expect(invertPointMatrix(affine(0, 0, 0, 0, 0, 0))).toBeNull();
+  });
+
+  it('행렬식이 0에 가까운(거의 특이) 행렬도 null', () => {
+    // 선형부의 두 행이 거의 평행 — det ≈ 0.
+    expect(invertPointMatrix(affine(1, 1, 1, 1 + 1e-15, 0, 0))).toBeNull();
+  });
+
+  it('진짜 원근(e3 또는 e7이 0이 아님)이면 null', () => {
+    const m = affine(1, 0, 0, 1, 0, 0);
+    m.elements[3] = 0.001;
+    expect(invertPointMatrix(m)).toBeNull();
+
+    const m2 = affine(1, 0, 0, 1, 0, 0);
+    m2.elements[7] = 0.001;
+    expect(invertPointMatrix(m2)).toBeNull();
+  });
+
+  it('e15가 1이 아니어도 유한하고 0이 아니면 정규화해서 되돌린다', () => {
+    const m = matrix(2, 100, 50);
+    m.elements[15] = 2; // 모든 성분이 실질적으로 절반 스케일된 것과 같다 — 정규화하면 원래 축척+이동이다
+    m.elements[0] *= 2;
+    m.elements[5] *= 2;
+    m.elements[12] *= 2;
+    m.elements[13] *= 2;
+    roundTrip(m, points);
+  });
+
+  it('e15가 0이면 정규화할 수 없으므로 null', () => {
+    const m = matrix(2, 100, 50);
+    m.elements[15] = 0;
+    expect(invertPointMatrix(m)).toBeNull();
+  });
+
+  it('유한하지 않은 값이 있으면 null', () => {
+    const m = matrix(2, 100, 50);
+    m.elements[0] = NaN;
+    expect(invertPointMatrix(m)).toBeNull();
+  });
+
+  it('null·undefined 행렬 입력도 null', () => {
+    expect(invertPointMatrix({ elements: null as unknown as number[] })).toBeNull();
+  });
+});
+
+describe('createCoordinateMapper의 dwgToWorld', () => {
+  function fakeViewer(data: Record<string, unknown>) {
+    return { model: fakeModel(data) };
+  }
+
+  it('행렬이 없으면 null', () => {
+    const mapper = createCoordinateMapper(fakeViewer({ viewports: [] }) as any);
+    expect(mapper.dwgToWorld([1, 2])).toBeNull();
+  });
+
+  it('worldToDwg의 역을 준다 (회전 포함)', () => {
+    const mapper = createCoordinateMapper(fakeViewer({ pageToModelTransform: rotation90(10, -20) }) as any);
+    const world: [number, number] = [3.5, -2.25];
+    const dwg = mapper.worldToDwg(world)!;
+    const back = mapper.dwgToWorld(dwg)!;
+    expect(back[0]).toBeCloseTo(world[0], 6);
+    expect(back[1]).toBeCloseTo(world[1], 6);
   });
 });
 
