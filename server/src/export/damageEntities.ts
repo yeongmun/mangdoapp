@@ -70,6 +70,8 @@ export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeM
 
   const lineLength = longLength - crossSizeMm;
   if (!(lineLength > 0)) return [];
+  // 짧은 변이 선 간격보다 좁으면 두 선이 사각형 밖으로 나가고 ✕는 점이 된다 — 기호 없이 사각형만 남긴다.
+  if (shortLength < lineGapMm) return [];
 
   const half = lineLength / 2;
   const gap = lineGapMm / 2;

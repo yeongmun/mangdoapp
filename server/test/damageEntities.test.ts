@@ -116,6 +116,11 @@ describe('rebarSymbolSegments', () => {
     expect(Math.abs(first[0][0] - second[0][0])).toBeCloseTo(57.4, 6);
   });
 
+  it('짧은 변이 선 간격(57.4)보다 좁으면 기호를 그리지 않는다', () => {
+    const sliver: Pt[] = [[0, 0], [3000, 0], [3000, 50], [0, 50]];
+    expect(rebarSymbolSegments(sliver, 57.4, 212)).toEqual([]);
+  });
+
   it('긴 변이 ✕ 크기 이하면 기호를 그리지 않는다', () => {
     const tiny: Pt[] = [[0, 0], [200, 0], [200, 100], [0, 100]];
     expect(rebarSymbolSegments(tiny, 57.4, 212)).toEqual([]);

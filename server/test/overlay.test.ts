@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DAMAGE_TYPES } from '../public/viewer/damageTypes.js';
-import { computeNumbers } from '../public/viewer/quantities.js';
+import { labelBlock } from '../public/viewer/labelLayout.js';
+import { computeNumbers, dimensionTextOf, drawingNameOf, photoTextOf } from '../public/viewer/quantities.js';
 import { damageLabels } from '../src/export/labelPlacement.js';
 import {
   computeLabelPlacements,
@@ -26,6 +27,8 @@ import {
   SELECTED_COLOR,
   SELECTED_WIDTH_PX,
   BASELINE_CENTER_FACTOR,
+  CIRCLE_RADIUS_FACTOR,
+  FONT_HEIGHT_MM,
 } from '../public/viewer/overlay.js';
 
 type Pt = [number, number];
@@ -495,7 +498,22 @@ describe('computeLabelPlacements', () => {
       const dxfLabel = dxf.get(damage.id)!;
       expect(screenPlacement).toBeDefined();
       expect(dxfLabel).toBeDefined();
-      // labelPlacement.ts는 leader만 노출한다. 화살표 유무(밀려났고 화살대가 화살촉보다 긴 경우)가 같아야 한다.
+      // 기준점 자체를 맞대본다 — 화살표가 없는 경우(기본 자리, 또는 화살대가 짧아 생략)에도 같은 후보를
+      // 골랐는지 잡아낸다. labelPlacement.ts는 기준점을 노출하지 않으므로 원 중심에서 블록의 원 오프셋을
+      // 빼서 dwg 기준점을 되찾고 inverse로 world로 옮긴다.
+      const block = labelBlock({
+        name: drawingNameOf(damage),
+        dimension: dimensionTextOf(damage),
+        photo: photoTextOf(damage),
+        number: numbers2.get(damage.id) ?? null,
+        font: FONT_HEIGHT_MM,
+        circleR: FONT_HEIGHT_MM * CIRCLE_RADIUS_FACTOR,
+      });
+      const dwgAnchor: Pt2 = [dxfLabel.circle!.center[0] - block.circle!.dx, dxfLabel.circle!.center[1] - block.circle!.dy];
+      const expectedAnchor = inverse(dwgAnchor);
+      expect(screenPlacement.anchor[0]).toBeCloseTo(expectedAnchor[0], 6);
+      expect(screenPlacement.anchor[1]).toBeCloseTo(expectedAnchor[1], 6);
+      // 화살표 유무(밀려났고 화살대가 화살촉보다 긴 경우)도 같아야 한다.
       expect(screenPlacement.leader === null).toBe(dxfLabel.leader === null);
       if (screenPlacement.leader) expect(screenPlacement.displaced).toBe(true);
       if (dxfLabel.leader) {
