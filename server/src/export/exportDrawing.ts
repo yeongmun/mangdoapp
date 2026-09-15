@@ -15,6 +15,8 @@ import {
   headerValue,
   insertEntities,
   parseDxf,
+  PHOTO_COLOR,
+  PHOTO_LAYER,
   recordHandle,
   serializeDxf,
   setHeaderValue,
@@ -22,7 +24,7 @@ import {
   type DxfPair,
 } from './dxfDocument.js';
 import type { Point } from './dxfEntities.js';
-import { damageLabel, labelEntities } from './labelPlacement.js';
+import { damageLabels, labelEntities } from './labelPlacement.js';
 import { COLUMN_COUNT, fillTable, rowValuesOf, type TableRow } from './tableFill.js';
 import { buildGrid, findTableCandidates, hasUniformScale, nearestTable } from './tableGrid.js';
 
@@ -108,7 +110,7 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   let maxNumber = 0;
   for (const value of numbers.values()) if (value > maxNumber) maxNumber = value;
 
-  const included: Array<{ damage: unknown; number: number; points: Point[] }> = [];
+  const included: Array<{ id: string; damage: unknown; number: number; points: Point[] }> = [];
   let skipped = 0;
   for (const damage of list) {
     const id = String((damage as { id?: unknown } | null)?.id);
@@ -118,19 +120,27 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
       skipped += 1;
       continue;
     }
-    included.push({ damage, number, points });
+    included.push({ id, damage, number, points });
   }
   included.sort((a, b) => a.number - b.number);
 
   const alloc = createHandleAllocator(doc);
   ensureLayer(doc, alloc, DAMAGE_LAYER, DAMAGE_COLOR);
+  // 사진 줄이 있든 없든 만들어 둔다 — 있는지 미리 훑어 조건을 나누면 같은 도면을 두 번 산출했을
+  // 때 레이어 목록이 달라진다.
+  ensureLayer(doc, alloc, PHOTO_LAYER, PHOTO_COLOR);
   const owner = recordHandleOrThrow(doc);
 
   const pairs: DxfPair[] = [];
   const circleWarnings: DamageEntitiesWarnings = { circlesTruncated: false };
+  // 겹침 방지는 다른 손상을 모두 알아야 계산할 수 있으므로, 도형을 만들기 전에 한 번에 구한다
+  // (설계 4.2: 번호 순서대로 자리를 잡는다).
+  const labels = damageLabels(
+    included.map((entry) => ({ id: entry.id, number: entry.number > 0 ? entry.number : null, damage: entry.damage })),
+  );
   for (const entry of included) {
     appendAll(pairs, damageEntities(entry.damage, alloc, owner, circleWarnings));
-    const label = damageLabel(entry.damage, entry.number > 0 ? entry.number : null);
+    const label = labels.get(entry.id);
     if (label) appendAll(pairs, labelEntities(label, alloc, owner));
   }
   if (circleWarnings.circlesTruncated) warnings.push(EXPORT_WARNINGS.circlesTruncated);

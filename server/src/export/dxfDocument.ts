@@ -26,6 +26,11 @@ export interface SectionRange {
 export const DAMAGE_LAYER = '신규손상';
 export const DAMAGE_COLOR = 1;
 
+// 사진번호는 손상과 따로 켜고 끌 수 있게 별도 레이어·색으로 낸다(노랑).
+// 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3장
+export const PHOTO_LAYER = '사진번호';
+export const PHOTO_COLOR = 2;
+
 export function pair(code: number, value: string): DxfPair {
   return { code, value };
 }

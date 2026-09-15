@@ -267,4 +267,70 @@ describe('exportDamagesToDxf', () => {
     // 세 번째 표(7~9)도 제자리에 그려진다.
     expect(numberTexts).toEqual(expect.arrayContaining(['7', '8', '9']));
   });
+
+  // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3·4장
+  describe('라벨 겹침 방지와 사진번호 레이어', () => {
+    function wide(id: string, x: number, photoNumbers: string[] = []) {
+      const points: Pt[] = [[x, 0], [x + 1000, 0], [x + 1000, 400], [x, 400]];
+      return {
+        id,
+        type: 'spalling',
+        createdAt: '2026-09-16T00:00:00.000Z',
+        geometry: { kind: 'rect', world: points, dwg: points },
+        measured: { width: 1.2, length: 1.5, count: 1 },
+        computed: { lengthDwg: null, areaDwg: null },
+        attrs: { note: '', statusText: '', photoNumbers },
+      };
+    }
+
+    // TEXT 엔티티마다 값·레이어·색·정렬점을 모아 준다.
+    function texts(dxfText: string) {
+      const doc = parseDxf(dxfText);
+      const out: Array<{ value: string; layer: string; color: number; y: number }> = [];
+      for (let i = 0; i < doc.pairs.length; i++) {
+        if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== 'TEXT') continue;
+        const entry = { value: '', layer: '', color: 0, y: 0 };
+        let j = i + 1;
+        for (; j < doc.pairs.length && doc.pairs[j].code !== 0; j++) {
+          const p = doc.pairs[j];
+          if (p.code === 8) entry.layer = p.value;
+          else if (p.code === 62) entry.color = Number(p.value);
+          else if (p.code === 1) entry.value = p.value;
+          else if (p.code === 21) entry.y = Number(p.value);
+        }
+        out.push(entry);
+        i = j - 1;
+      }
+      return out;
+    }
+
+    it('나란히 붙은 손상 둘이면 2번 라벨이 위로 블록 높이만큼 어긋나고 화살표 LINE 3개가 생긴다', async () => {
+      const original = await template();
+      const result = exportDamagesToDxf(original, [wide('a', 0), wide('b', 1050)]);
+      const dimensions = texts(result.dxfText)
+        .filter((t) => t.value === '1.2x1.5')
+        .map((t) => t.y)
+        .sort((x, y) => x - y);
+      expect(dimensions).toHaveLength(2);
+      expect(dimensions[1] - dimensions[0]).toBeCloseTo(750, 6);
+      // 원본 LINE은 그대로 있고 화살표 3개만 늘어난다
+      expect(entityCount(result.dxfText, 'LINE') - entityCount(original, 'LINE')).toBe(3);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('사진 줄은 사진번호 레이어·색 2로 나가고 레이어가 없으면 더해진다', async () => {
+      const result = exportDamagesToDxf(await template(), [wide('a', 0, ['12', '13'])]);
+      expect(layerNames(parseDxf(result.dxfText))).toContain('사진번호');
+      const photo = texts(result.dxfText).find((t) => t.value === '#12, #13')!;
+      expect(photo.layer).toBe('사진번호');
+      expect(photo.color).toBe(2);
+      // 다른 줄은 그대로 신규손상이다
+      expect(texts(result.dxfText).find((t) => t.value === '박락')!.layer).toBe('신규손상');
+    });
+
+    it('사진이 없는 도면에도 사진번호 레이어는 만들어 둔다 (같은 도면이 두 번 다르게 나오지 않게)', async () => {
+      const result = exportDamagesToDxf(await template(), [wide('a', 0)]);
+      expect(layerNames(parseDxf(result.dxfText))).toContain('사진번호');
+    });
+  });
 });

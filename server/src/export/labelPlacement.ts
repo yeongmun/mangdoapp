@@ -11,6 +11,7 @@
 // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 2~4장
 
 import { boundsOf } from '../../public/viewer/geometry.js';
+import { placeLabels } from '../../public/viewer/labelCollision.js';
 import {
   baseAnchor,
   BASELINE_CENTER_FACTOR,
@@ -20,8 +21,8 @@ import {
 import { CIRCLE_RADIUS_FACTOR, FONT_HEIGHT_MM, LABEL_GAP_MM } from '../../public/viewer/overlay.js';
 import { dimensionTextOf, drawingNameOf, photoTextOf } from '../../public/viewer/quantities.js';
 import { dwgPointsOf } from './damageEntities.js';
-import { DAMAGE_COLOR, DAMAGE_LAYER, type DxfPair, type HandleAllocator } from './dxfDocument.js';
-import { circleEntity, textEntity, type EntityBase, type Point } from './dxfEntities.js';
+import { DAMAGE_COLOR, DAMAGE_LAYER, PHOTO_COLOR, PHOTO_LAYER, type DxfPair, type HandleAllocator } from './dxfDocument.js';
+import { circleEntity, lineEntity, textEntity, type EntityBase, type Point } from './dxfEntities.js';
 
 export interface LabelTextLine {
   position: Point;
@@ -31,55 +32,108 @@ export interface LabelTextLine {
   key: string;
 }
 
-export interface DamageLabel {
-  circle: { center: Point; radius: number } | null;
-  lines: LabelTextLine[];
-  height: number;
-}
-
 const CIRCLE_RADIUS_MM = FONT_HEIGHT_MM * CIRCLE_RADIUS_FACTOR;
 // 베이스라인 → 중간 정렬점까지의 거리(도면 mm)
 const BASELINE_TO_MIDDLE_MM = FONT_HEIGHT_MM * BASELINE_CENTER_FACTOR;
 
-export function damageLabel(damage: unknown, number: number | null): DamageLabel | null {
-  const points = dwgPointsOf(damage);
-  if (!points) return null;
-  const bounds = boundsOf(points);
-  if (!bounds) return null;
-
-  const block = labelBlock({
-    name: drawingNameOf(damage),
-    dimension: dimensionTextOf(damage),
-    photo: photoTextOf(damage),
-    number,
-    font: FONT_HEIGHT_MM,
-    circleR: CIRCLE_RADIUS_MM,
-  });
-  const placed = placeBlock(block, baseAnchor(bounds, LABEL_GAP_MM));
-
-  const circle = placed.circle ? { center: [placed.circle.cx, placed.circle.cy] as Point, radius: placed.circle.r } : null;
-  const lines: LabelTextLine[] = placed.lines.map((line) => ({
-    position: [line.x, line.y + BASELINE_TO_MIDDLE_MM] as Point,
-    text: line.text,
-    align: line.anchor === 'middle' ? 'center' : 'left',
-    key: line.key,
-  }));
-
-  return { circle, lines, height: FONT_HEIGHT_MM };
+export interface LabelLeader {
+  from: Point;
+  to: Point;
+  /** 끝점에서 뻗는 화살촉 점 둘 */
+  head: [Point, Point];
 }
 
-function baseFor(alloc: HandleAllocator, owner: string): EntityBase {
-  return { handle: alloc.next(), owner, layer: DAMAGE_LAYER, colorIndex: DAMAGE_COLOR };
+export interface DamageLabel {
+  circle: { center: Point; radius: number } | null;
+  lines: LabelTextLine[];
+  height: number;
+  /** 기본 자리를 벗어난 라벨에만 있다(설계 4.4) */
+  leader: LabelLeader | null;
+}
+
+export interface LabelItem {
+  id: string;
+  number: number | null;
+  damage: unknown;
+}
+
+// 손상 전체를 한 번에 배치한다 — 겹침 방지는 다른 손상을 모두 알아야 계산할 수 있다.
+// dwg 좌표가 없는 손상은 도면에 놓지 못하므로 Map에 넣지 않는다.
+export function damageLabels(items: LabelItem[]): Map<string, DamageLabel> {
+  const entries = [];
+  for (const item of items) {
+    const points = dwgPointsOf(item.damage);
+    if (!points) continue;
+    const bounds = boundsOf(points);
+    if (!bounds) continue;
+    entries.push({
+      id: item.id,
+      number: item.number,
+      bounds,
+      block: labelBlock({
+        name: drawingNameOf(item.damage),
+        dimension: dimensionTextOf(item.damage),
+        photo: photoTextOf(item.damage),
+        number: item.number,
+        font: FONT_HEIGHT_MM,
+        circleR: CIRCLE_RADIUS_MM,
+      }),
+    });
+  }
+
+  const placements = placeLabels(entries, { gap: LABEL_GAP_MM, font: FONT_HEIGHT_MM });
+  const labels = new Map<string, DamageLabel>();
+  for (const entry of entries) {
+    const placement = placements.get(entry.id);
+    if (!placement) continue;
+    // 도면은 y가 위로 증가하고 배치 모듈도 같은 방향이라 부호를 건드릴 일이 없다.
+    // placeLabels의 JSDoc은 anchor를 number[]로만 적어 뒀다(labelCollision.js는 이 Task의 수정
+    // 대상이 아니다) — placeBlock은 튜플을 받으므로 여기서만 좁혀 준다.
+    const placed = placeBlock(entry.block, placement.anchor as Point);
+    labels.set(entry.id, {
+      circle: placed.circle ? { center: [placed.circle.cx, placed.circle.cy] as Point, radius: placed.circle.r } : null,
+      lines: placed.lines.map((line) => ({
+        // TEXT는 수직 중간 정렬(73=2)이라 정렬점은 베이스라인에서 글자 높이 × 0.35 위다.
+        position: [line.x, line.y + BASELINE_TO_MIDDLE_MM] as Point,
+        text: line.text,
+        align: line.anchor === 'middle' ? 'center' : 'left',
+        key: line.key,
+      })),
+      height: FONT_HEIGHT_MM,
+      leader: placement.leader as LabelLeader | null,
+    });
+  }
+  return labels;
+}
+
+// 손상 하나짜리 겉포장. 막는 것이 없으므로 언제나 기본 자리에 놓인다.
+export function damageLabel(damage: unknown, number: number | null): DamageLabel | null {
+  const id = String((damage as { id?: unknown } | null)?.id ?? '');
+  return damageLabels([{ id, number, damage }]).get(id) ?? null;
+}
+
+function baseFor(alloc: HandleAllocator, owner: string, layer: string, colorIndex: number): EntityBase {
+  return { handle: alloc.next(), owner, layer, colorIndex };
 }
 
 export function labelEntities(label: DamageLabel, alloc: HandleAllocator, owner: string): DxfPair[] {
   const pairs: DxfPair[] = [];
   if (label.circle) {
-    pairs.push(...circleEntity(baseFor(alloc, owner), label.circle.center, label.circle.radius));
+    pairs.push(...circleEntity(baseFor(alloc, owner, DAMAGE_LAYER, DAMAGE_COLOR), label.circle.center, label.circle.radius));
   }
   for (const line of label.lines) {
     if (line.text === '') continue;
-    pairs.push(...textEntity(baseFor(alloc, owner), line.position, label.height, line.text, line.align));
+    // 사진 줄만 노란 `사진번호` 레이어로 낸다 — 캐드에서 따로 켜고 끌 수 있어야 한다(설계 3장).
+    const isPhoto = line.key === 'photo';
+    const base = baseFor(alloc, owner, isPhoto ? PHOTO_LAYER : DAMAGE_LAYER, isPhoto ? PHOTO_COLOR : DAMAGE_COLOR);
+    pairs.push(...textEntity(base, line.position, label.height, line.text, line.align));
+  }
+  // 화살대 1개 + 화살촉 2개 = LINE 3개(설계 4.4).
+  if (label.leader) {
+    const { from, to, head } = label.leader;
+    for (const [a, b] of [[from, to], [head[0], to], [head[1], to]] as Array<[Point, Point]>) {
+      pairs.push(...lineEntity(baseFor(alloc, owner, DAMAGE_LAYER, DAMAGE_COLOR), a, b));
+    }
   }
   return pairs;
 }

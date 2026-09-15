@@ -6,7 +6,7 @@ import {
   LABEL_GAP_MM,
 } from '../public/viewer/overlay.js';
 import { HandleAllocator, type DxfPair } from '../src/export/dxfDocument.js';
-import { damageLabel, labelEntities } from '../src/export/labelPlacement.js';
+import { damageLabel, damageLabels, labelEntities } from '../src/export/labelPlacement.js';
 
 type Pt = [number, number];
 
@@ -118,6 +118,19 @@ describe('damageLabel', () => {
 });
 
 describe('labelEntities', () => {
+  function layerOf(pairs: DxfPair[], text: string): { layer: string; color: string } {
+    const start = pairs.findIndex((p) => p.code === 1 && p.value === text);
+    // 코드 8(레이어)·62(색)는 같은 엔티티의 코드 1보다 앞에 있다.
+    let layer = '';
+    let color = '';
+    for (let i = start; i >= 0; i--) {
+      if (pairs[i].code === 62 && color === '') color = pairs[i].value.trim();
+      if (pairs[i].code === 8 && layer === '') layer = pairs[i].value;
+      if (pairs[i].code === 0) break;
+    }
+    return { layer, color };
+  }
+
   it('원 하나와 글자들을 만들고 핸들을 하나씩 받는다', () => {
     const label = damageLabel(rect('spalling', { width: 1.2, length: 1.5, count: 1 }), 7)!;
     const alloc = new HandleAllocator(0x300);
@@ -126,12 +139,75 @@ describe('labelEntities', () => {
     expect(entityTypes(pairs)).toEqual(['CIRCLE', 'TEXT', 'TEXT', 'TEXT']);
     expect(pairs.filter((p) => p.code === 5).map((p) => p.value)).toEqual(['300', '301', '302', '303']);
     expect(alloc.seed).toBe('304');
-    expect(pairs.filter((p) => p.code === 8).every((p) => p.value === '신규손상')).toBe(true);
     expect(pairs.filter((p) => p.code === 40).some((p) => p.value === '300.0')).toBe(true);
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3장
+  it('사진 줄만 레이어 사진번호·색 2로 나가고 나머지는 신규손상·색 1이다', () => {
+    const label = damageLabel(
+      rect('spalling', { width: 1.2, length: 1.5, count: 1 }, { photoNumbers: ['12', '13'] }),
+      7,
+    )!;
+    const pairs = labelEntities(label, new HandleAllocator(0x300), '1F');
+    expect(layerOf(pairs, '#12, #13')).toEqual({ layer: '사진번호', color: '2' });
+    expect(layerOf(pairs, '박락')).toEqual({ layer: '신규손상', color: '1' });
+    expect(layerOf(pairs, '7')).toEqual({ layer: '신규손상', color: '1' });
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 4.4
+  it('화살표가 있으면 LINE 3개를 신규손상 레이어에 더한다', () => {
+    const label = damageLabel(rect('spalling', { width: 1.2, length: 1.5, count: 1 }), 7)!;
+    const head: [Pt, Pt] = [[50, 50], [50, -50]];
+    const withLeader = { ...label, leader: { from: [0, 0] as Pt, to: [100, 0] as Pt, head } };
+    const pairs = labelEntities(withLeader, new HandleAllocator(0x300), '1F');
+    expect(entityTypes(pairs).filter((t) => t === 'LINE')).toHaveLength(3);
+    expect(layerOf(pairs, '박락').layer).toBe('신규손상');
+  });
+
+  it('기본 자리에 놓인 라벨에는 화살표가 없다', () => {
+    const label = damageLabel(rect('spalling', { width: 1.2, length: 1.5, count: 1 }), 7)!;
+    expect(label.leader).toBeNull();
+    expect(entityTypes(labelEntities(label, new HandleAllocator(0x300), '1F'))).not.toContain('LINE');
   });
 
   it('그릴 것이 없으면 빈 배열', () => {
     const label = damageLabel(rect('crack', {}), null)!;
     expect(labelEntities(label, new HandleAllocator(0x300), '1F')).toEqual([]);
+  });
+});
+
+// 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 4.2~4.3
+describe('damageLabels', () => {
+  function sideBySide(id: string, x: number) {
+    const points: Pt[] = [[x, 0], [x + 1000, 0], [x + 1000, 400], [x, 400]];
+    return {
+      id,
+      type: 'spalling',
+      geometry: { kind: 'rect', world: points, dwg: points },
+      measured: { width: 1.2, length: 1.5, count: 1 },
+      attrs: { note: '', statusText: '', photoNumbers: [] },
+    };
+  }
+
+  it('붙어 있는 손상 둘이면 2번 라벨이 위로 블록 높이(750)만큼 올라가고 화살표가 붙는다', () => {
+    const a = sideBySide('a', 0);
+    const b = sideBySide('b', 1050);
+    const labels = damageLabels([
+      { id: 'a', number: 1, damage: a },
+      { id: 'b', number: 2, damage: b },
+    ]);
+    const first = labels.get('a')!.lines.find((l) => l.text === '1.2x1.5')!;
+    const second = labels.get('b')!.lines.find((l) => l.text === '1.2x1.5')!;
+    expect(second.position[1] - first.position[1]).toBeCloseTo(750, 6);
+    expect(labels.get('a')!.leader).toBeNull();
+    expect(labels.get('b')!.leader).not.toBeNull();
+    expect(labels.get('b')!.leader!.to[1]).toBeCloseTo(400, 6); // 손상 윗변을 가리킨다
+  });
+
+  it('dwg가 없는 손상은 Map에 들어가지 않는다', () => {
+    const labels = damageLabels([
+      { id: 'a', number: 1, damage: { id: 'a', type: 'crack', geometry: { kind: 'polyline', world: RECT, dwg: null } } },
+    ]);
+    expect(labels.size).toBe(0);
   });
 });

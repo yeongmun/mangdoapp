@@ -16,6 +16,8 @@ import {
   layerNames,
   pair,
   parseDxf,
+  PHOTO_COLOR,
+  PHOTO_LAYER,
   recordHandle,
   serializeDxf,
   setHeaderValue,
@@ -258,6 +260,31 @@ describe('ensureLayer', () => {
     expect(out).toContain('  2\n신규손상\n 70\n     0\n 62\n     1\n  6\nContinuous\n');
     // 표의 항목 수(코드 70)는 손대지 않는다
     expect(out).toContain('AcDbSymbolTable\n 70\n     1\n');
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3장
+  // ensureLayer는 이미 이름과 색을 인자로 받는다 — 사진번호 레이어도 같은 함수로 더한다.
+  it('사진번호 레이어도 같은 방식으로 더한다 (노랑, 색 2)', async () => {
+    const doc = parseDxf(await templateText());
+    ensureLayer(doc, createHandleAllocator(doc), PHOTO_LAYER, PHOTO_COLOR);
+    expect(layerNames(doc)).toEqual(['0', PHOTO_LAYER]);
+    expect(serializeDxf(doc)).toContain('  2\n사진번호\n 70\n     0\n 62\n     2\n  6\nContinuous\n');
+  });
+
+  it('두 레이어를 잇달아 더하면 둘 다 남고 핸들이 다르다', async () => {
+    const doc = parseDxf(await templateText());
+    const alloc = createHandleAllocator(doc);
+    ensureLayer(doc, alloc, DAMAGE_LAYER, 1);
+    ensureLayer(doc, alloc, PHOTO_LAYER, PHOTO_COLOR);
+    expect(layerNames(doc)).toEqual(['0', DAMAGE_LAYER, PHOTO_LAYER]);
+    // $HANDSEED 자신도 코드 5로 저장돼 있고, 여기서는(ensureLayer만 부르고 exportDamagesToDxf처럼
+    // 끝에 갱신하지 않으므로) 첫 새 핸들과 값이 같은 게 정상이다 — createHandleAllocator가 최댓값을
+    // 셀 때 HEADER를 빼는 것과 같은 이유로 핸들 유일성 검사에서도 HEADER는 뺀다.
+    const header = findSection(doc, 'HEADER');
+    const handles = doc.pairs
+      .filter((p, i) => p.code === 5 && !(header && i >= header.start && i <= header.end))
+      .map((p) => p.value.trim());
+    expect(new Set(handles).size).toBe(handles.length);
   });
 
   it('이미 있으면 아무것도 하지 않는다', async () => {
