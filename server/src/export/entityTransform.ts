@@ -64,6 +64,61 @@ function typeOf(pairs: DxfPair[]): string {
   return pairs.length > 0 && pairs[0].code === 0 ? pairs[0].value : '';
 }
 
+// ROLES에 없는 타입(DIMENSION·LEADER·VIEWPORT·SPLINE·ATTRIB… — 설계 5.1 마지막 항목,
+// isCopyable이 여전히 false로 막아 복사는 하지 않는다)을 위한 마지막 수단 규칙: DXF 관례대로
+// 코드 10~18을 x, 바로 다음에 오는 코드(= x+10, 20~28)를 그 y로 보고 절대 점으로 다룬다.
+// 이 규칙이 있어야 영역 판정(entityBoundsOf → 틀 안/밖)과 틀 이동(translateEntityPairs)이
+// 이런 엔티티도 "점이 있는 것"으로 보고 제 틀과 함께 움직인다 — 그래도 복사는 하지 않는다
+// (controller ruling, fix round 1, Important 항목).
+//
+// 예외: MLEADER/MULTILEADER는 이 규칙을 적용하지 않는다 — 10/11/12가 점과 지시선 방향이
+// 뒤섞여 있어(그룹 코드가 재사용된다) 일반 규칙이 틀린 좌표를 점으로 읽는다. 그래서 아예
+// 손대지 않는다: 경계상자도 없고(영역 판정에서 멤버가 되지 않는다) 이동도 하지 않는다
+// (틀이 밀릴 때 제자리에 남는다 — 실제 사내 도면에서 관찰된 적 없으므로 지금은 괜찮다).
+const NO_GENERIC_FALLBACK = new Set(['MLEADER', 'MULTILEADER']);
+
+function isGenericPointPair(xCode: number, yCode: number): boolean {
+  return xCode >= 10 && xCode <= 18 && yCode === xCode + 10;
+}
+
+// entityPointsOf의 ROLES 없는 타입용 대체 경로.
+function genericPointsOf(pairs: DxfPair[], type: string): Point[] {
+  if (NO_GENERIC_FALLBACK.has(type)) return [];
+  const points: Point[] = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const p = pairs[i];
+    const next = pairs[i + 1];
+    if (!next || !isGenericPointPair(p.code, next.code)) continue;
+    const x = Number(p.value.trim());
+    const y = Number(next.value.trim());
+    if (Number.isFinite(x) && Number.isFinite(y)) points.push([x, y]);
+    i += 1;
+  }
+  return points;
+}
+
+// translateEntityPairs의 ROLES 없는 타입용 대체 경로. transformEntityPairs는 일부러 건드리지
+// 않는다(controller ruling: "throw or skip per what the code does today — do not extend") —
+// mapPairs가 이미 roles 없는 타입을 그대로 돌려주므로(스킵) 그 동작을 그대로 둔다.
+function genericTranslate(pairs: DxfPair[], type: string, dx: number, dy: number): DxfPair[] {
+  if (NO_GENERIC_FALLBACK.has(type)) return pairs;
+  const out = pairs.slice();
+  let changed = false;
+  for (let i = 0; i < pairs.length; i++) {
+    const p = pairs[i];
+    const next = pairs[i + 1];
+    if (!next || !isGenericPointPair(p.code, next.code)) continue;
+    const x = Number(p.value.trim());
+    const y = Number(next.value.trim());
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      if (put(out, i, p, x + dx)) changed = true;
+      if (put(out, i + 1, next, y + dy)) changed = true;
+    }
+    i += 1;
+  }
+  return changed ? out : pairs;
+}
+
 // 나란한 두 쌍이 점인지 벡터인지 판단한다. HATCH만 특별 규칙이다.
 function xyRoleOf(
   type: string,
@@ -149,6 +204,10 @@ function mapPairs(pairs: DxfPair[], m: Mapper): DxfPair[] {
 /** 엔티티 한 벌을 (dx, dy)만큼 옮긴다. 이동량이 0이면 입력 배열을 그대로 돌려준다. */
 export function translateEntityPairs(pairs: DxfPair[], dx: number, dy: number): DxfPair[] {
   if (dx === 0 && dy === 0) return pairs;
+  const type = typeOf(pairs);
+  // ROLES에 없는 타입(복사는 여전히 안 된다)도 틀이 밀릴 때는 같이 밀려야 한다 — 일반 규칙으로
+  // 옮긴다(제자리 이동, fix round 1). MLEADER류는 genericTranslate 안에서 그대로 걸러진다.
+  if (!ROLES.has(type)) return genericTranslate(pairs, type, dx, dy);
   return mapPairs(pairs, {
     point: (x, y) => [x + dx, y + dy],
     vector: (x, y) => [x, y],
@@ -179,7 +238,7 @@ export function translatePairs(pairs: DxfPair[], dx: number, dy: number): DxfPai
 export function entityPointsOf(pairs: DxfPair[]): Point[] {
   const type = typeOf(pairs);
   const roles = ROLES.get(type);
-  if (!roles) return [];
+  if (!roles) return genericPointsOf(pairs, type);
   const points: Point[] = [];
   let hatchElevationSeen = false;
   for (let i = 0; i < pairs.length; i++) {

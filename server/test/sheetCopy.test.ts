@@ -218,3 +218,57 @@ describe('shiftRangesInPlace', () => {
     expect(doc.pairs.filter((p) => p.code === 20)[0].rawCode).toBe(' 20');
   });
 });
+
+describe('ROLES 밖 엔티티(DIMENSION 등)의 영역 판정·복사·이동', () => {
+  // fix round 1 — review Important: indexRegions가 entityBoundsOf에서 null을 받는 타입
+  // (entityTransform.ts의 ROLES 맵 밖 — DIMENSION·LEADER·VIEWPORT·SPLINE·ATTRIB 등)을 통째로
+  // 빠뜨려 inFrame/loose 어디에도 넣지 않던 결함. entityTransform.ts의 일반 규칙(코드 10~18을
+  // x, 그 바로 다음 20~28을 y로 보는 대체 경로)이 이제 이런 엔티티에도 경계상자를 주므로
+  // indexRegions가 멤버로 잡고, copyRegion이 isCopyable로 걸러 skipped에 반영한다(설계 5.1·6장,
+  // controller ruling: "members but not copied → counted in sheetCopySkipped").
+  // 경계상자 중심 (2200, 3250)은 틀 0 영역(x 2000~4280, y 3160~3400) 안이다.
+  const DIMENSION = [
+    '  0', 'DIMENSION', '  5', '91', '330', '1F', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbDimension',
+    '  2', '*D1', ' 10', '2150.0', ' 20', '3200.0', ' 30', '0.0', ' 11', '2250.0', ' 21', '3300.0', ' 31', '0.0', '',
+  ].join('\n');
+
+  async function setup() {
+    const text = (await templateText()).replace('  0\nENDSEC\n  0\nEOF\n', `${DIMENSION}  0\nENDSEC\n  0\nEOF\n`);
+    const doc = parseDxf(text);
+    const frames = findFrames(doc);
+    const alloc = createHandleAllocator(doc);
+    const owner = recordHandle(doc, 'BLOCK_RECORD', '*Model_Space')!;
+    const ctx = readSheetContext(doc, alloc, owner)!;
+    return { doc, frames, ctx };
+  }
+
+  it('경계상자 중심이 틀 0 안이라 inFrame의 멤버가 된다(예전에는 빠졌다)', async () => {
+    const { frames, ctx } = await setup();
+    const regions = indexRegions(ctx, frames);
+    expect(regions.inFrame[0]).toHaveLength(1);
+    expect(regions.inFrame[0][0].type).toBe('DIMENSION');
+    expect(regions.loose).toHaveLength(1); // 픽스처의 최상위 LINE만 loose다
+  });
+
+  it('copyRegion은 복사하지 못해 skipped에 하나로 잡는다(복사되는 쌍은 없다)', async () => {
+    const { frames, ctx } = await setup();
+    const regions = indexRegions(ctx, frames);
+    const result = copyRegion(ctx, regions.inFrame[0], 49000);
+    expect(result.skipped).toBe(1);
+    expect(result.pairs).toEqual([]);
+  });
+
+  it('shiftRangesInPlace는 복사와 무관하게 제자리에서 10/20·11/21을 옮긴다', async () => {
+    const { doc, frames, ctx } = await setup();
+    const regions = indexRegions(ctx, frames);
+    const range = regions.inFrame[0][0];
+    shiftRangesInPlace(doc, [range], 49000);
+    const moved = doc.pairs.slice(range.start, range.end);
+    const at = (code: number) => Number(moved.find((p) => p.code === code)!.value);
+    // 2150+49000=51150, 3200 그대로 / 2250+49000=51250, 3300 그대로
+    expect(at(10)).toBeCloseTo(51150, 6);
+    expect(at(20)).toBeCloseTo(3200, 6);
+    expect(at(11)).toBeCloseTo(51250, 6);
+    expect(at(21)).toBeCloseTo(3300, 6);
+  });
+});

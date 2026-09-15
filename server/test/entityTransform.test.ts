@@ -135,6 +135,36 @@ describe('translateEntityPairs', () => {
     expect(valueAt(moved, 10)).toBe('4.0');
     expect(valueAt(moved, 20)).toBe('5.0');
   });
+
+  it('ROLES에 없는 DIMENSION도 일반 규칙(10~18/20~28)으로 점을 전부 옮긴다', () => {
+    // fix round 1, controller ruling 1 — indexRegions가 DIMENSION 같은 타입을 완전히 빠뜨리던
+    // 결함(review Important)을 고치는 짝. 정의점(10/20)·문자 중점(11/21)·인출선 정의점(13/23,
+    // 14/24) 네 점을 모두 옮긴다.
+    const dimension = pairsOf(
+      [0, 'DIMENSION'], [5, 'D9'], [330, '1F'], [2, '*D1'],
+      [10, '0.0'], [20, '0.0'], [11, '5.0'], [21, '5.0'],
+      [13, '10.0'], [23, '0.0'], [14, '10.0'], [24, '10.0'],
+    );
+    const moved = translateEntityPairs(dimension, 1000, 2000);
+    expect(valueAt(moved, 10)).toBe('1000.0');
+    expect(valueAt(moved, 20)).toBe('2000.0');
+    expect(valueAt(moved, 11)).toBe('1005.0');
+    expect(valueAt(moved, 21)).toBe('2005.0');
+    expect(valueAt(moved, 13)).toBe('1010.0');
+    expect(valueAt(moved, 23)).toBe('2000.0');
+    expect(valueAt(moved, 14)).toBe('1010.0');
+    expect(valueAt(moved, 24)).toBe('2010.0');
+    // 블록 이름(2)은 좌표가 아니라 손대지 않는다
+    expect(valueAt(moved, 2)).toBe('*D1');
+  });
+
+  it('MLEADER는 일반 규칙에서 빠져 손대지 않는다(10/11/12가 점·방향이 뒤섞여 있다)', () => {
+    const mleader = pairsOf(
+      [0, 'MLEADER'], [5, 'DA'], [330, '1F'],
+      [10, '1.0'], [20, '2.0'], [11, '3.0'], [21, '4.0'],
+    );
+    expect(translateEntityPairs(mleader, 1000, 2000)).toBe(mleader);
+  });
 });
 
 describe('entityBoundsOf · isCopyable', () => {
@@ -157,6 +187,25 @@ describe('entityBoundsOf · isCopyable', () => {
 
   it('POINT의 경계상자는 점 자신이다(한 점, 폭·높이 0)', () => {
     expect(entityBoundsOf(POINT_ENTITY)).toEqual({ minX: 3, minY: 4, maxX: 3, maxY: 4 });
+  });
+
+  it('ROLES에 없는 DIMENSION도 일반 규칙으로 경계상자를 낸다(복사는 여전히 안 된다)', () => {
+    // fix round 1 — indexRegions가 이 경계상자를 써서 틀 영역의 멤버로 넣을 수 있어야 한다.
+    const dimension = pairsOf(
+      [0, 'DIMENSION'], [5, 'D9'], [330, '1F'], [2, '*D1'],
+      [10, '0.0'], [20, '0.0'], [11, '5.0'], [21, '5.0'],
+      [13, '10.0'], [23, '0.0'], [14, '10.0'], [24, '10.0'],
+    );
+    expect(entityBoundsOf(dimension)).toEqual({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
+    expect(isCopyable(dimension)).toBe(false); // 멤버는 되지만 복사되지는 않는다
+  });
+
+  it('MLEADER는 일반 규칙에서 빠져 경계상자가 없다(점·방향이 뒤섞인 그룹 코드라 신뢰할 수 없다)', () => {
+    const mleader = pairsOf(
+      [0, 'MLEADER'], [5, 'DA'], [330, '1F'],
+      [10, '1.0'], [20, '2.0'], [11, '3.0'], [21, '4.0'],
+    );
+    expect(entityBoundsOf(mleader)).toBeNull();
   });
 
   it('허용 목록 밖의 종류는 복사하지 않는다', () => {
