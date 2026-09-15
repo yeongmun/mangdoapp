@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { getDamageType } from '../public/viewer/damageTypes.js';
 import {
   computeNumbers,
+  countOutsideFrames,
   CRACK_WIDTH_BREAKS,
   dimensionTextOf,
   drawingNameOf,
   formatQuantity,
+  frameIndexOf,
   parsePhotoNumbers,
   photoTextOf,
   quantityOf,
@@ -62,6 +64,84 @@ function numbersOf(damages: unknown[]) {
   const map = computeNumbers(damages);
   return Object.fromEntries(map.entries());
 }
+
+// 틀 배정은 geometry.dwg만 본다(설계 4장). world는 번호 순서에만 쓴다.
+// 중심이 (x, y)이고 한 변이 h인 사각형의 dwg 좌표.
+function withDwg(id: string, worldX: number, dwgX: number | null, dwgY = 50, h = 10) {
+  const half = h / 2;
+  const world: Pt[] = [
+    [worldX - half, -half],
+    [worldX + half, -half],
+    [worldX + half, half],
+    [worldX - half, half],
+  ];
+  const dwg: Pt[] | null =
+    dwgX === null
+      ? null
+      : [
+          [dwgX - half, dwgY - half],
+          [dwgX + half, dwgY - half],
+          [dwgX + half, dwgY + half],
+          [dwgX - half, dwgY + half],
+        ];
+  return {
+    id,
+    type: 'spalling',
+    geometry: { kind: 'rect', world, dwg },
+    measured: { width: null, length: null, count: null },
+    attrs: { note: '', statusText: '' },
+  };
+}
+
+// 왼쪽 틀 0과 오른쪽 틀 1. 붙어 있지 않고 사이에 빈 자리가 있다.
+const FRAMES = [
+  { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+  { minX: 200, minY: 0, maxX: 300, maxY: 100 },
+];
+
+describe('frameIndexOf', () => {
+  it('dwg 경계상자 중심이 든 틀의 인덱스를 준다', () => {
+    expect(frameIndexOf(withDwg('a', 0, 50), FRAMES)).toBe(0);
+    expect(frameIndexOf(withDwg('b', 0, 250), FRAMES)).toBe(1);
+  });
+
+  it('어느 틀에도 없으면 null', () => {
+    expect(frameIndexOf(withDwg('a', 0, 150), FRAMES)).toBeNull();
+  });
+
+  it('경계 위(중심이 꼭 모서리)도 안쪽으로 본다', () => {
+    // 중심 x = 100, y = 100 → 틀 0의 오른쪽 위 모서리
+    expect(frameIndexOf(withDwg('a', 0, 100, 100), FRAMES)).toBe(0);
+  });
+
+  it('틀이 겹치면 인덱스가 작은 틀이 이긴다', () => {
+    const overlapping = [
+      { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+      { minX: 40, minY: 0, maxX: 140, maxY: 100 },
+    ];
+    expect(frameIndexOf(withDwg('a', 0, 50), overlapping)).toBe(0);
+  });
+
+  it('dwg가 없으면 null', () => {
+    expect(frameIndexOf(withDwg('a', 0, null), FRAMES)).toBeNull();
+  });
+
+  it('틀 목록이 비어 있거나 배열이 아니면 null', () => {
+    expect(frameIndexOf(withDwg('a', 0, 50), [])).toBeNull();
+    expect(frameIndexOf(withDwg('a', 0, 50), undefined as never)).toBeNull();
+  });
+});
+
+describe('countOutsideFrames', () => {
+  it('틀 밖 손상 수를 센다 (dwg 없는 손상도 센다)', () => {
+    const damages = [withDwg('a', 0, 50), withDwg('b', 10, 150), withDwg('c', 20, null)];
+    expect(countOutsideFrames(damages, FRAMES)).toBe(2);
+  });
+
+  it('틀이 없으면 0이다 — 그런 도면은 전체가 한 묶음이라 틀 밖이라는 개념이 없다', () => {
+    expect(countOutsideFrames([withDwg('a', 0, null)], [])).toBe(0);
+  });
+});
 
 describe('computeNumbers', () => {
   it('손상이 없으면 빈 결과', () => {
@@ -135,6 +215,47 @@ describe('computeNumbers', () => {
     const snapshot = JSON.parse(JSON.stringify(damages));
     computeNumbers(damages);
     expect(damages).toEqual(snapshot);
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-16-frame-numbering-design.md 5장
+  describe('망도틀이 있으면 틀마다 1번부터', () => {
+    it('틀마다 따로 1번부터 매긴다', () => {
+      const damages = [
+        withDwg('r1', 100, 210), // 틀 1, world x 100
+        withDwg('l1', 0, 10), //    틀 0, world x 0
+        withDwg('r2', 300, 290), // 틀 1, world x 300
+        withDwg('l2', 200, 90), //  틀 0, world x 200
+      ];
+      expect(Object.fromEntries(computeNumbers(damages, FRAMES))).toEqual({ l1: 1, l2: 2, r1: 1, r2: 2 });
+    });
+
+    it('틀 안 순서는 지금 규칙 그대로다 — world 중심 X 오름차순', () => {
+      // dwg에서는 b가 왼쪽이지만 world에서는 a가 왼쪽이다. 번호는 world를 따른다.
+      const damages = [withDwg('a', 0, 90), withDwg('b', 500, 10)];
+      expect(Object.fromEntries(computeNumbers(damages, FRAMES))).toEqual({ a: 1, b: 2 });
+    });
+
+    it('틀 밖 손상은 Map에 없다', () => {
+      const numbers = computeNumbers([withDwg('in', 0, 50), withDwg('out', 10, 150)], FRAMES);
+      expect(numbers.get('in')).toBe(1);
+      expect(numbers.has('out')).toBe(false);
+      expect(numbers.get('out') ?? null).toBeNull();
+    });
+
+    it('dwg가 없는 손상도 틀 밖이라 번호를 받지 못한다', () => {
+      const numbers = computeNumbers([withDwg('a', 0, 50), withDwg('b', 10, null)], FRAMES);
+      expect(Object.fromEntries(numbers)).toEqual({ a: 1 });
+    });
+
+    it('frames가 빈 배열이면 옛 결과와 같다 — dwg 없는 손상도 번호를 받는다', () => {
+      const damages = [withDwg('a', 0, null), withDwg('b', 10, 150)];
+      expect(Object.fromEntries(computeNumbers(damages, []))).toEqual({ a: 1, b: 2 });
+      expect(Object.fromEntries(computeNumbers(damages))).toEqual({ a: 1, b: 2 });
+    });
+
+    it('손상이 없는 틀이 있어도 다른 틀의 번호는 1부터다', () => {
+      expect(Object.fromEntries(computeNumbers([withDwg('r', 0, 250)], FRAMES))).toEqual({ r: 1 });
+    });
   });
 });
 

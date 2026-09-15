@@ -20,6 +20,7 @@
 // 값의 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md 3장
 
 import { getDamageType } from './damageTypes.js';
+import { boundsOf } from './geometry.js';
 
 // 균열 폭(mm) 구간 경계. 이 두 값이 균열류의 손상현황 이름을 가른다.
 export const CRACK_WIDTH_BREAKS = [0.3, 0.5];
@@ -60,19 +61,77 @@ function centerOf(damage) {
   return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
 }
 
+/**
+ * @typedef {{ minX: number, minY: number, maxX: number, maxY: number }} FrameBounds
+ * 망도틀 영역(mm, 도면 좌표). 서버의 server/src/export/frames.ts가 만드는 것과 같은 모양이고,
+ * 도면 레코드(DrawingRecord.frames)에 실려 화면까지 온다.
+ */
+
+// 손상이 어느 망도틀에 들어가는지. geometry.dwg 경계상자의 중심이 틀 안(경계 포함)이면 그 틀이다.
+// world가 아니라 dwg를 쓴다 — 페이지→모델 변환(coords.js)에 회전·반전이 있으면 world 경계상자가
+// 서버가 보는 도면 좌표와 달라져 화면과 산출의 답이 갈린다(설계 4장).
+// 여러 틀에 들어가면(틀이 겹치는 도면) 인덱스가 작은 틀이 이긴다.
+/** @type {(damage: any, frames: FrameBounds[]) => number | null} */
+export function frameIndexOf(damage, frames) {
+  const list = Array.isArray(frames) ? frames : [];
+  if (list.length === 0) return null;
+  const bounds = boundsOf(damage?.geometry?.dwg);
+  if (!bounds) return null;
+  const x = (bounds.minX + bounds.maxX) / 2;
+  const y = (bounds.minY + bounds.maxY) / 2;
+  for (let index = 0; index < list.length; index++) {
+    const frame = list[index];
+    if (!frame) continue;
+    if (x >= frame.minX && x <= frame.maxX && y >= frame.minY && y <= frame.maxY) return index;
+  }
+  return null;
+}
+
+// 어느 틀에도 들어가지 않는 손상 수. 틀이 없는 도면은 "틀 밖"이라는 개념이 없어 늘 0이다.
+// 화면 경고 배지(overlay.js)와 산출 경고(exportDrawing.ts)가 같이 쓴다.
+/** @type {(damages: any[], frames: FrameBounds[]) => number} */
+export function countOutsideFrames(damages, frames) {
+  const list = Array.isArray(frames) ? frames : [];
+  if (list.length === 0) return 0;
+  let count = 0;
+  for (const damage of Array.isArray(damages) ? damages : []) {
+    if (frameIndexOf(damage, list) === null) count += 1;
+  }
+  return count;
+}
+
 // 도면 위 위치로 번호를 정한다(왼쪽 우선, 2026-09-14 변경). 왼쪽(X가 작은 쪽)이 앞번호,
 // X가 같으면 위쪽(Y가 큰 쪽)이 앞, 그것도 같으면 id 오름차순. 사내 망도가 교량 입면도처럼
 // 가로로 길어 줄을 나누지 않고 왼쪽부터 훑는 편이 실제 보는 순서와 맞는다(설계 3.1).
 // 같은 손상 집합이면 넣은 순서와 상관없이 항상 같은 번호가 나온다.
-export function computeNumbers(damages) {
+//
+// frames를 주면 **틀마다 1번부터** 다시 매긴다(2026-09-16 설계 5장). 사내 표기가 그렇다 —
+// 첫 틀이 15번에서 끝나도 다음 틀은 1번이다. 틀 밖 손상은 Map에 넣지 않는다(번호 없음).
+// frames가 비어 있으면 예전과 똑같다 — 전체를 한 묶음으로 1부터, dwg가 없는 손상도 번호를 받는다.
+/** @type {(damages: any[], frames?: FrameBounds[]) => Map<string, number>} */
+export function computeNumbers(damages, frames = []) {
   const list = Array.isArray(damages) ? damages : [];
+  const frameList = Array.isArray(frames) ? frames : [];
   const sorted = list
-    .map((damage) => ({ id: String(damage?.id), ...centerOf(damage) }))
-    .sort((a, b) => a.x - b.x || b.y - a.y || compareId(a.id, b.id));
+    // 틀이 없는 도면은 모두 같은 묶음(0)에 넣어 예전 동작을 그대로 낸다.
+    .map((damage) => ({
+      id: String(damage?.id),
+      frame: frameList.length === 0 ? 0 : frameIndexOf(damage, frameList),
+      ...centerOf(damage),
+    }))
+    .filter((entry) => entry.frame !== null)
+    .sort((a, b) => a.frame - b.frame || a.x - b.x || b.y - a.y || compareId(a.id, b.id));
 
   const numbers = new Map();
+  let group = sorted.length > 0 ? sorted[0].frame : 0;
   let next = 1;
-  for (const entry of sorted) numbers.set(entry.id, next++);
+  for (const entry of sorted) {
+    if (entry.frame !== group) {
+      group = entry.frame;
+      next = 1;
+    }
+    numbers.set(entry.id, next++);
+  }
   return numbers;
 }
 
