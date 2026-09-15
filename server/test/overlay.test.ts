@@ -495,8 +495,9 @@ describe('computeLabelPlacements', () => {
       const dxfLabel = dxf.get(damage.id)!;
       expect(screenPlacement).toBeDefined();
       expect(dxfLabel).toBeDefined();
-      // displaced ⇔ leader가 있다(labelPlacement.ts는 leader만 노출한다).
-      expect(screenPlacement.displaced).toBe(dxfLabel.leader !== null);
+      // labelPlacement.ts는 leader만 노출한다. 화살표 유무(밀려났고 화살대가 화살촉보다 긴 경우)가 같아야 한다.
+      expect(screenPlacement.leader === null).toBe(dxfLabel.leader === null);
+      if (screenPlacement.leader) expect(screenPlacement.displaced).toBe(true);
       if (dxfLabel.leader) {
         const from = inverse(dxfLabel.leader.from as Pt2);
         const to = inverse(dxfLabel.leader.to as Pt2);

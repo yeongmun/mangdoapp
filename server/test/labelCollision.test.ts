@@ -206,13 +206,22 @@ describe('nearestPointOnBox', () => {
 });
 
 describe('leaderFor', () => {
-  // 라벨 상자 x 300..400 · y 50..150, 손상 경계상자 0..200 × 0..200
-  const labelBox = { x: 300, y: 50, width: 100, height: 100 };
+  // 라벨 상자 x 400..500 · y 50..150, 손상 경계상자 0..200 × 0..200 (화살대 200 ≥ 화살촉 150)
+  const labelBox = { x: 400, y: 50, width: 100, height: 100 };
   const target = bounds(0, 0, 200, 200);
-  const leader = leaderFor(labelBox, target, FONT);
+  const leader = leaderFor(labelBox, target, FONT)!;
 
   it('시작은 손상에 가장 가까운 변의 중점이다', () => {
-    expect(leader.from).toEqual([300, 100]);
+    expect(leader.from).toEqual([400, 100]);
+  });
+
+  it('화살대가 화살촉(150)보다 짧으면 화살표를 그리지 않는다', () => {
+    // 손상 바로 오른쪽, 간격 100 → 화살대 100 < 150
+    expect(leaderFor({ x: 300, y: 50, width: 100, height: 100 }, target, FONT)).toBeNull();
+    // 맞닿아 있으면(화살대 0) 당연히 없다
+    expect(leaderFor({ x: 200, y: 50, width: 100, height: 100 }, target, FONT)).toBeNull();
+    // 정확히 150이면 그린다
+    expect(leaderFor({ x: 350, y: 50, width: 100, height: 100 }, target, FONT)).not.toBeNull();
   });
 
   it('끝은 손상 경계상자 위에서 시작점에 가장 가까운 점이다', () => {
@@ -229,7 +238,7 @@ describe('leaderFor', () => {
   });
 
   it('위로 올라간 라벨은 아래 변 중점에서 손상 윗변으로 내려온다', () => {
-    const above = leaderFor({ x: 50, y: 500, width: 100, height: 100 }, bounds(0, 0, 200, 200), FONT);
+    const above = leaderFor({ x: 50, y: 500, width: 100, height: 100 }, bounds(0, 0, 200, 200), FONT)!;
     expect(above.from).toEqual([100, 500]);
     expect(above.to).toEqual([100, 200]);
     expect(above.head[0][1]).toBeCloseTo(200 + 150 * Math.cos(Math.PI / 6), 3);

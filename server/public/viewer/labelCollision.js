@@ -69,7 +69,8 @@ export function candidatePlacements(bounds, block, gap) {
   return list.map((candidate) => ({ ...candidate, box: blockBoxAt(block, candidate.anchor) }));
 }
 
-// 화살표(4.4). 기본 자리를 벗어난 라벨에만 그린다.
+// 화살표(4.4). 기본 자리를 벗어난 라벨에만 그린다. 화살대가 화살촉보다 짧으면 null(그리지 않는다).
+/** @returns {{ from: number[], to: number[], head: number[][] } | null} */
 export function leaderFor(labelBox, bounds, font) {
   const target = boxOfBounds(bounds);
   // 변의 중점: 위 → 오른쪽 → 아래 → 왼쪽. 거리가 같으면 이 순서에서 앞선 것을 쓴다(결정적).
@@ -92,8 +93,9 @@ export function leaderFor(labelBox, bounds, font) {
   const dx = to[0] - from[0];
   const dy = to[1] - from[1];
   const headLength = font * ARROW_HEAD_FACTOR;
-  // 라벨이 손상에 맞닿아 시작점과 끝점이 같으면 방향을 정할 수 없다 — 화살촉을 끝점에 모은다.
-  if (dx === 0 && dy === 0) return { from, to, head: [to, to] };
+  // 화살대가 화살촉보다 짧으면 촉만 보여 지저분하다(2026-09-16 캐드 확인 4번). 라벨이 손상 바로
+  // 옆(간격 100)으로만 밀린 경우가 여기 걸리고, 위로 밀린 라벨(화살대 ≥ 간격 + 블록 높이)은 그대로다.
+  if (Math.hypot(dx, dy) < headLength) return null;
   const angle = Math.atan2(dy, dx);
   const head = [angle + ARROW_HEAD_ANGLE, angle - ARROW_HEAD_ANGLE].map((a) => [
     to[0] - headLength * Math.cos(a),
