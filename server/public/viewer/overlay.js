@@ -4,12 +4,16 @@
 
 import { getDamageType } from './damageTypes.js';
 import { boundsOf, rectCenter } from './geometry.js';
+import { placeLabels } from './labelCollision.js';
 import { estimateTextWidth, labelBlock, placeBlock } from './labelLayout.js';
 import { computeNumbers, dimensionTextOf, drawingNameOf, photoTextOf } from './quantities.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 export const CRACK_COLOR = '#e53935';
 export const SELECTED_COLOR = '#fb8c00';
+// 사진 줄은 도면의 `사진번호` 레이어(노랑, 색 2)와 같아 보이게 그린다. 선택해도 노란색 그대로다.
+// 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3장
+export const PHOTO_COLOR = '#f5c400';
 // 화면 기준 선 굵기(px). pxPerMm을 구하지 못한 도면(좌표 변환 불가)에서 쓰는 값이기도 하다.
 export const CRACK_WIDTH_PX = 1;
 export const SELECTED_WIDTH_PX = 2;
@@ -304,6 +308,40 @@ export function describeDamageRender(damage, selectedId, number = null) {
   };
 }
 
+/**
+ * @typedef {{ anchor: number[], box: { x: number, y: number, width: number, height: number }, displaced: boolean, leader: { from: number[], to: number[], head: number[][] } | null }} LabelPlacement
+ */
+
+// 손상 목록이 바뀔 때 한 번만 부른다(설계 4.5) — 확대·축소해도 결과가 같으므로 매 프레임 다시
+// 계산하지 않는다. 계산은 world 단위로 한다: 도면 mm 치수를 mmPerWorld로 나눠 넣고, 답도
+// world 좌표로 받아 그릴 때 화면 좌표로 옮긴다.
+//
+// mmPerWorld를 구하지 못한 도면(도면 좌표 변환 불가)은 null을 돌려준다 — 그런 도면은 화면 고정
+// 크기로 그리고 겹침 방지를 하지 않는다(산출도 되지 않으므로 화면과 도면이 어긋날 일이 없다).
+/** @type {(damages: any[], numbers: Map<string, number>, mmPerWorld: number | null | undefined) => Map<string, LabelPlacement> | null} */
+export function computeLabelPlacements(damages, numbers, mmPerWorld) {
+  if (mmPerWorld === null || mmPerWorld === undefined || !Number.isFinite(mmPerWorld) || !(mmPerWorld > 0)) return null;
+  const font = FONT_HEIGHT_MM / mmPerWorld;
+  const circleR = font * CIRCLE_RADIUS_FACTOR;
+  const gap = LABEL_GAP_MM / mmPerWorld;
+
+  const items = [];
+  for (const damage of Array.isArray(damages) ? damages : []) {
+    const bounds = boundsOf(damage?.geometry?.world);
+    if (!bounds) continue;
+    const id = String(damage?.id);
+    const number = numbers.get(id) ?? null;
+    const plan = describeDamageRender(damage, null, number);
+    items.push({
+      id,
+      number,
+      bounds,
+      block: labelBlock({ name: plan.name, dimension: plan.dimension, photo: plan.photo, number, font, circleR }),
+    });
+  }
+  return placeLabels(items, { gap, font });
+}
+
 export function createOverlay(svg, mapper) {
   let damages = [];
   let selectedId = null;
@@ -313,6 +351,9 @@ export function createOverlay(svg, mapper) {
   // 팬·줌마다 한 번씩(때로는 초당 여러 번) requestRender를 부르므로, render()마다 다시 계산하면
   // 값은 같더라도 매 프레임 불필요한 계산이 반복된다.
   let numbers = new Map();
+  // 라벨 자리도 번호와 같은 자리에서 한 번만 계산한다(설계 4.5). null이면 겹침 방지를 하지
+  // 않는 도면이라는 뜻이고, 그때는 예전처럼 도형에서 바로 위 자리에 그린다.
+  let placements = null;
 
   function renderDamage(damage, number, elements, sizes, patternsNeeded) {
     const plan = describeDamageRender(damage, selectedId, number);
@@ -337,7 +378,10 @@ export function createOverlay(svg, mapper) {
       elements.push(polygonElement(screen, plan.color, width, fillPatternId, 1));
     }
 
-    const anchor = labelAnchor(screen, sizes.labelGapPx);
+    // 겹침 방지를 한 도면은 미리 구해 둔 world 기준점을 화면 좌표로 옮겨 쓴다. 못 구한 도면은
+    // 예전처럼 화면 좌표에서 도형 바로 위를 잡는다.
+    const placement = placements ? placements.get(String(damage.id)) ?? null : null;
+    const anchor = placement ? mapper.worldToClient(placement.anchor) : labelAnchor(screen, sizes.labelGapPx);
     const layout = labelLayout({
       anchor,
       name: plan.name,
@@ -348,7 +392,20 @@ export function createOverlay(svg, mapper) {
       circleRPx: sizes.circleRPx,
     });
     if (layout.circle) elements.push(numberCircleElement(layout.circle, plan.color, width));
-    for (const textLine of layout.lines) elements.push(labelTextElement(textLine, plan.color, sizes.fontPx));
+    for (const textLine of layout.lines) {
+      // 사진 줄만 노란색이다(도면의 `사진번호` 레이어와 같아 보이게). 선택해도 바뀌지 않는다.
+      const color = textLine.key === 'photo' ? PHOTO_COLOR : plan.color;
+      elements.push(labelTextElement(textLine, color, sizes.fontPx));
+    }
+    // 기본 자리를 벗어난 라벨에는 손상을 가리키는 화살표를 그린다(설계 4.4). 화살대와 화살촉을
+    // 폴리라인 둘로 그린다 — 산출 DXF의 LINE 3개와 같은 모양이다.
+    if (placement && placement.leader) {
+      const from = mapper.worldToClient(placement.leader.from);
+      const to = mapper.worldToClient(placement.leader.to);
+      const head = placement.leader.head.map((point) => mapper.worldToClient(point));
+      elements.push(polylineElement([from, to], plan.color, width, 1));
+      elements.push(polylineElement([head[0], to, head[1]], plan.color, width, 1));
+    }
 
     if (!plan.showHandles) return;
 
@@ -394,6 +451,9 @@ export function createOverlay(svg, mapper) {
       if (list !== damages) {
         damages = list;
         numbers = computeNumbers(damages);
+        // 라벨 자리는 저장하지 않는다 — 목록이 바뀔 때마다 처음부터 다시 잡는다(설계 4.6).
+        // 손상 하나를 옮기면 이웃 라벨의 자리도 바뀔 수 있고, 그게 맞는 동작이다.
+        placements = computeLabelPlacements(damages, numbers, computeScale(mapper).mmPerWorld);
       }
       requestRender();
     },

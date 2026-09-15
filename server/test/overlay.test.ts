@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DAMAGE_TYPES } from '../public/viewer/damageTypes.js';
+import { computeNumbers } from '../public/viewer/quantities.js';
 import {
+  computeLabelPlacements,
   computeRenderSizes,
   computeScale,
   CRACK_COLOR,
@@ -16,6 +18,7 @@ import {
   MIN_LINE_WIDTH_PX,
   patternSpacingPx,
   PATTERN_SIZE_PX,
+  PHOTO_COLOR,
   rectHandlePositions,
   resolveFillPattern,
   ROTATE_HANDLE_OFFSET_PX,
@@ -428,6 +431,57 @@ describe('labelLayout (화면 어댑터)', () => {
     const layout = labelLayout({ anchor, name: '박락', dimension: '1.2x1.2', number: 7, fontPx, circleRPx });
     expect(layout.box.y).toBeLessThan(anchor[1]);
     expect(layout.box.y + layout.box.height).toBeGreaterThanOrEqual(anchor[1]);
+  });
+});
+
+// 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 4.5
+describe('computeLabelPlacements', () => {
+  type Pt2 = [number, number];
+
+  function rectDamage(id: string, x: number): unknown {
+    const world: Pt2[] = [[x, 0], [x + 1000, 0], [x + 1000, 400], [x, 400]];
+    return {
+      id,
+      type: 'spalling',
+      geometry: { kind: 'rect', world, dwg: world },
+      measured: { width: 1.2, length: 1.5, count: 1 },
+      attrs: { note: '', statusText: '', photoNumbers: [] },
+    };
+  }
+
+  const damages = [rectDamage('a', 0), rectDamage('b', 1050)];
+  const numbers = computeNumbers(damages);
+
+  it('mmPerWorld가 없으면 null — 겹침 방지를 하지 않는다', () => {
+    expect(computeLabelPlacements(damages, numbers, null)).toBeNull();
+    expect(computeLabelPlacements(damages, numbers, 0)).toBeNull();
+    expect(computeLabelPlacements(damages, numbers, Infinity)).toBeNull();
+  });
+
+  it('나란히 붙은 손상 둘이면 2번 라벨이 위로 블록 높이만큼 올라가고 화살표가 붙는다', () => {
+    // mmPerWorld = 1이면 world 단위가 곧 mm다. 블록 높이 750(labelLayout.test.ts 실측).
+    const placements = computeLabelPlacements(damages, numbers, 1)!;
+    expect(placements.get('a')!.anchor).toEqual([500, 500]);
+    expect(placements.get('a')!.displaced).toBe(false);
+    expect(placements.get('a')!.leader).toBeNull();
+    expect(placements.get('b')!.anchor).toEqual([1550, 1250]);
+    expect(placements.get('b')!.displaced).toBe(true);
+    expect(placements.get('b')!.leader!.to[1]).toBe(400); // 손상 윗변을 가리킨다
+  });
+
+  it('world 단위가 작아지면(mmPerWorld가 커지면) 라벨도 그만큼 작아진다', () => {
+    const half = computeLabelPlacements(damages, numbers, 2)!;
+    expect(half.get('a')!.box.width).toBeCloseTo(computeLabelPlacements(damages, numbers, 1)!.get('a')!.box.width / 2, 6);
+  });
+
+  it('world 좌표가 없는 손상은 건너뛴다', () => {
+    const broken = { id: 'x', type: 'spalling', geometry: { kind: 'rect', world: [] }, attrs: {} };
+    const placements = computeLabelPlacements([...damages, broken], computeNumbers([...damages, broken]), 1)!;
+    expect(placements.has('x')).toBe(false);
+  });
+
+  it('사진 줄 색은 선택과 상관없이 노란색이다', () => {
+    expect(PHOTO_COLOR).toBe('#f5c400');
   });
 });
 
