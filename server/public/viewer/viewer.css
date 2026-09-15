@@ -72,6 +72,7 @@ body {
 .status.saving { background: #1e66f5; }
 .status.pending { background: #d32f2f; }
 .status.error { background: #8e0000; }
+.status.outside { background: #b26a00; }
 
 #damageType {
   font-size: 15px;

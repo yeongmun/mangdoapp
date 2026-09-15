@@ -127,6 +127,8 @@ async function start() {
   }
 
   const overlay = createOverlay($('overlay'), mapper);
+  // 레코드에 frames가 없으면(옛 도면·DWG) 빈 배열이고, 그때는 도면 전체에서 1번부터 매긴다.
+  overlay.setFrames(Array.isArray(drawing.frames) ? drawing.frames : []);
   viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => overlay.requestRender());
   window.addEventListener('resize', () => overlay.requestRender());
 
@@ -213,6 +215,10 @@ async function start() {
     $('undo').disabled = !canUndo(editor);
     $('delete').disabled = selectedId === null;
     $('props').disabled = selectedId === null;
+    // 망도틀 밖에 그린 손상은 번호를 받지 못한다 — 개수를 저장 배지 옆에 알린다(설계 5장).
+    const outside = overlay.outsideFrameCount();
+    $('frameWarning').textContent = `망도틀 밖 손상 ${outside}개 — 번호 없음`;
+    $('frameWarning').hidden = outside === 0;
   }
 
   function apply(nextEditor) {

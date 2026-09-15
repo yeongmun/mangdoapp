@@ -457,6 +457,18 @@ describe('computeLabelPlacements', () => {
   // 아래 변환 함수들도 그 타입 그대로 선언해야 그 자리에 바로 넘길 수 있다.
   const identity = ([x, y]: number[]): Pt2 => [x, y];
 
+  // 근거: docs/superpowers/specs/2026-09-16-frame-numbering-design.md 5장
+  // 틀 밖 손상은 numbers에 없다. 라벨은 그대로 그리고 번호 원만 빠진다.
+  it('번호가 없는 손상도 라벨 자리를 받고 블록이 원 너비만큼 좁아진다', () => {
+    const damage = rectDamage('a', 0);
+    const withNumber = computeLabelPlacements([damage], new Map([['a', 1]]), identity)!.get('a')!;
+    const without = computeLabelPlacements([damage], new Map(), identity)!.get('a')!;
+
+    expect(without).toBeDefined();
+    // 원 너비 = 반지름 255 × 2 + 원-글자 간격(반지름의 0.5배) 127.5 = 637.5 (도면 mm)
+    expect(withNumber.box.width - without.box.width).toBeCloseTo(637.5, 6);
+  });
+
   // dwg에 transform을 적용한 픽스처를 만들고, screen(computeLabelPlacements)과 DXF(damageLabels)가
   // 같은 자리를 고르는지 맞대본다 — DXF는 이미 검증된 대조군이라 손으로 좌표를 계산할 필요가 없다.
   // gap·font가 (world 기준이 아니라) 고정된 실제 mm값이라 축척이 있으면 손으로 미리 답을 구하기

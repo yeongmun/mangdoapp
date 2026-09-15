@@ -6,7 +6,7 @@ import { getDamageType } from './damageTypes.js';
 import { boundsOf, rectCenter } from './geometry.js';
 import { placeLabels } from './labelCollision.js';
 import { estimateTextWidth, labelBlock, placeBlock } from './labelLayout.js';
-import { computeNumbers, dimensionTextOf, drawingNameOf, photoTextOf } from './quantities.js';
+import { computeNumbers, countOutsideFrames, dimensionTextOf, drawingNameOf, photoTextOf } from './quantities.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 export const CRACK_COLOR = '#e53935';
@@ -379,6 +379,22 @@ export function createOverlay(svg, mapper) {
   // 라벨 자리도 번호와 같은 자리에서 한 번만 계산한다(설계 4.5). null이면 겹침 방지를 하지
   // 않는 도면이라는 뜻이고, 그때는 예전처럼 도형에서 바로 위 자리에 그린다.
   let placements = null;
+  // 망도틀 영역(도면 좌표 mm). 도면을 열 때 setFrames로 한 번 받는다. 비어 있으면 도면 전체가
+  // 한 묶음이라 예전과 똑같이 동작한다(2026-09-16 frame-numbering 설계 5장).
+  let frames = [];
+  let outsideCount = 0;
+
+  // 번호·라벨 자리·틀 밖 개수는 셋 다 (손상 목록, 틀 목록)에서만 정해진다. 한 자리에서 같이 구한다.
+  function recompute() {
+    numbers = computeNumbers(damages, frames);
+    outsideCount = countOutsideFrames(damages, frames);
+    // 도면 좌표 변환이 있는 도면에서만 dwgToWorld를 넘긴다 — mapper.dwgToWorld 자체는 항상
+    // 함수이지만(createCoordinateMapper), dwgStatus.matrix가 없으면 늘 null을 돌려줄 뿐이다.
+    // 여기서 미리 null로 걸러 둬야 computeLabelPlacements가 "변환 불가 = 겹침 방지 안 함"과
+    // "이 점만 변환 실패"를 구분할 수 있다(전자는 함수 자체가 없을 때만 판단한다).
+    const dwgToWorld = mapper.dwgStatus?.matrix ? (point) => mapper.dwgToWorld(point) : null;
+    placements = computeLabelPlacements(damages, numbers, dwgToWorld);
+  }
 
   function renderDamage(damage, number, elements, sizes, patternsNeeded) {
     const plan = describeDamageRender(damage, selectedId, number);
@@ -475,17 +491,16 @@ export function createOverlay(svg, mapper) {
       // 항상 새 배열을 만들므로(damageDoc.js) 참조 비교로 충분하다.
       if (list !== damages) {
         damages = list;
-        numbers = computeNumbers(damages);
         // 라벨 자리는 저장하지 않는다 — 목록이 바뀔 때마다 처음부터 다시 잡는다(설계 4.6).
         // 손상 하나를 옮기면 이웃 라벨의 자리도 바뀔 수 있고, 그게 맞는 동작이다.
-        //
-        // 도면 좌표 변환이 있는 도면에서만 dwgToWorld를 넘긴다 — mapper.dwgToWorld 자체는 항상
-        // 함수이지만(createCoordinateMapper), dwgStatus.matrix가 없으면 늘 null을 돌려줄 뿐이다.
-        // 여기서 미리 null로 걸러 둬야 computeLabelPlacements가 "변환 불가 = 겹침 방지 안 함"과
-        // "이 점만 변환 실패"를 구분할 수 있다(전자는 함수 자체가 없을 때만 판단한다).
-        const dwgToWorld = mapper.dwgStatus?.matrix ? (point) => mapper.dwgToWorld(point) : null;
-        placements = computeLabelPlacements(damages, numbers, dwgToWorld);
+        recompute();
       }
+      requestRender();
+    },
+    // 도면을 열 때 한 번 부른다(main.js). 틀이 바뀌면 번호가 통째로 달라지므로 다시 계산한다.
+    setFrames(list) {
+      frames = Array.isArray(list) ? list : [];
+      recompute();
       requestRender();
     },
     setSelected(id) {
@@ -498,10 +513,14 @@ export function createOverlay(svg, mapper) {
     },
     requestRender,
     // main.js의 속성 패널 요약줄(번호 표시)이 render()와 같은 캐시를 쓰도록 내보낸다 —
-    // 따로 computeNumbers를 다시 부르면 캐시를 둔 의미가 없다.
+    // 따로 computeNumbers를 다시 부르면 캐시를 둔 의미가 없다. 틀 밖 손상은 null이 나오고
+    // 요약줄은 그 자리에 '-'를 보여준다.
     numberOf(id) {
       return numbers.get(id) ?? null;
     },
-    // "번호정렬" 버튼 전용. setDamages는 damages 배열 참조가 그대로면(문서가 안 바뀌었으면) 위
+    // 저장 배지 옆 경고용. 틀이 없는 도면에서는 늘 0이다.
+    outsideFrameCount() {
+      return outsideCount;
+    },
   };
 }
