@@ -12,10 +12,14 @@
 //     헷갈리기 때문이다. 표에는 이 구분이 필요 없다.
 //   / 세로·길이 measured.length / 개소 measured.count / 물량 quantityOf / 단위 unitOf / 비고 attrs.note
 //
-// computeNumbers는 geometry.world 좌표로 번호를 매긴다(3.1). geometry.dwg로 다시 매기면 안 된다 —
-// 페이지→모델 변환(coords.js)이 회전·반전을 포함할 수 있어 world 기준 순서와 dwg 기준 순서가 달라질
-// 수 있다. 2단계 생성기가 DWG 모델 공간에서 동작하더라도, 번호는 world 좌표로 계산한 결과(id→번호)를
-// 그대로 가져다 써야 한다.
+// computeNumbers는 두 좌표계를 나눠 쓴다(2026-09-16 망도틀 설계 4·5장).
+//   - 어느 망도틀에 속하는지(frameIndexOf)는 geometry.dwg로 판정한다 — 틀 영역이 도면 mm이고, 화면과
+//     서버가 같은 입력으로 같은 답을 내야 하기 때문이다.
+//   - 틀 안에서의 순서(왼쪽 우선)는 geometry.world 좌표로 매긴다(3.1). geometry.dwg로 다시 매기면
+//     안 된다 — 페이지→모델 변환(coords.js)이 회전·반전을 포함할 수 있어 world 기준 순서와 dwg 기준
+//     순서가 달라질 수 있다. 2단계 생성기가 DWG 모델 공간에서 동작하더라도, 번호는 여기서 계산한
+//     결과(id→번호)를 그대로 가져다 써야 한다.
+//   - frames가 비어 있으면 도면 전체가 한 틀이다(옛 동작과 같다).
 //
 // 값의 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md 3장
 
