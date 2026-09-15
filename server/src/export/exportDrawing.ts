@@ -38,6 +38,7 @@ import {
   pitchOf,
   readSheetContext,
   shiftGrid,
+  shiftRangesInPlace,
   type RegionIndex,
   type SheetContext,
 } from './sheetCopy.js';
@@ -348,6 +349,22 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
         const pageMax = Math.min(plan.dataRows, plan.maxNumber - page * plan.dataRows);
         appendAll(pairs, fillTable(shiftGrid(plan.grid, dx), rowsFor(pageEntries, pageMax), alloc, owner));
       }
+    }
+  }
+
+  // 오른쪽 틀과 그 영역의 원본 엔티티를 제자리에서 옮긴다(설계 6장).
+  // insertEntities보다 **먼저** 해야 한다 — 범위(EntityRange)는 ENTITIES 구역 안의 인덱스이고,
+  // insertEntities는 그 구역 끝에 쌍을 이어 붙여 배열을 새로 만든다.
+  if (regions && running > 0) {
+    for (const plan of plans) {
+      if (plan.offset === 0) continue;
+      shiftRangesInPlace(doc, regions.inFrame[plan.frame.index], plan.offset);
+      const insert = regions.frameInsert[plan.frame.index];
+      if (insert) shiftRangesInPlace(doc, [insert], plan.offset);
+    }
+    // 어느 틀에도 속하지 않는 최상위 엔티티(틀 사이의 글자 등)도 오른쪽에 있으면 같이 민다.
+    for (const entry of regions.loose) {
+      shiftRangesInPlace(doc, [entry.range], looseShift(entry.centerX));
     }
   }
 

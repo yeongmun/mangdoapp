@@ -1,10 +1,12 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { layerNames, parseDxf } from '../src/export/dxfDocument.js';
+import { DAMAGE_LAYER, layerNames, parseDxf } from '../src/export/dxfDocument.js';
 import { EXPORT_WARNINGS, ExportError, exportDamagesToDxf } from '../src/export/exportDrawing.js';
-import { flatTable, rotatedFrame, withSecondFrame } from './fixtureDocs.js';
+import { findFrames } from '../src/export/frames.js';
+import { flatTable, rotatedFrame, withFrameAt, withSecondFrame } from './fixtureDocs.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
 
@@ -594,6 +596,18 @@ describe('exportDamagesToDxf', () => {
       const result = exportDamagesToDxf(text, damages);
       expect(result.warnings).toContain(EXPORT_WARNINGS.sheetCopyUnsupported(0));
       expect(result.warnings).not.toContain(EXPORT_WARNINGS.sheetCopied(0, 2));
+
+      // Task 3 리뷰 Important #2 — 경고 문구뿐 아니라 옛 넘침(표를 아래에)이 실제로 그려지는지도
+      // 확인한다. 번호 "4"(N=3을 넘겨 overflowFrame의 2번째 표로 간다)의 자리를 손으로 계산한다:
+      // 로컬 [번호 칸 중앙 x=50, 데이터 1행 중앙 y=-70](tableGrid.test.ts 실측) + 표 삽입점(500,700)
+      //   + 넘침 dy = −(120+40) = −160(tableFill.ts의 offsetOf) → 로컬 [550, 470]
+      // 90도 회전·배율 2·삽입점(1000,2000)의 회전 공식(frames.test.ts 실측: (x,y)→(1000−2y,2000+2x)):
+      //   sx=550*2=1100, sy=470*2=940 → x=1000−940=60, y=2000+1100=3100
+      const four = texts(result.dxfText).filter((t) => t.value === '4');
+      const overflowFour = four.find((t) => Math.abs(t.y - 3100) < 1e-6);
+      expect(overflowFour).toBeDefined();
+      expect(overflowFour!.x).toBeCloseTo(60, 6);
+      expect(overflowFour!.y).toBeCloseTo(3100, 6);
     });
 
     // R5(controller ruling): 복사본에는 연관 HATCH(경계 LWPOLYLINE과 330/ACAD_REACTORS로 서로
@@ -682,5 +696,173 @@ describe('exportDamagesToDxf', () => {
       expect(numAt(textCopy.pairs, 10)).toBe(101150);
       expect(numAt(textCopy.pairs, 20)).toBe(3350);
     });
+
+    // 근거: docs/superpowers/specs/2026-09-16-sheet-overflow-design.md 6장 — 앞 틀이 넘치면
+    // 뒤 틀(그 INSERT·영역·손상·표 글자)이 간격만큼 오른쪽으로 밀린다.
+    // 틀 0 안쪽(x 2000~4280, y 3160~3400)
+    function leftDamage(n: number) {
+      const x = 2100 + n * 100;
+      const dwg: Pt[] = [[x, 3200], [x + 50, 3200], [x + 50, 3300], [x, 3300]];
+      return damage(`l${n}`, 'spalling', n * 10, dwg, { width: 1.2, length: 1.5, count: 2 });
+    }
+
+    it('앞 틀이 넘치면 뒤 틀의 INSERT가 간격만큼 오른쪽으로 간다', async () => {
+      const result = exportDamagesToDxf(await twoFrames(), [1, 2, 3, 4].map(leftDamage));
+      const moved = findFrames(parseDxf(result.dxfText));
+      // 틀 0은 제자리, 틀 1의 삽입점 50000 + 49000 = 99000 → 영역 99000 + 2*500 = 100000
+      expect(moved).toHaveLength(2);
+      expect(moved[0].bounds.minX).toBeCloseTo(2000, 6);
+      expect(moved[1].bounds.minX).toBeCloseTo(100000, 6);
+    });
+
+    it('복사본이 원래 뒤 틀 자리에 온다', async () => {
+      const result = exportDamagesToDxf(await twoFrames(), [1, 2, 3, 4].map(leftDamage));
+      // 틀 0의 복사본: 삽입점 1000 + 49000 = 50000 → 표 원점 51000, 번호 칸 51100
+      //   데이터 1행 중앙 y = 2000 + 2*(700−70) = 3260
+      // '4'는 표 칸뿐 아니라 4번 손상 자신의 번호 라벨(틀 안 번호가 그대로 4다)에도 나오므로
+      // (Task 3 보고서 10장의 같은 문제), 표 칸을 y좌표로 가려낸다.
+      const four = texts(result.dxfText).filter((t) => t.value === '4');
+      const tableFour = four.find((t) => Math.abs(t.y - 3260) < 1e-6);
+      expect(tableFour).toBeDefined();
+      expect(tableFour!.x).toBeCloseTo(51100, 6);
+      expect(tableFour!.y).toBeCloseTo(3260, 6);
+    });
+
+    it('뒤 틀의 영역 도형·손상·표 글자도 함께 밀린다', async () => {
+      // 틀 1 영역 안에 최상위 LINE (51100,3200)-(51300,3300)을 넣는다.
+      const extra = [
+        '  0', 'LINE', '  5', '91', '330', '1F', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbLine',
+        ' 10', '51100.0', ' 20', '3200.0', ' 30', '0.0', ' 11', '51300.0', ' 21', '3300.0', ' 31', '0.0', '',
+      ].join('\n');
+      const text = (await twoFrames()).replace('  0\nENDSEC\n  0\nEOF\n', `${extra}  0\nENDSEC\n  0\nEOF\n`);
+      const result = exportDamagesToDxf(text, [...[1, 2, 3, 4].map(leftDamage), rightDamage(1)]);
+
+      const doc = parseDxf(result.dxfText);
+      const lineXs = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'LINE' ? i : -1))
+        .filter((i) => i >= 0)
+        .map((i) => Number(doc.pairs.slice(i, i + 20).find((p) => p.code === 10)!.value));
+      // 원본 LINE이 51100 → 100100으로 옮겨졌고, 51100에는 아무것도 남지 않았다.
+      expect(lineXs).toContain(100100);
+      expect(lineXs).not.toContain(51100);
+
+      // 틀 1의 손상 도형도 +49000
+      const polyXs = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
+        .filter((i) => i >= 0)
+        .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
+      expect(polyXs).toContain(100200); // 51200 + 49000
+
+      // 틀 1의 표 단위 칸: 53170 + 49000 = 102170
+      expect(texts(result.dxfText).filter((t) => t.value === '㎡').map((t) => t.x)).toContain(102170);
+    });
+
+    it('틀 둘이 모두 넘치면 이동량이 누적된다', async () => {
+      // 틀 셋: x 2000 / 51000 / 100000. 간격은 모두 49000이다.
+      const three = withFrameAt(await twoFrames(), 99000, '8B');
+      const result = exportDamagesToDxf(three, [...[1, 2, 3, 4].map(leftDamage), ...[1, 2, 3, 4].map(rightDamage)]);
+      expect(result.warnings).toEqual([
+        EXPORT_WARNINGS.sheetCopied(0, 2),
+        EXPORT_WARNINGS.sheetCopied(1, 2),
+      ]);
+
+      const moved = findFrames(parseDxf(result.dxfText));
+      expect(moved).toHaveLength(3);
+      expect(moved[0].bounds.minX).toBeCloseTo(2000, 6); // 틀 0 제자리
+      expect(moved[1].bounds.minX).toBeCloseTo(100000, 6); // 틀 1은 49000
+      expect(moved[2].bounds.minX).toBeCloseTo(198000, 6); // 틀 2는 49000 + 49000
+    });
+
+    it('틀이 없는 도면은 옛 넘침(표를 아래에) 그대로다', async () => {
+      const result = exportDamagesToDxf(flatTable(await template()), [1, 2, 3, 4].map(leftDamage));
+      expect(result.warnings).toEqual([]);
+      // 넘침 표 1장째는 로컬로 −(120 + 40) = −160만큼 내려간다(tableFill.test.ts 실측).
+      // 표가 최상위(배율 1, 삽입점 (500,700))이므로 데이터 1행 중앙 y = 700 − 70 = 630 → 630 − 160 = 470
+      const ys = texts(result.dxfText).filter((t) => t.value === '4').map((t) => t.y);
+      expect(ys).toContain(470);
+    });
+
+    // Task 3 리뷰 Important #1 — sheetCopySkipped가 실제로 경로를 타는 통합 확인이 없었다.
+    // DIMENSION(ROLES 밖 타입, 복사 불가)을 넘치는 틀 1(마지막 틀이라 뒤에 밀 틀이 없다) 영역
+    // 안(x 51150~51250, y 3200~3300 → 중심 51200,3250)에 심는다. copyRegion이 복사를 건너뛰고
+    // skipped를 1로 세 sheetCopySkipped(1) 경고가 실제로 나오는지, 원본이 복사되지 않고
+    // (제자리에 그대로, 한 번만) 남는지 확인한다.
+    it('복사할 수 없는 엔티티(치수)는 복사본에서 빠지고 경고에 개수가 들어간다', async () => {
+      const extraDimension = [
+        '  0', 'DIMENSION', '  5', '95', '330', '1F', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbDimension',
+        '  2', '*D1', ' 10', '51150.0', ' 20', '3200.0', ' 30', '0.0', ' 11', '51250.0', ' 21', '3300.0', ' 31', '0.0', '',
+      ].join('\n');
+      const text = (await twoFrames()).replace('  0\nENDSEC\n  0\nEOF\n', `${extraDimension}  0\nENDSEC\n  0\nEOF\n`);
+
+      const result = exportDamagesToDxf(text, [1, 2, 3, 4].map(rightDamage));
+      expect(result.warnings).toEqual([
+        EXPORT_WARNINGS.sheetCopied(1, 2),
+        EXPORT_WARNINGS.sheetCopySkipped(1),
+      ]);
+
+      const doc = parseDxf(result.dxfText);
+      const dimensionStarts = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'DIMENSION' ? i : -1))
+        .filter((i) => i >= 0);
+      // 틀 1이 마지막 틀이라(오른쪽에 밀 틀이 없다) 자신의 오버플로는 제 위치 이동을 일으키지
+      // 않는다 — 복사되지 않았으니 결과에는 원본 하나만, 좌표도 그대로 남는다.
+      expect(dimensionStarts).toHaveLength(1);
+      const at = (code: number) => Number(doc.pairs.slice(dimensionStarts[0], dimensionStarts[0] + 20).find((p) => p.code === code)!.value);
+      expect(at(10)).toBeCloseTo(51150, 6);
+      expect(at(20)).toBeCloseTo(3200, 6);
+    });
+  });
+
+  // 사내 템플릿은 커밋하지 않는다(.gitignore의 *.dxf). 있을 때만 도는 통합 확인이다.
+  // 실측(조사 1·5장): 틀 7개, 데이터 행 수 35, 틀 0 minX 76627.54, 간격(0→1) 74943.26.
+  const realTemplatePath = join(fileURLToPath(new URL('../../', import.meta.url)), 'docs', '빈도면(테이블버전).dxf');
+
+  describe.skipIf(!existsSync(realTemplatePath))('실제 사내 템플릿', () => {
+    it('틀 0에 손상 40개를 그리면 복사본이 틀 1 자리에 오고 틀 1~6이 밀린다', async () => {
+      const text = await readFile(realTemplatePath, 'utf8');
+      // 틀 0 영역(x 76627.54~144365.14, y 35.53~45701.33) 안에 40개
+      const damages = [];
+      for (let i = 0; i < 40; i++) {
+        const x = 77000 + i * 100;
+        const dwg: Pt[] = [[x, 5000], [x + 50, 5000], [x + 50, 5100], [x, 5100]];
+        damages.push(damage(`d${i}`, 'spalling', i * 10, dwg, { width: 1.2, length: 1.5, count: 2 }));
+      }
+
+      const started = Date.now();
+      const result = exportDamagesToDxf(text, damages);
+      const elapsed = Date.now() - started;
+      console.log(`[실제 템플릿] 손상 40개 산출 ${elapsed}ms, ${result.dxfText.length}자`);
+      expect(elapsed).toBeLessThan(60_000);
+
+      // 35행을 넘겨 2장이 된다
+      expect(result.warnings).toContain(EXPORT_WARNINGS.sheetCopied(0, 2));
+
+      // 다시 읽히고 핸들이 유일하다
+      const doc = parseDxf(result.dxfText);
+      const handles = doc.pairs.filter((p) => p.code === 5).map((p) => p.value.trim());
+      expect(new Set(handles).size).toBe(handles.length);
+
+      // 틀은 여전히 7개(복사본은 펼쳐 넣었으므로 INSERT가 아니다)이고, 틀 1~6이 간격만큼 밀렸다.
+      const moved = findFrames(doc);
+      expect(moved).toHaveLength(7);
+      expect(moved[0].bounds.minX).toBeCloseTo(76627.54, 1); // 틀 0은 제자리
+      expect(moved[1].bounds.minX).toBeCloseTo(151570.79 + 74943.26, 1);
+
+      // 복사본 표의 36번이 원래 틀 1 자리(x > 151570) 쪽에 있다. 36은 표 칸뿐 아니라 36번
+      // 손상 자신의 번호 라벨에도 나온다(twoFrames 테스트와 같은 문제, Task 3 보고서 10장) —
+      // 라벨은 항상 DAMAGE_LAYER(신규손상)에 그려지므로(labelEntities) 그 레이어를 걸러 표
+      // 칸만 남긴다. flattenTable이 원본 표의 기존 인쇄 번호에서 레이어를 그대로 읽어 쓰므로
+      // (sheetCopy.ts의 flattenTable) 표 칸은 원본 도면 레이어(신규손상이 아니다)를 쓴다.
+      const numbers = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'TEXT' ? i : -1))
+        .filter((i) => i >= 0)
+        .map((i) => doc.pairs.slice(i, i + 24))
+        .filter((slice) => slice.find((p) => p.code === 1)?.value === '36')
+        .filter((slice) => slice.find((p) => p.code === 8)?.value !== DAMAGE_LAYER)
+        .map((slice) => Number(slice.find((p) => p.code === 10)!.value));
+      expect(numbers).toHaveLength(1);
+      expect(numbers[0]).toBeGreaterThan(151000);
+      expect(numbers[0]).toBeLessThan(220000);
+    }, 120_000);
   });
 });
