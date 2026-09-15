@@ -15,6 +15,7 @@ import {
   walkInserts,
   type RawEntity,
   type TableCandidate,
+  type Transform,
 } from './tableGrid.js';
 
 /** 틀의 영역(mm, 모델 좌표). 앱까지 이 모양 그대로 간다(DrawingRecord.frames) */
@@ -31,6 +32,12 @@ export interface Frame {
   bounds: FrameBounds;
   /** 이 틀 안에서 처음 만난 표 */
   table: TableCandidate;
+  /** 이 틀을 만든 INSERT가 가리키는 블록 이름 (넘침 장에서 이 블록을 펼친다) */
+  blockName: string;
+  /** 모델 공간 최상위 엔티티 목록에서 이 틀 INSERT의 순번. 핸들이 겹쳐도 틀리지 않는다 */
+  entityIndex: number;
+  /** 틀 INSERT의 삽입 변환(블록 좌표 → 모델 좌표) */
+  transform: Transform;
 }
 
 // 축 정렬 상자의 네 모서리. 회전한 삽입에서는 대각 두 점만으로 영역이 좁아진다.
@@ -46,7 +53,7 @@ function corners(minX: number, minY: number, maxX: number, maxY: number): Point[
 // 경계상자를 만들 때 쓰는 점(블록 좌표). HATCH는 뺀다 — 경계가 복잡하고 늘 다른 도형과
 // 겹치므로 영역을 넓히는 데 보탬이 되지 않는다(설계 2장). INSERT는 walkInserts가 안으로
 // 내려가 주므로 여기서는 점을 내지 않는다.
-function entityPoints(entity: RawEntity): Point[] {
+export function boundsPointsOf(entity: RawEntity): Point[] {
   switch (entity.type) {
     case 'LINE':
       return [
@@ -88,8 +95,9 @@ export function findFrames(doc: DxfDocument): Frame[] {
   const model = readModelSpace(doc);
   if (!model) return [];
 
-  const found: Array<{ bounds: FrameBounds; table: TableCandidate }> = [];
-  for (const entity of model.entities) {
+  const found: Array<Omit<Frame, 'index'>> = [];
+  for (let entityIndex = 0; entityIndex < model.entities.length; entityIndex++) {
+    const entity = model.entities[entityIndex];
     if (entity.type !== 'INSERT') continue;
     const name = textAt(entity, 2);
     if (!name) continue;
@@ -103,15 +111,16 @@ export function findFrames(doc: DxfDocument): Frame[] {
     // 표는 배열에 담는다 — let 변수에 콜백 안에서 대입하면 TypeScript의 흐름 분석이 그 대입을
     // 보지 못해 호출 뒤에도 타입이 null로 남는다.
     const tables: TableCandidate[] = [];
+    const transform = insertTransform(entity);
 
     // 최상위 INSERT는 이미 한 단계 내려온 것이므로 depth 1, seen에 자기 블록 이름을 넣고 시작한다.
-    walkInserts(model, contents, insertTransform(entity), 1, new Set([name]), (child, transform) => {
+    walkInserts(model, contents, transform, 1, new Set([name]), (child, childTransform) => {
       if (child.type === 'ACAD_TABLE' && tables.length === 0) {
-        const candidate = tableCandidateOf(child, transform);
+        const candidate = tableCandidateOf(child, childTransform);
         if (candidate) tables.push(candidate);
       }
-      for (const point of entityPoints(child)) {
-        const [x, y] = applyTransform(transform, point);
+      for (const point of boundsPointsOf(child)) {
+        const [x, y] = applyTransform(childTransform, point);
         minX = Math.min(minX, x);
         maxX = Math.max(maxX, x);
         minY = Math.min(minY, y);
@@ -120,10 +129,16 @@ export function findFrames(doc: DxfDocument): Frame[] {
     });
 
     if (tables.length === 0) continue;
-    found.push({ bounds: { minX, minY, maxX, maxY }, table: tables[0] });
+    found.push({
+      bounds: { minX, minY, maxX, maxY },
+      table: tables[0],
+      blockName: name,
+      entityIndex,
+      transform,
+    });
   }
 
   // 왼쪽 → 오른쪽, 같으면 위 → 아래. 이 순서가 인덱스다(설계 2장).
   found.sort((a, b) => a.bounds.minX - b.bounds.minX || b.bounds.maxY - a.bounds.maxY);
-  return found.map((frame, index) => ({ index, bounds: frame.bounds, table: frame.table }));
+  return found.map((frame, index) => ({ ...frame, index }));
 }

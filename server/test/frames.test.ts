@@ -32,6 +32,9 @@ describe('findFrames', () => {
     expect(frames[0].table.blockName).toBe('*TX');
     expect(frames[0].table.position).toEqual([500, 700]);
     expect(frames[0].table.transform).toMatchObject({ x: 1000, y: 2000, scaleX: 2, scaleY: 2 });
+    expect(frames[0].blockName).toBe('망도틀');
+    expect(frames[0].entityIndex).toBe(0); // ENTITIES의 첫 엔티티가 망도틀 INSERT다
+    expect(frames[0].transform).toMatchObject({ x: 1000, y: 2000, scaleX: 2, scaleY: 2, rotationRad: 0 });
   });
 
   it('틀이 여러 개면 왼쪽(minX가 작은) 틀이 0번이다 — 도면에 적힌 순서가 아니다', async () => {
