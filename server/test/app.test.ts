@@ -525,7 +525,8 @@ describe('손상 문서 API', () => {
 
 const templatePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
 
-const RECT_DWG = [[0, 0], [1000, 0], [1000, 400], [0, 400]];
+// 픽스처의 망도틀 영역(x 2000~4280, y 3160~3400) 안에 둔다 — 틀 밖이면 번호가 없고 경고 헤더가 붙는다.
+const RECT_DWG = [[2100, 3200], [3100, 3200], [3100, 3300], [2100, 3300]];
 
 function exportDoc(drawingId: string) {
   return {
