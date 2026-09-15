@@ -1,5 +1,5 @@
 // 손상물량표를 채운다. 표 객체를 고치지 않고 칸 가운데에 글자를 얹는다.
-// 데이터 행 수를 넘으면 오른쪽에 같은 모양의 표를 LINE·TEXT로 직접 그린다.
+// 데이터 행 수를 넘으면 원본 표 바로 아래에 같은 모양의 표를 LINE·TEXT로 직접 그린다.
 // 문구는 앱 화면과 같은 quantities.js 함수로 만든다.
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 7장
 
@@ -53,25 +53,26 @@ function baseFor(alloc: HandleAllocator, owner: string): EntityBase {
   return { handle: alloc.next(), owner, layer: DAMAGE_LAYER, colorIndex: DAMAGE_COLOR };
 }
 
-// 넘침 표 k장째(k ≥ 1)가 원본에서 오른쪽으로 얼마나 떨어지는지(표 로컬 단위).
-// 원본 표 오른쪽 끝에서 번호 열 너비만큼 띄운다. (번호 열이 항상 첫 열이라 지금은
-// colBoundaries[1]과 값이 같지만, grid.numberColumn을 직접 써서 뜻을 분명히 한다.)
+// 넘침 표 k장째(k ≥ 1)가 원본에서 아래로 얼마나 내려가는지(표 로컬 단위, 음수다 — 표는
+// 위에서 아래로 자란다). 원본 표 아래쪽 끝에서 원본 첫 행(머리글 행) 높이만큼 더 띄운다.
+// 오른쪽은 다음 망도틀 자리라 아래로 쌓는다(2026-09-16 frame-numbering 설계 6장,
+// 2026-09-15 설계 7.4를 대체한다). 왼쪽 끝은 원본과 같다.
 function offsetOf(grid: TableGrid, tableIndex: number): number {
-  const width = grid.colBoundaries[grid.colBoundaries.length - 1];
-  const numberColumnWidth = grid.colBoundaries[grid.numberColumn + 1] - grid.colBoundaries[grid.numberColumn];
-  return tableIndex * (width + numberColumnWidth);
+  const bottom = grid.rowBoundaries[grid.rowBoundaries.length - 1];
+  const headerRowHeight = grid.rowBoundaries[0] - grid.rowBoundaries[1];
+  return tableIndex * (bottom - headerRowHeight);
 }
 
-function localToModel(grid: TableGrid, local: Point, dx: number): Point {
-  return applyTransform(grid.transform, [grid.position[0] + local[0] + dx, grid.position[1] + local[1]]);
+function localToModel(grid: TableGrid, local: Point, dy: number): Point {
+  return applyTransform(grid.transform, [grid.position[0] + local[0], grid.position[1] + local[1] + dy]);
 }
 
-function textAt(grid: TableGrid, local: Point, dx: number, value: string, alloc: HandleAllocator, owner: string): DxfPair[] {
-  return textEntity(baseFor(alloc, owner), localToModel(grid, local, dx), modelTextHeight(grid), value, 'center');
+function textAt(grid: TableGrid, local: Point, dy: number, value: string, alloc: HandleAllocator, owner: string): DxfPair[] {
+  return textEntity(baseFor(alloc, owner), localToModel(grid, local, dy), modelTextHeight(grid), value, 'center');
 }
 
-function lineAt(grid: TableGrid, from: Point, to: Point, dx: number, alloc: HandleAllocator, owner: string): DxfPair[] {
-  return lineEntity(baseFor(alloc, owner), localToModel(grid, from, dx), localToModel(grid, to, dx));
+function lineAt(grid: TableGrid, from: Point, to: Point, dy: number, alloc: HandleAllocator, owner: string): DxfPair[] {
+  return lineEntity(baseFor(alloc, owner), localToModel(grid, from, dy), localToModel(grid, to, dy));
 }
 
 function columnCenter(grid: TableGrid, column: number): number {
@@ -86,15 +87,15 @@ function rowCenter(grid: TableGrid, dataRow: number): number {
 // 넘침 표 한 장의 틀: 원본 머리글(선·글자)을 그대로 옮겨 그리고, 데이터 격자를 새로 긋고,
 // 번호 열에 이어지는 번호를 인쇄한다. 행 수는 원본과 같다(가득 찬 표).
 function overflowFrame(grid: TableGrid, tableIndex: number, alloc: HandleAllocator, owner: string): DxfPair[] {
-  const dx = offsetOf(grid, tableIndex);
+  const dy = offsetOf(grid, tableIndex);
   const pairs: DxfPair[] = [];
 
-  for (const line of grid.headerLines) pairs.push(...lineAt(grid, line.from, line.to, dx, alloc, owner));
+  for (const line of grid.headerLines) pairs.push(...lineAt(grid, line.from, line.to, dy, alloc, owner));
   // 머리글 글자는 각자 원래 높이(BlockText.height × 배율)로 그린다 — 데이터 칸의 글자 높이
   // (grid.textHeight)를 그대로 쓰면 원본에서 머리글과 데이터 칸의 글자 크기가 다를 때 어긋난다.
   for (const text of grid.headerTexts) {
     const height = text.height * Math.abs(grid.transform.scaleX);
-    pairs.push(...textEntity(baseFor(alloc, owner), localToModel(grid, text.position, dx), height, text.text, 'center'));
+    pairs.push(...textEntity(baseFor(alloc, owner), localToModel(grid, text.position, dy), height, text.text, 'center'));
   }
 
   const left = grid.colBoundaries[0];
@@ -105,23 +106,23 @@ function overflowFrame(grid: TableGrid, tableIndex: number, alloc: HandleAllocat
   // 가로선: 데이터 행 경계. 데이터 시작선은 머리글 선이 이미 그었다.
   for (let row = 1; row <= grid.dataRowCount; row++) {
     const y = grid.rowBoundaries[grid.firstDataRow + row];
-    pairs.push(...lineAt(grid, [left, y], [right, y], dx, alloc, owner));
+    pairs.push(...lineAt(grid, [left, y], [right, y], dy, alloc, owner));
   }
   // 세로선: 모든 열 경계를 데이터 영역만큼
   for (const x of grid.colBoundaries) {
-    pairs.push(...lineAt(grid, [x, top], [x, bottom], dx, alloc, owner));
+    pairs.push(...lineAt(grid, [x, top], [x, bottom], dy, alloc, owner));
   }
   // 번호 열
   const numberX = columnCenter(grid, grid.numberColumn);
   for (let row = 1; row <= grid.dataRowCount; row++) {
     const number = tableIndex * grid.dataRowCount + row;
-    pairs.push(...textAt(grid, [numberX, rowCenter(grid, row)], dx, String(number), alloc, owner));
+    pairs.push(...textAt(grid, [numberX, rowCenter(grid, row)], dy, String(number), alloc, owner));
   }
   return pairs;
 }
 
 /**
- * 표를 채운다. 원본 표는 인쇄된 번호 칸을 건드리지 않고 값 칸만 쓰고, 용량을 넘는 번호는 오른쪽 넘침 표에 넣는다.
+ * 표를 채운다. 원본 표는 인쇄된 번호 칸을 건드리지 않고 값 칸만 쓰고, 용량을 넘는 번호는 아래쪽 넘침 표에 넣는다.
  *
  * **호출 규칙 — 반드시 지킬 것:** `rows`에는 **1부터 마지막 번호까지 모든 번호의 행**을 넘겨야 한다. 도면 좌표가
  * 없어 건너뛴 손상도 번호는 그대로 갖고(설계 8장), 그 번호의 행은 칸이 전부 빈 문자열인 채로 넘긴다.
@@ -148,7 +149,7 @@ export function fillTable(grid: TableGrid, rows: TableRow[], alloc: HandleAlloca
     if (row.number < 1) continue;
     const tableIndex = Math.floor((row.number - 1) / capacity);
     const dataRow = row.number - tableIndex * capacity;
-    const dx = offsetOf(grid, tableIndex);
+    const dy = offsetOf(grid, tableIndex);
     const y = rowCenter(grid, dataRow);
     for (let column = 0; column < COLUMN_COUNT; column++) {
       const value = row.cells[column];
@@ -156,7 +157,7 @@ export function fillTable(grid: TableGrid, rows: TableRow[], alloc: HandleAlloca
       if (tableIndex === 0) {
         pairs.push(...textEntity(baseFor(alloc, owner), cellCenter(grid, dataRow, column), modelTextHeight(grid), value, 'center'));
       } else {
-        pairs.push(...textAt(grid, [columnCenter(grid, column), y], dx, value, alloc, owner));
+        pairs.push(...textAt(grid, [columnCenter(grid, column), y], dy, value, alloc, owner));
       }
     }
   }

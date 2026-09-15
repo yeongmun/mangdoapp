@@ -128,8 +128,8 @@ describe('fillTable — 원본 표 안', () => {
 });
 
 describe('fillTable — 넘침 표', () => {
-  // 픽스처의 데이터 행 수는 3이다. 번호 4부터는 오른쪽에 새 표가 생긴다.
-  it('데이터 행 수를 넘으면 오른쪽에 표를 한 장 더 그린다', async () => {
+  // 픽스처의 데이터 행 수는 3이다. 번호 4부터는 원본 표 바로 아래에 새 표가 생긴다.
+  it('데이터 행 수를 넘으면 아래에 표를 한 장 더 그린다', async () => {
     const g = await grid();
     const pairs = fillTable(g, [rowValuesOf(damage('spalling', { length: 1.5 }), 4)], new HandleAllocator(0x400), '1F');
     const texts = textsOf(pairs);
@@ -144,14 +144,14 @@ describe('fillTable — 넘침 표', () => {
     expect(lineCount(pairs)).toBe(17);
   });
 
-  it('새 표는 원본 오른쪽 끝에서 첫 열 너비만큼 띄운 자리에 있다', async () => {
+  it('새 표는 원본 표 바로 아래, 머리글 행 높이만큼 띄운 자리에 있고 왼쪽 끝이 같다', async () => {
     const g = await grid();
     const pairs = fillTable(g, [rowValuesOf(damage('spalling', { length: 1.5 }), 4)], new HandleAllocator(0x400), '1F');
     const value = textsOf(pairs).find((t) => t.text === '박락')!;
-    // 표 너비 1140 + 첫 열 너비 100 = 1240 만큼 로컬로 이동 → 모델에서는 배율 2를 곱해 2480
-    expect(value.x).toBeCloseTo(2800 + 2480, 6);
-    // 첫 데이터 행 높이는 원본과 같다
-    expect(value.y).toBeCloseTo(3260, 6);
+    // 왼쪽 끝은 원본과 같다 — x는 원본 표의 2열 중앙 그대로다.
+    expect(value.x).toBeCloseTo(2800, 6);
+    // 표 높이 120 + 머리글 행 높이 40 = 160만큼 로컬로 내려간다 → 모델에서는 배율 2를 곱해 320
+    expect(value.y).toBeCloseTo(3260 - 320, 6);
   });
 
   it('번호 열은 원본 다음 번호부터 이어서 인쇄한다', async () => {
