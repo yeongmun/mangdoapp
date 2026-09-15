@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { layerNames, parseDxf } from '../src/export/dxfDocument.js';
 import { EXPORT_WARNINGS, ExportError, exportDamagesToDxf } from '../src/export/exportDrawing.js';
-import { flatTable, withSecondFrame } from './fixtureDocs.js';
+import { flatTable, rotatedFrame, withSecondFrame } from './fixtureDocs.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
 
@@ -459,6 +459,228 @@ describe('exportDamagesToDxf', () => {
       expect(units[0].x).toBeCloseTo(1585, 6);
       expect(units[0].y).toBeCloseTo(630, 6);
       expect(units[1].y).toBeCloseTo(610, 6);
+    });
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-16-sheet-overflow-design.md 3~5장
+  describe('망도틀 넘침 — 틀을 통째로 복사한다', () => {
+    // 픽스처의 데이터 행 수는 3이다(tableGrid.test.ts 실측). 4개를 넣으면 2장이 된다.
+    // 틀 0: x 2000~4280, 틀 1: x 51000~53280 → 간격 49000.
+    async function twoFrames(): Promise<string> {
+      return withSecondFrame(await template(), 50000);
+    }
+
+    // 틀 1 안쪽(x 51000~53280, y 3160~3400)에 n번째 사각형을 그린 손상
+    function rightDamage(n: number) {
+      const x = 51100 + n * 100;
+      const dwg: Pt[] = [[x, 3200], [x + 50, 3200], [x + 50, 3300], [x, 3300]];
+      return damage(`r${n}`, 'spalling', n * 10, dwg, { width: 1.2, length: 1.5, count: 2 });
+    }
+
+    function texts(dxfText: string) {
+      const doc = parseDxf(dxfText);
+      const out: Array<{ value: string; x: number; y: number }> = [];
+      for (let i = 0; i < doc.pairs.length; i++) {
+        if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== 'TEXT') continue;
+        const entry = { value: '', x: 0, y: 0 };
+        let j = i + 1;
+        for (; j < doc.pairs.length && doc.pairs[j].code !== 0; j++) {
+          const p = doc.pairs[j];
+          if (p.code === 1) entry.value = p.value;
+          else if (p.code === 11) entry.x = Number(p.value);
+          else if (p.code === 21) entry.y = Number(p.value);
+        }
+        out.push(entry);
+        i = j - 1;
+      }
+      return out;
+    }
+
+    it('데이터 행 수를 넘으면 그 틀을 오른쪽에 한 장 더 만든다', async () => {
+      const damages = [1, 2, 3, 4].map(rightDamage);
+      const result = exportDamagesToDxf(await twoFrames(), damages);
+      expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(1, 2)]);
+
+      const all = texts(result.dxfText);
+      // 복사본 표의 번호 칸: 틀 1 삽입점 50000 + 간격 49000 = 99000
+      //   → 표 원점 x = 99000 + 2*500 = 100000, 번호 칸 중앙 = 100000 + 2*50 = 100100
+      //   데이터 1행 중앙 y = 2000 + 2*(700−70) = 3260
+      // '4'는 표 칸뿐 아니라 4번 손상 자신의 번호 라벨(틀 안 번호가 그대로 4다)에도 나오므로
+      // y로 표 칸을 가려낸다.
+      const four = all.filter((t) => t.value === '4');
+      const tableFour = four.find((t) => Math.abs(t.y - 3260) < 1e-6);
+      expect(tableFour).toBeDefined();
+      expect(tableFour!.x).toBeCloseTo(100100, 6);
+      expect(tableFour!.y).toBeCloseTo(3260, 6);
+      // 5·6도 함께 인쇄된다(빈 행이라도 번호는 쓴다) — 손상이 없는 번호라 라벨과 안 겹친다.
+      expect(all.filter((t) => t.value === '5')).toHaveLength(1);
+      expect(all.filter((t) => t.value === '6')).toHaveLength(1);
+    });
+
+    it('4번 손상의 도형·라벨이 복사본 자리로 옮겨 그려진다', async () => {
+      const damages = [1, 2, 3, 4].map(rightDamage);
+      const result = exportDamagesToDxf(await twoFrames(), damages);
+      const doc = parseDxf(result.dxfText);
+      // LWPOLYLINE의 첫 10 좌표를 모아 본다. 4번(x 51500)만 +49000 = 100500이다.
+      const xs: number[] = [];
+      for (let i = 0; i < doc.pairs.length; i++) {
+        if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== 'LWPOLYLINE') continue;
+        const x = doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value;
+        xs.push(Number(x));
+      }
+      expect(xs).toContain(51200); // 1번은 제자리(51100 + 1*100)
+      expect(xs).toContain(100500); // 4번은 51500 + 49000
+      expect(xs).not.toContain(51500);
+    });
+
+    it('복사본 표에는 그 장의 손상만 들어간다', async () => {
+      const damages = [1, 2, 3, 4].map(rightDamage);
+      const result = exportDamagesToDxf(await twoFrames(), damages);
+      // 단위 칸('㎡')은 라벨에 없는 값이라 표 칸만 가리킨다.
+      // 원본 장: 7열 중앙 = 50000 + 2*(500+1085) = 53170, 복사본: +49000 = 102170
+      const units = texts(result.dxfText).filter((t) => t.value === '㎡').map((t) => t.x).sort((a, b) => a - b);
+      expect(units).toHaveLength(4);
+      expect(units.slice(0, 3)).toEqual([53170, 53170, 53170]);
+      expect(units[3]).toBeCloseTo(102170, 6);
+    });
+
+    it('복사본에는 그 틀 영역의 최상위 도형도 함께 온다', async () => {
+      // 틀 1 영역 안에 최상위 LINE (51100,3200)-(51300,3300)을 넣는다 → 중심 (51200, 3250)
+      const extra = [
+        '  0', 'LINE', '  5', '91', '330', '1F', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbLine',
+        ' 10', '51100.0', ' 20', '3200.0', ' 30', '0.0', ' 11', '51300.0', ' 21', '3300.0', ' 31', '0.0', '',
+      ].join('\n');
+      const text = (await twoFrames()).replace('  0\nENDSEC\n  0\nEOF\n', `${extra}  0\nENDSEC\n  0\nEOF\n`);
+      const before = entityCount(text, 'LINE');
+      const result = exportDamagesToDxf(text, [1, 2, 3, 4].map(rightDamage));
+      // 원본 LINE은 그대로 있고 복사본이 하나 늘어난다(표 격자 선은 *TX 블록 안이라 따로다)
+      const doc = parseDxf(result.dxfText);
+      const xs = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'LINE' ? i : -1))
+        .filter((i) => i >= 0)
+        .map((i) => Number(doc.pairs.slice(i, i + 20).find((p) => p.code === 10)!.value));
+      expect(xs).toContain(51100); // 원본
+      expect(xs).toContain(100100); // 복사본 51100 + 49000
+      expect(entityCount(result.dxfText, 'LINE')).toBeGreaterThan(before);
+    });
+
+    it('넘치지 않으면 경고도 복사본도 없다', async () => {
+      const result = exportDamagesToDxf(await twoFrames(), [1, 2, 3].map(rightDamage));
+      expect(result.warnings).toEqual([]);
+      expect(texts(result.dxfText).some((t) => t.value === '4')).toBe(false);
+    });
+
+    it('경고 문구에 틀 번호와 장 수가 들어간다', () => {
+      expect(EXPORT_WARNINGS.sheetCopied(1, 2)).toBe(
+        '망도틀 2을(를) 2장으로 나눴습니다 (복사본 1장, 뒤 틀 이동)',
+      );
+      expect(EXPORT_WARNINGS.sheetCopySkipped(3)).toBe(
+        '복사할 수 없는 엔티티 3개(치수·지시선 등)는 복사본에서 빠졌습니다',
+      );
+      expect(EXPORT_WARNINGS.sheetCopyUnsupported(0)).toBe(
+        '망도틀 1은(는) 회전·비균일 배율이라 복사하지 못해 표를 아래에 그렸습니다',
+      );
+    });
+
+    it('회전한 틀은 복사하지 않고 옛 넘침(표를 아래에)으로 간다', async () => {
+      // 90도 회전한 틀 하나짜리 도면. 영역은 x −400~−160, y 3000~5280(frames.test.ts 실측).
+      const text = rotatedFrame(await template(), 90);
+      const inRotated: Pt[] = [[-350, 4000], [-250, 4000], [-250, 4100], [-350, 4100]];
+      const damages = [1, 2, 3, 4].map((n) =>
+        damage(`x${n}`, 'spalling', n * 10, inRotated.map(([x, y]) => [x, y + n]) as Pt[], {
+          width: 1.2, length: 1.5, count: 2,
+        }),
+      );
+      const result = exportDamagesToDxf(text, damages);
+      expect(result.warnings).toContain(EXPORT_WARNINGS.sheetCopyUnsupported(0));
+      expect(result.warnings).not.toContain(EXPORT_WARNINGS.sheetCopied(0, 2));
+    });
+
+    // R5(controller ruling): 복사본에는 연관 HATCH(경계 LWPOLYLINE과 330/ACAD_REACTORS로 서로
+    // 참조)와 최상위 TEXT도 함께 온다. 틀 1 영역 안(x 52010~52060, y 3210~3260)에 셋을 둔다.
+    // 원본은 한 글자도 안 바뀌고, 복사본은 pitch(49000)만큼 옮겨진 채로 따로 생긴다.
+    it('연관 HATCH와 경계 폴리라인·TEXT도 복사본으로 옮겨지고 원본은 바이트 그대로 남는다', async () => {
+      const extra = [
+        // 경계 LWPOLYLINE(핸들 9B) — HATCH(9C)를 되가리키는 ACAD_REACTORS를 가진다.
+        '  0', 'LWPOLYLINE', '  5', '9B', '330', '1F', '102', '{ACAD_REACTORS', '330', '9C', '102', '}',
+        '100', 'AcDbEntity', '  8', '0', '100', 'AcDbPolyline',
+        ' 90', '        3', ' 70', '     1', ' 43', '0.0',
+        ' 10', '52010.0', ' 20', '3210.0',
+        ' 10', '52060.0', ' 20', '3210.0',
+        ' 10', '52010.0', ' 20', '3260.0',
+        // 연관 HATCH(핸들 9C, 71=1) — 경계(9B)를 97/330으로, ACAD_REACTORS로도 가리킨다.
+        '  0', 'HATCH', '  5', '9C', '330', '1F', '102', '{ACAD_REACTORS', '330', '9B', '102', '}',
+        '100', 'AcDbEntity', '  8', '0', '100', 'AcDbHatch',
+        ' 10', '0.0', ' 20', '0.0', ' 30', '0.0',
+        '  2', 'ANSI31', ' 70', '     0', ' 71', '     1',
+        ' 91', '        1', ' 92', '        7', ' 72', '     0', ' 73', '     1', ' 93', '        3',
+        ' 10', '52010.0', ' 20', '3210.0', ' 10', '52060.0', ' 20', '3210.0', ' 10', '52010.0', ' 20', '3260.0',
+        ' 97', '        1', '330', '9B',
+        ' 75', '     0', ' 76', '     1', ' 52', '45.0', ' 41', '1.0', ' 77', '     0', ' 78', '     1',
+        ' 53', '45.0', ' 43', '52010.0', ' 44', '3210.0', ' 45', '0.0', ' 46', '3.0', ' 79', '     0',
+        ' 47', '0.115', ' 98', '        1', ' 10', '52020.0', ' 20', '3220.0',
+        // 최상위 TEXT(핸들 9D)
+        '  0', 'TEXT', '  5', '9D', '330', '1F', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbText',
+        ' 10', '52150.0', ' 20', '3350.0', ' 30', '0.0', ' 40', '10.0', '  1', 'Q',
+        '',
+      ].join('\n');
+      const text = (await twoFrames()).replace('  0\nENDSEC\n  0\nEOF\n', `${extra}  0\nENDSEC\n  0\nEOF\n`);
+
+      const result = exportDamagesToDxf(text, [1, 2, 3, 4].map(rightDamage));
+      expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(1, 2)]);
+
+      // 원본은 바이트 하나도 안 바뀐다 — 방금 짜 넣은 텍스트가 그대로 결과에 들어 있다.
+      expect(result.dxfText).toContain(extra);
+
+      const doc = parseDxf(result.dxfText);
+      function entitiesOf(type: string) {
+        const out: Array<{ start: number; pairs: typeof doc.pairs }> = [];
+        for (let i = 0; i < doc.pairs.length; i++) {
+          if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== type) continue;
+          let j = i + 1;
+          while (j < doc.pairs.length && doc.pairs[j].code !== 0) j += 1;
+          out.push({ start: i, pairs: doc.pairs.slice(i, j) });
+        }
+        return out;
+      }
+      const numAt = (pairs: typeof doc.pairs, code: number, occurrence = 0) =>
+        Number(pairs.filter((p) => p.code === code)[occurrence]?.value);
+
+      // 경계 LWPOLYLINE 복사본: 새 핸들, 반응자 없음, 세 점 모두 +49000.
+      // (손상 자체도 LWPOLYLINE·HATCH를 그리므로 — 4개 rightDamage분 — 핸들이 아니라 우리
+      // 삼각형의 좌표값으로 복사본을 정확히 짚는다.)
+      const polylines = entitiesOf('LWPOLYLINE');
+      const polyOriginal = polylines.find((e) => e.pairs.some((p) => p.code === 5 && p.value === '9B'))!;
+      expect(polyOriginal).toBeDefined();
+      const polyCopy = polylines.find((e) => e.pairs.some((p) => p.code === 10 && Number(p.value) === 101010))!;
+      expect(polyCopy).toBeDefined();
+      expect(polyCopy.pairs.some((p) => p.code === 5 && p.value === '9B')).toBe(false);
+      expect(polyCopy.pairs.some((p) => p.code === 102)).toBe(false);
+      expect(polyCopy.pairs.filter((p) => p.code === 10).map((p) => Number(p.value))).toEqual([101010, 101060, 101010]);
+      expect(polyCopy.pairs.filter((p) => p.code === 20).map((p) => Number(p.value))).toEqual([3210, 3210, 3260]);
+
+      // 연관 HATCH 복사본: 71=0, 반응자·97/330 모두 사라지고 경계·씨앗점은 +49000.
+      // 'spalling' 손상도 HATCH를 그리므로(도형·해치 테스트 참고) 좌표로 짚는다.
+      const hatches = entitiesOf('HATCH');
+      const hatchOriginal = hatches.find((e) => e.pairs.some((p) => p.code === 5 && p.value === '9C'))!;
+      expect(hatchOriginal).toBeDefined();
+      const hatchCopy = hatches.find((e) => e.pairs.some((p) => p.code === 10 && Number(p.value) === 101010))!;
+      expect(hatchCopy).toBeDefined();
+      expect(hatchCopy.pairs.some((p) => p.code === 5 && p.value === '9C')).toBe(false);
+      expect(hatchCopy.pairs.some((p) => p.code === 102)).toBe(false);
+      expect(numAt(hatchCopy.pairs, 71)).toBe(0);
+      expect(numAt(hatchCopy.pairs, 97)).toBe(0);
+      expect(hatchCopy.pairs.filter((p) => p.code === 330)).toHaveLength(1); // 소유자 하나뿐
+      const tenValues = hatchCopy.pairs.filter((p) => p.code === 10).map((p) => Number(p.value));
+      expect(tenValues[0]).toBe(0); // 고도 기준점은 그대로
+      expect(tenValues.slice(1)).toEqual([101010, 101060, 101010, 101020]);
+
+      // 최상위 TEXT 복사본: +49000, 값은 그대로.
+      const texts = entitiesOf('TEXT').filter((e) => e.pairs.some((p) => p.code === 1 && p.value === 'Q'));
+      expect(texts).toHaveLength(2);
+      const textCopy = texts.find((e) => e.pairs.some((p) => p.code === 5 && p.value !== '9D'))!;
+      expect(numAt(textCopy.pairs, 10)).toBe(101150);
+      expect(numAt(textCopy.pairs, 20)).toBe(3350);
     });
   });
 });

@@ -25,10 +25,31 @@ import {
   type HandleAllocator,
 } from './dxfDocument.js';
 import type { Point } from './dxfEntities.js';
-import { findFrames } from './frames.js';
+import { translatePairs } from './entityTransform.js';
+import { findFrames, type Frame } from './frames.js';
 import { damageLabels, labelEntities } from './labelPlacement.js';
+import {
+  copyRegion,
+  flattenFrameBlock,
+  indexRegions,
+  isFlattenable,
+  pageOf,
+  pagesOf,
+  pitchOf,
+  readSheetContext,
+  shiftGrid,
+  type RegionIndex,
+  type SheetContext,
+} from './sheetCopy.js';
 import { COLUMN_COUNT, fillTable, rowValuesOf, type TableRow } from './tableFill.js';
-import { buildGrid, findTableCandidates, hasUniformScale, nearestTable, type TableCandidate } from './tableGrid.js';
+import {
+  buildGrid,
+  findTableCandidates,
+  hasUniformScale,
+  nearestTable,
+  type TableCandidate,
+  type TableGrid,
+} from './tableGrid.js';
 
 export class ExportError extends Error {
   constructor(message: string) {
@@ -46,6 +67,13 @@ export const EXPORT_WARNINGS = {
   // warnings.join('; ')으로 X-Mangdo-Warning 헤더에 싣는다.
   outsideFrames: (count: number) =>
     `망도틀 밖 손상 ${count}개는 번호 없이 그려지고 물량표에서 빠집니다`,
+  // 넘침 장(설계 7장). 셋 다 정보성이지만 사용자가 알아야 캐드에서 무엇을 볼지 안다.
+  sheetCopied: (index: number, pages: number) =>
+    `망도틀 ${index + 1}을(를) ${pages}장으로 나눴습니다 (복사본 ${pages - 1}장, 뒤 틀 이동)`,
+  sheetCopySkipped: (count: number) =>
+    `복사할 수 없는 엔티티 ${count}개(치수·지시선 등)는 복사본에서 빠졌습니다`,
+  sheetCopyUnsupported: (index: number) =>
+    `망도틀 ${index + 1}은(는) 회전·비균일 배율이라 복사하지 못해 표를 아래에 그렸습니다`,
 } as const;
 
 export interface ExportResult {
@@ -119,7 +147,21 @@ function rowsFor(entries: Included[], maxNumber: number): TableRow[] {
   return rows;
 }
 
-// 표 하나를 채운다. 배율이 어긋나면 던지고(설계 6장), 격자를 읽지 못하면 경고만 붙인다.
+// 표 격자를 만든다. 배율이 어긋나면 던지고(설계 6장), 격자를 읽지 못하면 경고만 붙인다.
+function gridFor(doc: DxfDocument, candidate: TableCandidate, warnings: string[]): TableGrid | null {
+  if (!hasUniformScale(candidate.transform)) {
+    throw new ExportError('표의 배율이 가로·세로가 달라 채울 수 없습니다');
+  }
+  const grid = buildGrid(doc, candidate);
+  if (!grid) {
+    // 틀이 여럿이면 같은 경고가 여러 번 나올 수 있다. 한 번만 알린다.
+    if (!warnings.includes(EXPORT_WARNINGS.unknownTable)) warnings.push(EXPORT_WARNINGS.unknownTable);
+    return null;
+  }
+  return grid;
+}
+
+// 틀이 없는 도면 전용 — 표 하나를 골라 채운다.
 function fillCandidate(
   doc: DxfDocument,
   candidate: TableCandidate,
@@ -128,16 +170,8 @@ function fillCandidate(
   owner: string,
   warnings: string[],
 ): DxfPair[] {
-  if (!hasUniformScale(candidate.transform)) {
-    throw new ExportError('표의 배율이 가로·세로가 달라 채울 수 없습니다');
-  }
-  const grid = buildGrid(doc, candidate);
-  if (!grid) {
-    // 틀이 여럿이면 같은 경고가 여러 번 나올 수 있다. 한 번만 알린다.
-    if (!warnings.includes(EXPORT_WARNINGS.unknownTable)) warnings.push(EXPORT_WARNINGS.unknownTable);
-    return [];
-  }
-  return fillTable(grid, rows, alloc, owner);
+  const grid = gridFor(doc, candidate, warnings);
+  return grid ? fillTable(grid, rows, alloc, owner) : [];
 }
 
 export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportResult {
@@ -188,6 +222,70 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   ensureLayer(doc, alloc, PHOTO_LAYER, PHOTO_COLOR);
   const owner = recordHandleOrThrow(doc);
 
+  /** 틀 하나가 몇 장이 되고 얼마나 오른쪽으로 가는가(설계 7장 2단계) */
+  interface FramePlan {
+    frame: Frame;
+    entries: Included[];
+    grid: TableGrid | null;
+    /** 표 데이터 행 수 N */
+    dataRows: number;
+    /** 이 틀에서 가장 큰 손상 번호 */
+    maxNumber: number;
+    pages: number;
+    pitch: number;
+    /** 이 틀 자신이 오른쪽으로 가는 거리 = 왼쪽 틀들이 늘어난 만큼의 합 */
+    offset: number;
+  }
+
+  const plans: FramePlan[] = [];
+  let running = 0;
+  for (const frame of frames) {
+    const entries = included.filter((entry) => entry.frameIndex === frame.index);
+    let frameMax = 0;
+    for (const entry of entries) if (entry.number > frameMax) frameMax = entry.number;
+    // 손상이 없는 틀의 표는 건드리지 않는다 — 격자도 만들지 않는다(기존 동작 그대로).
+    const grid = entries.length > 0 ? gridFor(doc, frame.table, warnings) : null;
+    const dataRows = grid?.dataRowCount ?? 0;
+    let pages = 1;
+    if (grid && dataRows > 0 && frameMax > dataRows) {
+      if (isFlattenable(frame.transform)) pages = pagesOf(frameMax, dataRows);
+      // 회전·비균일 배율인 틀은 펼치지 못한다 — 옛 넘침(표를 아래에)으로 간다(설계 5.2).
+      else warnings.push(EXPORT_WARNINGS.sheetCopyUnsupported(frame.index));
+    }
+    const pitch = pitchOf(frames, frame.index);
+    plans.push({ frame, entries, grid, dataRows, maxNumber: frameMax, pages, pitch, offset: running });
+    running += (pages - 1) * pitch;
+  }
+
+  const planByFrame = new Map(plans.map((plan) => [plan.frame.index, plan] as const));
+  // 넘치는 틀이 하나도 없으면 문서를 다시 훑지 않는다 — 4 MB 템플릿에서 헛일이 크다.
+  let ctx: SheetContext | null = null;
+  let regions: RegionIndex | null = null;
+  if (plans.some((plan) => plan.pages > 1)) {
+    ctx = readSheetContext(doc, alloc, owner);
+    if (ctx) regions = indexRegions(ctx, frames);
+    // 문맥을 읽지 못하면(ENTITIES가 없는 파일 — 위에서 이미 막았다) 복사를 포기하고 옛 길로 간다.
+    else for (const plan of plans) plan.pages = 1;
+  }
+
+  /** 어느 틀에도 속하지 않는 것(틀 밖 손상·잡다한 글자)이 오른쪽으로 가는 거리(설계 6장) */
+  function looseShift(centerX: number): number {
+    let dx = 0;
+    for (const plan of plans) {
+      if (plan.pages > 1 && plan.frame.bounds.maxX < centerX) dx += (plan.pages - 1) * plan.pitch;
+    }
+    return dx;
+  }
+
+  /** 이 손상을 어디에 그릴 것인가 */
+  function damageShiftOf(entry: Included): number {
+    if (entry.frameIndex === null) return looseShift(boundsCenter([entry.points])[0]);
+    const plan = planByFrame.get(entry.frameIndex);
+    if (!plan) return 0;
+    if (plan.pages <= 1 || plan.dataRows <= 0) return plan.offset;
+    return plan.offset + pageOf(entry.number, plan.dataRows) * plan.pitch;
+  }
+
   const pairs: DxfPair[] = [];
   const circleWarnings: DamageEntitiesWarnings = { circlesTruncated: false };
   // 겹침 방지는 다른 손상을 모두 알아야 계산할 수 있으므로, 도형을 만들기 전에 한 번에 구한다
@@ -196,9 +294,10 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
     included.map((entry) => ({ id: entry.id, number: entry.number > 0 ? entry.number : null, damage: entry.damage })),
   );
   for (const entry of included) {
-    appendAll(pairs, damageEntities(entry.damage, alloc, owner, circleWarnings));
+    const dx = damageShiftOf(entry);
+    appendAll(pairs, translatePairs(damageEntities(entry.damage, alloc, owner, circleWarnings), dx, 0));
     const label = labels.get(entry.id);
-    if (label) appendAll(pairs, labelEntities(label, alloc, owner));
+    if (label) appendAll(pairs, translatePairs(labelEntities(label, alloc, owner), dx, 0));
   }
   if (circleWarnings.circlesTruncated) warnings.push(EXPORT_WARNINGS.circlesTruncated);
   // 도면에는 그렸지만 번호를 받지 못한 손상. dwg가 없어 아예 그리지 못한 손상(skipped)은
@@ -216,13 +315,39 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
       appendAll(pairs, fillCandidate(doc, candidate, rowsFor(included, maxNumber), alloc, owner, warnings));
     }
   } else {
+    // 넘치는 틀은 장마다 복사본을 만든다(설계 7장 4단계).
+    let copySkipped = 0;
+    for (const plan of plans) {
+      if (plan.pages <= 1 || !plan.grid || !ctx || !regions) continue;
+      warnings.push(EXPORT_WARNINGS.sheetCopied(plan.frame.index, plan.pages));
+      for (let page = 1; page < plan.pages; page++) {
+        const dx = plan.offset + page * plan.pitch;
+        const region = copyRegion(ctx, regions.inFrame[plan.frame.index], dx);
+        appendAll(pairs, region.pairs);
+        const block = flattenFrameBlock(ctx, plan.frame, plan.grid, page, dx);
+        appendAll(pairs, block.pairs);
+        copySkipped += region.skipped + block.skipped;
+      }
+    }
+    if (copySkipped > 0) warnings.push(EXPORT_WARNINGS.sheetCopySkipped(copySkipped));
+
     // 틀마다 자기 표에 그 틀 손상만 1번부터 채운다. 손상이 없는 틀의 표는 건드리지 않는다.
-    for (const frame of frames) {
-      const entries = included.filter((entry) => entry.frameIndex === frame.index);
-      if (entries.length === 0) continue;
-      let frameMax = 0;
-      for (const entry of entries) if (entry.number > frameMax) frameMax = entry.number;
-      appendAll(pairs, fillCandidate(doc, frame.table, rowsFor(entries, frameMax), alloc, owner, warnings));
+    for (const plan of plans) {
+      if (plan.entries.length === 0 || !plan.grid) continue;
+      if (plan.pages <= 1) {
+        // 넘치지 않는 틀(과 미지원 틀)은 지금까지와 같다 — 넘치면 fillTable이 표를 아래에 쌓는다.
+        appendAll(pairs, fillTable(shiftGrid(plan.grid, plan.offset), rowsFor(plan.entries, plan.maxNumber), alloc, owner));
+        continue;
+      }
+      // 장마다 그 장의 표에 1행부터 채운다. 번호 열은 flattenFrameBlock이 이미 썼다(설계 5.4).
+      for (let page = 0; page < plan.pages; page++) {
+        const dx = plan.offset + page * plan.pitch;
+        const pageEntries = plan.entries
+          .filter((entry) => pageOf(entry.number, plan.dataRows) === page)
+          .map((entry) => ({ ...entry, number: entry.number - page * plan.dataRows }));
+        const pageMax = Math.min(plan.dataRows, plan.maxNumber - page * plan.dataRows);
+        appendAll(pairs, fillTable(shiftGrid(plan.grid, dx), rowsFor(pageEntries, pageMax), alloc, owner));
+      }
     }
   }
 
