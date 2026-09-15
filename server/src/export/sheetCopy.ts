@@ -169,3 +169,156 @@ export function indexRegions(ctx: SheetContext, frames: Frame[]): RegionIndex {
   }
   return { inFrame, frameInsert, loose };
 }
+
+export interface CopyResult {
+  pairs: DxfPair[];
+  /** 복사하지 못하고 뺀 엔티티 수(치수·지시선 등) */
+  skipped: number;
+}
+
+// 인자 전개(push(...source))는 배열이 아주 클 때 호출 스택을 넘긴다(exportDrawing.ts의 주석 참고).
+function appendAll(target: DxfPair[], source: DxfPair[]): void {
+  for (const p of source) target.push(p);
+}
+
+/** 최상위 엔티티 여러 개를 새 핸들로 베껴 x로 dx만큼 옮긴다(설계 5.1). */
+export function copyRegion(ctx: SheetContext, ranges: EntityRange[], dx: number): CopyResult {
+  const pairs: DxfPair[] = [];
+  let skipped = 0;
+  for (const range of ranges) {
+    const source = ctx.doc.pairs.slice(range.start, range.end);
+    if (!isCopyable(source)) {
+      skipped += 1;
+      continue;
+    }
+    appendAll(pairs, translateEntityPairs(copyEntityPairs(source, ctx.alloc, ctx.owner), dx, 0));
+  }
+  return { pairs, skipped };
+}
+
+function baseFor(ctx: SheetContext, layer: string, colorIndex: number): EntityBase {
+  return { handle: ctx.alloc.next(), owner: ctx.owner, layer, colorIndex };
+}
+
+// 이 글자가 번호 열의 **데이터 행** 칸에 있는가(= 미리 인쇄된 번호인가).
+function isPrintedNumber(grid: TableGrid, entity: RawEntity): boolean {
+  const local: Point = [numberAt(entity, 10, 0), numberAt(entity, 20, 0)];
+  if (indexOfBand(grid.colBoundaries, local[0]) !== grid.numberColumn) return false;
+  const row = indexOfBand(grid.rowBoundaries, local[1]);
+  return row >= grid.firstDataRow;
+}
+
+/**
+ * 표가 가리키는 `*T` 블록을 펼쳐 넣는다. `ACAD_TABLE` 엔티티 자체는 넣지 않는다 —
+ * 한 번 더 INSERT하면 번호 열에 1~N이 그대로 인쇄되기 때문이다(설계 5.2).
+ * 이 틀의 표(`grid`)일 때만 번호 열 데이터 행 글자를 빼고 `page·N+1 … page·N+N`을 새로 쓴다.
+ */
+function flattenTable(
+  ctx: SheetContext,
+  tablePairs: DxfPair[],
+  frameTransform: Transform,
+  grid: TableGrid,
+  page: number,
+  dx: number,
+): CopyResult {
+  const table = rawEntityAt(tablePairs, { type: 'ACAD_TABLE', start: 0, end: tablePairs.length });
+  const blockName = textAt(table, 2);
+  const position: Point = [numberAt(table, 10, 0), numberAt(table, 20, 0)];
+  const pairs: DxfPair[] = [];
+  let skipped = 0;
+  if (!blockName) return { pairs, skipped };
+
+  // 표 블록 좌표 → 모델 좌표 = 틀 삽입 변환 ∘ 표 삽입점(배율 1, 회전 0)
+  const tableTransform = composeTransform(frameTransform, {
+    x: position[0],
+    y: position[1],
+    scaleX: 1,
+    scaleY: 1,
+    rotationRad: 0,
+  });
+  const isFrameTable =
+    blockName === grid.blockName && position[0] === grid.position[0] && position[1] === grid.position[1];
+
+  let numberLayer: string | null = null;
+  let numberColor = BY_LAYER;
+  for (const range of ctx.blocks.get(blockName) ?? []) {
+    const source = ctx.doc.pairs.slice(range.start, range.end);
+    if (isFrameTable && (range.type === 'TEXT' || range.type === 'MTEXT')) {
+      const entity = rawEntityAt(ctx.doc.pairs, range);
+      if (isPrintedNumber(grid, entity)) {
+        // 새 번호가 원본 번호와 같은 레이어·색으로 나가게 첫 번째 것에서 읽어 둔다.
+        if (numberLayer === null) {
+          numberLayer = textAt(entity, 8) ?? '0';
+          numberColor = numberAt(entity, 62, BY_LAYER);
+        }
+        continue;
+      }
+    }
+    if (!isCopyable(source)) {
+      skipped += 1;
+      continue;
+    }
+    appendAll(pairs, transformEntityPairs(copyEntityPairs(source, ctx.alloc, ctx.owner), tableTransform));
+  }
+
+  if (isFrameTable) {
+    const shifted = shiftGrid(grid, dx);
+    const height = modelTextHeight(grid);
+    const layer = numberLayer ?? '0';
+    // 빈 행이라도 번호는 쓴다 — 원본이 1~N을 미리 인쇄한 것과 같다(설계 5.2).
+    for (let row = 1; row <= grid.dataRowCount; row++) {
+      const value = String(page * grid.dataRowCount + row);
+      const center = cellCenter(shifted, row, grid.numberColumn);
+      appendAll(pairs, textEntity(baseFor(ctx, layer, numberColor), center, height, value, 'center'));
+    }
+  }
+  return { pairs, skipped };
+}
+
+/**
+ * 틀 블록을 펼쳐 모델 공간 엔티티로 만든다. 블록을 한 번 더 INSERT하지 않는 이유는
+ * 표의 번호 열을 바꿔야 하기 때문이다(설계 5.2).
+ *
+ * @param page 0이 원본 장, 1부터가 복사본
+ * @param dx   이 장이 원본 틀에서 x로 얼마나 떨어져 있는가
+ */
+export function flattenFrameBlock(
+  ctx: SheetContext,
+  frame: Frame,
+  grid: TableGrid,
+  page: number,
+  dx: number,
+): CopyResult {
+  const frameTransform: Transform = { ...frame.transform, x: frame.transform.x + dx };
+  const pairs: DxfPair[] = [];
+  let skipped = 0;
+
+  for (const range of ctx.blocks.get(frame.blockName) ?? []) {
+    const source = ctx.doc.pairs.slice(range.start, range.end);
+    if (range.type === 'ACAD_TABLE') {
+      const table = flattenTable(ctx, source, frameTransform, grid, page, dx);
+      appendAll(pairs, table.pairs);
+      skipped += table.skipped;
+      continue;
+    }
+    if (!isCopyable(source)) {
+      skipped += 1;
+      continue;
+    }
+    // 중첩 INSERT도 여기로 온다 — transformEntityPairs가 삽입점을 옮기고 배율을 곱하고
+    // 회전을 더하므로 블록 정의는 그대로 공유된다(설계 5.2).
+    appendAll(pairs, transformEntityPairs(copyEntityPairs(source, ctx.alloc, ctx.owner), frameTransform));
+  }
+  return { pairs, skipped };
+}
+
+/** 원본 엔티티를 제자리에서 옮긴다(복사가 아니다 — 핸들·참조는 그대로다, 설계 6장). */
+export function shiftRangesInPlace(doc: DxfDocument, ranges: EntityRange[], dx: number): void {
+  if (dx === 0) return;
+  for (const range of ranges) {
+    const source = doc.pairs.slice(range.start, range.end);
+    const moved = translateEntityPairs(source, dx, 0);
+    if (moved === source) continue;
+    for (let i = 0; i < moved.length; i++) doc.pairs[range.start + i] = moved[i];
+  }
+}
