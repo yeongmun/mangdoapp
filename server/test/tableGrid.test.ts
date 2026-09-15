@@ -14,7 +14,9 @@ import {
   modelTextHeight,
   mtextPlainText,
   nearestTable,
+  readModelSpace,
   tableCenter,
+  walkInserts,
   type Transform,
 } from '../src/export/tableGrid.js';
 
@@ -77,6 +79,39 @@ describe('hasUniformScale', () => {
   it('가로·세로 배율이 같으면 참', () => {
     expect(hasUniformScale({ x: 0, y: 0, scaleX: 2, scaleY: 2, rotationRad: 0 })).toBe(true);
     expect(hasUniformScale({ x: 0, y: 0, scaleX: 2, scaleY: 3, rotationRad: 0 })).toBe(false);
+  });
+});
+
+describe('readModelSpace / walkInserts', () => {
+  it('모델 공간 엔티티와 블록 목차를 읽는다', async () => {
+    const model = readModelSpace(await templateDoc())!;
+    expect(model.entities.map((e) => e.type)).toEqual(['INSERT', 'LINE']);
+    expect([...model.blocks.keys()]).toEqual(['*Model_Space', '망도틀', '*TX']);
+  });
+
+  it('ENTITIES 구역이 없으면 null', () => {
+    expect(readModelSpace(parseDxf('  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n  0\nEOF\n'))).toBeNull();
+  });
+
+  it('INSERT 안으로 내려가며 절대 변환을 겹쳐 준다 (INSERT 자체도 visit이 본다)', async () => {
+    const model = readModelSpace(await templateDoc())!;
+    const seen: Array<{ type: string; x: number }> = [];
+    walkInserts(model, model.entities, IDENTITY, 0, new Set(), (entity, transform) => {
+      seen.push({ type: entity.type, x: transform.x });
+    });
+    // 최상위 INSERT(변환 없음) → 그 안의 ACAD_TABLE(삽입점 1000) → 최상위 LINE(변환 없음)
+    expect(seen).toEqual([
+      { type: 'INSERT', x: 0 },
+      { type: 'ACAD_TABLE', x: 1000 },
+      { type: 'LINE', x: 0 },
+    ]);
+  });
+
+  it('seen에 든 블록으로는 내려가지 않는다 (순환 방지)', async () => {
+    const model = readModelSpace(await templateDoc())!;
+    const types: string[] = [];
+    walkInserts(model, model.entities, IDENTITY, 0, new Set(['망도틀']), (entity) => types.push(entity.type));
+    expect(types).toEqual(['INSERT', 'LINE']);
   });
 });
 

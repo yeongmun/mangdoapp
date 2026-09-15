@@ -135,23 +135,23 @@ export function mtextPlainText(raw: string): string {
   return out;
 }
 
-interface RawEntity {
+export interface RawEntity {
   type: string;
   values: Map<number, string[]>;
 }
 
-function numberAt(entity: RawEntity, code: number, fallback: number): number {
+export function numberAt(entity: RawEntity, code: number, fallback: number): number {
   const raw = entity.values.get(code)?.[0];
   if (raw === undefined) return fallback;
   const value = Number(raw.trim());
   return Number.isFinite(value) ? value : fallback;
 }
 
-function textAt(entity: RawEntity, code: number): string | null {
+export function textAt(entity: RawEntity, code: number): string | null {
   return entity.values.get(code)?.[0] ?? null;
 }
 
-function numbersAt(entity: RawEntity, code: number): number[] {
+export function numbersAt(entity: RawEntity, code: number): number[] {
   return (entity.values.get(code) ?? []).map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
 }
 
@@ -198,7 +198,7 @@ function readBlocks(doc: DxfDocument): BlockContents[] {
   return blocks;
 }
 
-function insertTransform(entity: RawEntity): Transform {
+export function insertTransform(entity: RawEntity): Transform {
   return {
     x: numberAt(entity, 10, 0),
     y: numberAt(entity, 20, 0),
@@ -208,7 +208,7 @@ function insertTransform(entity: RawEntity): Transform {
   };
 }
 
-function tableOf(entity: RawEntity, transform: Transform): TableCandidate | null {
+export function tableCandidateOf(entity: RawEntity, transform: Transform): TableCandidate | null {
   const blockName = textAt(entity, 2);
   if (!blockName) return null;
   const rowHeights = numbersAt(entity, 141);
@@ -223,31 +223,69 @@ function tableOf(entity: RawEntity, transform: Transform): TableCandidate | null
   };
 }
 
+/** 모델 공간 최상위 엔티티와 블록 목차. 한 번 읽어 두고 여러 번 훑는다. */
+export interface ModelSpace {
+  entities: RawEntity[];
+  blocks: Map<string, RawEntity[]>;
+}
+
+export function readModelSpace(doc: DxfDocument): ModelSpace | null {
+  const section = findSection(doc, 'ENTITIES');
+  if (!section) return null;
+  return {
+    // start는 (0, SECTION) 쌍 자신을 가리킨다 — +1부터 읽어야 그 마커가 가짜 엔티티로
+    // 섞이지 않는다(구 findTableCandidates는 이 마커를 포함해도 타입을 걸러 냈으므로
+    // 동작이 갈리지 않았을 뿐이다).
+    entities: readEntities(doc.pairs, section.start + 1, section.end),
+    blocks: new Map(readBlocks(doc).map((b) => [b.name, b.entities])),
+  };
+}
+
+/**
+ * entities를 훑으며 엔티티마다 절대 변환과 함께 visit을 부른다. INSERT를 만나면 그 블록 안으로
+ * 내려간다 — visit은 INSERT 자체도 본다(내려가는 일은 이 함수가 맡는다).
+ *
+ * depth는 이미 내려온 INSERT 수(최상위에서 시작하면 0), seen은 지나온 블록 이름이다(자기 자신을
+ * 삽입한 블록에서 무한히 도는 것을 막는다). 어느 곳에도 삽입되지 않은 블록은 훑지 않는다 —
+ * 도면에 보이지 않기 때문이다.
+ */
+export function walkInserts(
+  model: ModelSpace,
+  entities: RawEntity[],
+  transform: Transform,
+  depth: number,
+  seen: ReadonlySet<string>,
+  visit: (entity: RawEntity, transform: Transform) => void,
+): void {
+  for (const entity of entities) {
+    visit(entity, transform);
+    if (entity.type !== 'INSERT' || depth >= MAX_INSERT_DEPTH) continue;
+    const name = textAt(entity, 2);
+    if (!name || seen.has(name)) continue;
+    const contents = model.blocks.get(name);
+    if (!contents) continue;
+    walkInserts(
+      model,
+      contents,
+      composeTransform(transform, insertTransform(entity)),
+      depth + 1,
+      new Set([...seen, name]),
+      visit,
+    );
+  }
+}
+
 // 모델 공간의 INSERT를 따라 내려가며 블록 안의 ACAD_TABLE을 절대 좌표로 옮긴다.
 // 어느 곳에도 삽입되지 않은 블록 안의 표는 도면에 보이지 않으므로 후보가 아니다.
 export function findTableCandidates(doc: DxfDocument): TableCandidate[] {
-  const entitiesSection = findSection(doc, 'ENTITIES');
-  if (!entitiesSection) return [];
-  const blocks = new Map(readBlocks(doc).map((b) => [b.name, b.entities]));
+  const model = readModelSpace(doc);
+  if (!model) return [];
   const candidates: TableCandidate[] = [];
-
-  const walk = (entities: RawEntity[], transform: Transform, depth: number, seen: Set<string>): void => {
-    for (const entity of entities) {
-      if (entity.type === 'ACAD_TABLE') {
-        const table = tableOf(entity, transform);
-        if (table) candidates.push(table);
-        continue;
-      }
-      if (entity.type !== 'INSERT' || depth >= MAX_INSERT_DEPTH) continue;
-      const name = textAt(entity, 2);
-      if (!name || seen.has(name)) continue;
-      const contents = blocks.get(name);
-      if (!contents) continue;
-      walk(contents, composeTransform(transform, insertTransform(entity)), depth + 1, new Set([...seen, name]));
-    }
-  };
-
-  walk(readEntities(doc.pairs, entitiesSection.start, entitiesSection.end), IDENTITY, 0, new Set());
+  walkInserts(model, model.entities, IDENTITY, 0, new Set(), (entity, transform) => {
+    if (entity.type !== 'ACAD_TABLE') return;
+    const table = tableCandidateOf(entity, transform);
+    if (table) candidates.push(table);
+  });
   return candidates;
 }
 
