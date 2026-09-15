@@ -728,25 +728,46 @@ describe('exportDamagesToDxf', () => {
       expect(tableFour!.y).toBeCloseTo(3260, 6);
     });
 
-    it('뒤 틀의 영역 도형·손상·표 글자도 함께 밀린다', async () => {
-      // 틀 1 영역 안에 최상위 LINE (51100,3200)-(51300,3300)을 넣는다.
+    // Task 3 리뷰 Important #2 — flatten(a)·복사(b)·밀기(c)가 한 번에 도는 경로는 그동안
+    // 커밋된 픽스처로 전혀 검증되지 않았다(.gitignore에 걸린 실제 템플릿에서만 함께 돌았다).
+    // 이 LINE을 틀 1이 아니라 **틀 0**(넘치는 틀) 영역 안에 두면 틀 0의 블록 펼치기·번호
+    // 바꿔 쓰기(a)와 이 LINE 자신의 영역 복사(b)가 같은 export 안에서 돌고, 동시에 넘치지
+    // 않는 틀 1의 INSERT·손상·표(c)도 함께 밀린다 — 최종 검토가 제안한 한 줄 수정이다.
+    it('틀 0 영역의 최상위 LINE도 복사본에 함께 오고, 틀 1의 INSERT·손상·표도 함께 밀린다 (flatten+copy+shift 한 번에)', async () => {
+      // 틀 0 영역 안(x 2000~4280, y 3160~3400)에 최상위 LINE (2100,3200)-(2300,3300)을 넣는다.
       const extra = [
         '  0', 'LINE', '  5', '91', '330', '1F', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbLine',
-        ' 10', '51100.0', ' 20', '3200.0', ' 30', '0.0', ' 11', '51300.0', ' 21', '3300.0', ' 31', '0.0', '',
+        ' 10', '2100.0', ' 20', '3200.0', ' 30', '0.0', ' 11', '2300.0', ' 21', '3300.0', ' 31', '0.0', '',
       ].join('\n');
       const text = (await twoFrames()).replace('  0\nENDSEC\n  0\nEOF\n', `${extra}  0\nENDSEC\n  0\nEOF\n`);
       const result = exportDamagesToDxf(text, [...[1, 2, 3, 4].map(leftDamage), rightDamage(1)]);
+      expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(0, 2)]);
 
       const doc = parseDxf(result.dxfText);
+
+      // (b) 영역 엔티티 복사 — 틀 0은 제자리(offset 0)라 원본 LINE은 그대로 있고, 복사본이
+      // pitch(49000)만큼 옮겨진 자리에도 새 핸들로 생긴다.
       const lineXs = doc.pairs
         .map((p, i) => (p.code === 0 && p.value === 'LINE' ? i : -1))
         .filter((i) => i >= 0)
         .map((i) => Number(doc.pairs.slice(i, i + 20).find((p) => p.code === 10)!.value));
-      // 원본 LINE이 51100 → 100100으로 옮겨졌고, 51100에는 아무것도 남지 않았다.
-      expect(lineXs).toContain(100100);
-      expect(lineXs).not.toContain(51100);
+      expect(lineXs).toContain(2100);
+      expect(lineXs).toContain(51100); // 2100 + 49000
 
-      // 틀 1의 손상 도형도 +49000
+      // (a) 블록 펼치기·번호 바꿔 쓰기 — 틀 0 복사본 표의 번호 칸: 표 원점(2000+49000=51000)
+      //   + 번호 열 중앙(100) = 51100, 데이터 1행 y = 3260. 4번은 표 칸뿐 아니라 4번 손상
+      //   자신의 번호 라벨에도 나오므로(신규손상 레이어) y로 표 칸만 가려낸다.
+      const four = texts(result.dxfText).filter((t) => t.value === '4');
+      const tableFour = four.find((t) => Math.abs(t.y - 3260) < 1e-6);
+      expect(tableFour).toBeDefined();
+      expect(tableFour!.x).toBeCloseTo(51100, 6);
+
+      // (c) 뒤 틀(틀 1)의 INSERT·손상·표가 pitch(49000)만큼 오른쪽으로 밀린다.
+      const moved = findFrames(doc);
+      expect(moved).toHaveLength(2);
+      expect(moved[0].bounds.minX).toBeCloseTo(2000, 6); // 틀 0은 제자리
+      expect(moved[1].bounds.minX).toBeCloseTo(100000, 6); // 51000 + 49000
+
       const polyXs = doc.pairs
         .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
         .filter((i) => i >= 0)
@@ -785,6 +806,78 @@ describe('exportDamagesToDxf', () => {
         .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
       expect(polyXs.filter((x) => x === 149500)).toHaveLength(1);
       expect(polyXs).not.toContain(100500);
+    });
+
+    // Task 3 리뷰 Important #2 — pages ≥ 3(스펙 §8 "71개 → 3장")이 end-to-end로 한 번도 나오지
+    // 않았다. 2N+1=7(N=3)로 3장을 만들어 둘째 복사본(+pitch)뿐 아니라 셋째 복사본(+2×pitch)의
+    // 번호·자리까지 확인한다.
+    it('2N+1개면 3장이 되고 둘째·셋째 복사본이 각각 +pitch·+2×pitch 자리에 온다', async () => {
+      const damages = [1, 2, 3, 4, 5, 6, 7].map(leftDamage);
+      const result = exportDamagesToDxf(await twoFrames(), damages);
+      expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(0, 3)]);
+
+      // flattenFrameBlock이 페이지마다 데이터 행 수(N=3)만큼 번호를 새로 쓴다(설계 5.2) —
+      // page*N+row. page 1(둘째 복사본)은 4,5,6을 데이터 1~3행에, page 2(셋째 복사본)는
+      // 7,8,9를 같은 행에 쓴다. 행의 y는 표 원점에 안 달렸다(가로로만 밀린다) — 기존 테스트가
+      // 고정한 데이터 1~3행 로컬 중심(-70,-90,-110, tableGrid.test.ts:225·227 실측)에서
+      // y = 2000 + 2*(700+로컬) 이다: 1행 3260 / 2행 3220 / 3행 3180.
+      // 표 원점 x: 둘째 복사본 2000+49000=51000(번호 열 중앙 51100), 셋째 복사본
+      // 2000+98000=100000(번호 열 중앙 100100).
+      const allTexts = texts(result.dxfText);
+      const cell = (value: string, y: number) => allTexts.find((t) => t.value === value && Math.abs(t.y - y) < 1e-6);
+      expect(cell('4', 3260)!.x).toBeCloseTo(51100, 6);
+      expect(cell('5', 3220)!.x).toBeCloseTo(51100, 6);
+      expect(cell('6', 3180)!.x).toBeCloseTo(51100, 6);
+      expect(cell('7', 3260)!.x).toBeCloseTo(100100, 6);
+      expect(cell('8', 3220)!.x).toBeCloseTo(100100, 6);
+      expect(cell('9', 3180)!.x).toBeCloseTo(100100, 6);
+
+      // 7번 손상(leftDamage(7), 도형 x 2100+7*100=2800)은 셋째 장(+2×pitch=98000)에서만 그려진다.
+      const doc = parseDxf(result.dxfText);
+      const polyXs = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
+        .filter((i) => i >= 0)
+        .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
+      expect(polyXs).toContain(100800); // 2800 + 98000
+      expect(polyXs).not.toContain(51800); // 한 번만 밀린 자리(+pitch)에는 없다
+
+      // 틀 1은 넘치지 않았지만 틀 0의 두 복사본만큼(2×pitch=98000) 오른쪽으로 밀린다.
+      const moved = findFrames(doc);
+      expect(moved).toHaveLength(2);
+      expect(moved[0].bounds.minX).toBeCloseTo(2000, 6);
+      expect(moved[1].bounds.minX).toBeCloseTo(149000, 6); // 51000 + 98000
+    });
+
+    // Task 3 리뷰 Important #2 — 모든 테스트의 pitch가 49000으로 균일해 pitchOf의 "다음 틀
+    // 기준" 로직이 상수 하나와 구별되지 않았다. 틀 셋을 99000이 아닌 89000(간격 39000)에 둬
+    // 틀 1의 pitch가 틀 0의 pitch(49000)와 다르다는 것을 드러낸다.
+    it('틀 간격이 균일하지 않으면 넘친 틀의 복사본이 그 틀의 pitch(다음 틀 minX 차)만큼만 옮겨진다', async () => {
+      // 틀 셋: x 2000(insertX 1000) / 51000(insertX 50000) / 90000(insertX 89000).
+      //   pitch(0) = 51000-2000 = 49000, pitch(1) = 90000-51000 = 39000 — 균일하지 않다.
+      const three = withFrameAt(await twoFrames(), 89000, '8B');
+      const result = exportDamagesToDxf(three, [1, 2, 3, 4].map(rightDamage));
+      expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(1, 2)]);
+
+      const doc = parseDxf(result.dxfText);
+      const moved = findFrames(doc);
+      expect(moved).toHaveLength(3);
+      expect(moved[0].bounds.minX).toBeCloseTo(2000, 6); // 틀 0은 안 넘쳤다 — 제자리
+      expect(moved[1].bounds.minX).toBeCloseTo(51000, 6); // 틀 1 자신도 제자리(복사본만 오른쪽에 생긴다)
+      expect(moved[2].bounds.minX).toBeCloseTo(129000, 6); // 90000 + pitch(1) 39000
+
+      // 복사본은 틀 1 minX(51000) + pitch(1)(39000) = 90000에 온다 — 균일 pitch(49000)였다면
+      // 100000일 자리다(틀 2의 옛 자리 그대로다 — 틀 2가 그만큼 더 밀려 자리를 내준다).
+      const four = texts(result.dxfText).filter((t) => t.value === '4');
+      const tableFour = four.find((t) => Math.abs(t.y - 3260) < 1e-6);
+      expect(tableFour).toBeDefined();
+      expect(tableFour!.x).toBeCloseTo(90100, 6); // 표 원점 90000 + 번호 열 중앙 100
+
+      const polyXs = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
+        .filter((i) => i >= 0)
+        .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
+      expect(polyXs).toContain(90500); // rightDamage(4)의 51500 + pitch(1) 39000
+      expect(polyXs).not.toContain(100500); // 균일 pitch였다면 왔을 자리 — 안 온다
     });
 
     it('틀이 없는 도면은 옛 넘침(표를 아래에) 그대로다', async () => {
