@@ -49,7 +49,9 @@ function unit(dx: number, dy: number): Point {
 }
 
 // 사각형의 긴 변 방향으로 가운데에 선 2개를 긋고 양 끝에 ✕를 둔다.
-// 선 간격(lineGapMm)과 ✕ 크기(crossSizeMm)는 고정값이고 선 길이만 사각형 크기에 맞춘다.
+// 선 간격(lineGapMm)은 고정값이다. ✕ 크기(crossSizeMm)도 고정값이지만 사각형 짧은 변보다 크면 짧은 변에
+// 맞춰 줄인다 — 그러지 않으면 ✕가 사각형 밖으로 튀어나온다(2026-09-16 캐드 확인 8번). 선은 ✕ 중심이
+// 아니라 ✕의 대각선과 만나는 곳에서 끝난다 — 중심까지 그으면 선이 ✕를 뚫고 나가 보인다.
 export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeMm: number): Array<[Point, Point]> {
   if (rect.length < 4) return [];
   const center: Point = [
@@ -60,6 +62,7 @@ export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeM
   const edgeB = Math.hypot(rect[3][0] - rect[0][0], rect[3][1] - rect[0][1]);
   const longIsA = edgeA >= edgeB;
   const longLength = longIsA ? edgeA : edgeB;
+  const shortLength = longIsA ? edgeB : edgeA;
   const along = longIsA
     ? unit(rect[1][0] - rect[0][0], rect[1][1] - rect[0][1])
     : unit(rect[3][0] - rect[0][0], rect[3][1] - rect[0][1]);
@@ -75,11 +78,15 @@ export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeM
     center[1] + along[1] * u + across[1] * v,
   ];
 
+  // ✕의 팔 길이(중심에서 끝까지). 사각형 짧은 변 안에 들어가게 줄인다.
+  const arm = Math.min(crossSizeMm, shortLength) / 2;
+  // 선은 ✕ 대각선(기울기 ±1)과 v = ±gap에서 만나는 u = ±(half − gap)까지만 긋는다. 팔이 gap보다
+  // 짧아 대각선이 선 높이까지 오지 않으면 ✕ 안쪽 끝(half − arm)에서 끝낸다.
+  const lineEnd = half - Math.min(gap, arm);
   const segments: Array<[Point, Point]> = [
-    [at(-half, gap), at(half, gap)],
-    [at(-half, -gap), at(half, -gap)],
+    [at(-lineEnd, gap), at(lineEnd, gap)],
+    [at(-lineEnd, -gap), at(lineEnd, -gap)],
   ];
-  const arm = crossSizeMm / 2;
   for (const u of [-half, half]) {
     segments.push([at(u - arm, -arm), at(u + arm, arm)]);
     segments.push([at(u - arm, arm), at(u + arm, -arm)]);

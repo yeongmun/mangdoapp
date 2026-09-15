@@ -73,32 +73,46 @@ describe('rebarSymbolSegments', () => {
     expect(rebarSymbolSegments(RECT, 57.4, 212)).toHaveLength(6);
   });
 
-  it('선은 긴 변 방향이고 간격 57.4를 두며 길이는 긴 변 − 212다', () => {
+  it('선은 긴 변 방향이고 간격 57.4를 두며 ✕의 대각선과 만나는 곳에서 끝난다', () => {
     const [first, second] = rebarSymbolSegments(RECT, 57.4, 212);
-    // 사각형 중심 (1500, 500), 긴 변은 x 방향(3000), 선 길이 3000 - 212 = 2788
-    expect(first[0][0]).toBeCloseTo(1500 - 1394, 6);
-    expect(first[1][0]).toBeCloseTo(1500 + 1394, 6);
+    // 사각형 중심 (1500, 500), 긴 변은 x 방향(3000). ✕ 중심은 x = 1500 ± 1394.
+    // 선은 v = ±28.7에서 ✕ 대각선(기울기 1)과 만나는 u = ±(1394 − 28.7) = ±1365.3까지.
+    expect(first[0][0]).toBeCloseTo(1500 - 1365.3, 6);
+    expect(first[1][0]).toBeCloseTo(1500 + 1365.3, 6);
     expect(Math.abs(first[0][1] - second[0][1])).toBeCloseTo(57.4, 6);
     expect((first[0][1] + second[0][1]) / 2).toBeCloseTo(500, 6);
   });
 
-  it('✕는 212×212이고 중심이 선 끝에 있다', () => {
+  it('✕는 212×212이고 중심이 사각형 끝에서 106 안쪽에 있어 밖으로 나가지 않는다', () => {
     const crosses = rebarSymbolSegments(RECT, 57.4, 212).slice(2);
     expect(crosses).toHaveLength(4);
     for (const [a, b] of crosses) {
       expect(Math.abs(a[0] - b[0])).toBeCloseTo(212, 6);
       expect(Math.abs(a[1] - b[1])).toBeCloseTo(212, 6);
     }
-    // 두 ✕의 중심은 x = 1500 ± 1394
+    // 두 ✕의 중심은 x = 1500 ± 1394 → 바깥 끝은 x = 0, 3000 (사각형 끝과 일치)
     const centers = [0, 2].map((i) => (crosses[i][0][0] + crosses[i][1][0]) / 2);
     expect(centers[0]).toBeCloseTo(106, 6);
     expect(centers[1]).toBeCloseTo(2894, 6);
   });
 
+  it('짧은 변이 212보다 좁으면 ✕를 짧은 변에 맞춰 줄여 사각형 밖으로 나가지 않는다', () => {
+    // 짧은 변 150 → ✕ 150×150, y는 425..575 안
+    const thin: Pt[] = [[0, 0], [3000, 0], [3000, 150], [0, 150]];
+    const segments = rebarSymbolSegments(thin, 57.4, 212);
+    for (const [a, b] of segments.slice(2)) {
+      expect(Math.abs(a[0] - b[0])).toBeCloseTo(150, 6);
+      expect(Math.min(a[1], b[1])).toBeGreaterThanOrEqual(0);
+      expect(Math.max(a[1], b[1])).toBeLessThanOrEqual(150);
+    }
+    // 선은 여전히 대각선과 만나는 곳(half − 28.7)에서 끝난다: half = (3000 − 212) / 2 = 1394
+    expect(segments[0][1][0]).toBeCloseTo(1500 + 1394 - 28.7, 6);
+  });
+
   it('세로로 긴 사각형은 세로 방향으로 그린다', () => {
     const tall: Pt[] = [[0, 0], [1000, 0], [1000, 3000], [0, 3000]];
     const [first, second] = rebarSymbolSegments(tall, 57.4, 212);
-    expect(first[0][1]).toBeCloseTo(1500 - 1394, 6);
+    expect(first[0][1]).toBeCloseTo(1500 - 1365.3, 6);
     expect(Math.abs(first[0][0] - second[0][0])).toBeCloseTo(57.4, 6);
   });
 
