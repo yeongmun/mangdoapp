@@ -5,7 +5,9 @@ import type { ApsService } from './aps.js';
 import { requireAccessKey } from './auth.js';
 import type { DamageDoc, DamagesStore } from './damagesStore.js';
 import { isDrawingId, newDrawingId, type DrawingRecord, type DrawingsStore } from './drawingsStore.js';
+import { parseDxf } from './export/dxfDocument.js';
 import { ExportError, exportDamagesToDxf } from './export/exportDrawing.js';
+import { findFrames, type FrameBounds } from './export/frames.js';
 import type { OriginalsStore } from './originalsStore.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -41,6 +43,33 @@ async function refreshStatus(deps: AppDeps, record: DrawingRecord): Promise<Draw
     console.error('[status]', record.id, messageOf(err));
     return record;
   }
+}
+
+// 원본 DXF 글자에서 망도틀 영역만 뽑는다. 읽지 못해도 업로드·목록은 계속된다 — 틀이 없으면
+// 도면 전체에서 1번부터 매기는 예전 동작이 될 뿐이다(설계 3장).
+function framesOf(original: Buffer, objectKey: string): FrameBounds[] {
+  try {
+    return findFrames(parseDxf(original.toString('utf8'))).map((frame) => frame.bounds);
+  } catch (err) {
+    console.error('[frames]', objectKey, messageOf(err));
+    return [];
+  }
+}
+
+// frames 필드가 없는 옛 레코드를 목록을 돌려주기 전에 한 번 채운다. 원본이 없거나 DWG면
+// 빈 배열로 저장해 다시 시도하지 않는다(설계 3장).
+async function ensureFrames(deps: AppDeps, record: DrawingRecord): Promise<DrawingRecord> {
+  if (record.frames !== undefined) return record;
+  let frames: FrameBounds[] = [];
+  if (record.objectKey.toLowerCase().endsWith('.dxf')) {
+    try {
+      const original = await deps.originals.read(record.objectKey);
+      if (original) frames = framesOf(original, record.objectKey);
+    } catch (err) {
+      console.error('[frames]', record.objectKey, messageOf(err));
+    }
+  }
+  return (await deps.drawings.update(record.id, { frames })) ?? { ...record, frames };
 }
 
 const apiErrorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
@@ -120,6 +149,8 @@ export function createApp(deps: AppDeps) {
         progress: '',
         error: null,
         uploadedAt: new Date(now()).toISOString(),
+        // DWG는 원본을 읽을 수 없으므로 틀이 없다(설계 3장).
+        frames: isDxf ? framesOf(file.buffer, objectKey) : [],
       };
       await deps.drawings.add(record);
       res.status(201).json(record);
@@ -131,7 +162,9 @@ export function createApp(deps: AppDeps) {
 
   api.get('/drawings', async (_req, res) => {
     const records = await deps.drawings.list();
-    res.json(await Promise.all(records.map((record) => refreshStatus(deps, record))));
+    res.json(
+      await Promise.all(records.map(async (record) => ensureFrames(deps, await refreshStatus(deps, record)))),
+    );
   });
 
   api.post('/drawings/:id/retry', async (req, res) => {

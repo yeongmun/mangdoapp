@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { FrameBounds } from './export/frames.js';
 import { readJsonFile, writeJsonFileAtomic } from './jsonFile.js';
 
 export type DrawingStatus = 'pending' | 'inprogress' | 'success' | 'failed';
@@ -12,9 +13,15 @@ export interface DrawingRecord {
   progress: string;
   error: string | null;
   uploadedAt: string;
+  /**
+   * 망도틀 영역(mm). DXF 업로드 때 원본에서 계산한다. DWG·계산 실패는 빈 배열이다.
+   * 이 필드가 **없는** 레코드는 이 기능이 생기기 전에 올린 도면이고, GET /api/drawings가
+   * 한 번 계산해 채운다(설계 3장). 표는 넣지 않는다 — 앱은 영역만 쓴다.
+   */
+  frames?: FrameBounds[];
 }
 
-export type DrawingPatch = Partial<Pick<DrawingRecord, 'status' | 'progress' | 'error'>>;
+export type DrawingPatch = Partial<Pick<DrawingRecord, 'status' | 'progress' | 'error' | 'frames'>>;
 
 const DRAWING_ID_PATTERN = /^d_[0-9a-f]{32}$/;
 

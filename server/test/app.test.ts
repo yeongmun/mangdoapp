@@ -256,6 +256,38 @@ describe('POST /api/drawings', () => {
 
     errorSpy.mockRestore();
   });
+
+  // 근거: docs/superpowers/specs/2026-09-16-frame-numbering-design.md 3장
+  it('DXF를 올리면 망도틀 영역을 계산해 레코드에 넣는다', async () => {
+    const { app, drawings } = setup();
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('name', '망도.dxf')
+      .attach('file', await readFile(templatePath), 'template.dxf');
+
+    expect(res.status).toBe(201);
+    // 픽스처의 틀 하나(frames.test.ts에서 손으로 계산한 값)
+    expect(res.body.frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect((await drawings.get(res.body.id))?.frames).toEqual(res.body.frames);
+  });
+
+  it('DWG 업로드는 원본을 읽을 수 없으므로 frames가 빈 배열이다', async () => {
+    const { app } = setup();
+    const res = await request(app).post('/api/drawings').set('x-access-key', KEY).attach('file', Buffer.from('dwg'), 'a.dwg');
+    expect(res.body.frames).toEqual([]);
+  });
+
+  it('읽을 수 없는 DXF는 frames를 빈 배열로 두고 업로드는 계속된다', async () => {
+    const { app } = setup();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // 코드·값 짝이 맞지 않는(홀수 줄) 파일이라 parseDxf가 던진다.
+    const res = await request(app).post('/api/drawings').set('x-access-key', KEY).attach('file', Buffer.from('  0'), 'a.dxf');
+    expect(res.status).toBe(201);
+    expect(res.body.frames).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith('[frames]', expect.any(String), expect.stringContaining('홀수'));
+    errorSpy.mockRestore();
+  });
 });
 
 describe('GET /api/drawings', () => {
@@ -269,7 +301,7 @@ describe('GET /api/drawings', () => {
     expect(res.status).toBe(200);
     const byId = Object.fromEntries((res.body as DrawingRecord[]).map((r) => [r.id, r]));
     expect(byId[pending.id]).toMatchObject({ status: 'inprogress', progress: '50% complete' });
-    expect(byId[done.id]).toEqual(done);
+    expect(byId[done.id]).toEqual({ ...done, frames: [] });
     expect(aps.getTranslationStatus).toHaveBeenCalledTimes(1);
     expect(aps.getTranslationStatus).toHaveBeenCalledWith(pending.urn);
     expect((await drawings.get(pending.id))?.status).toBe('inprogress');
@@ -280,7 +312,50 @@ describe('GET /api/drawings', () => {
     const pending = await seed(drawings);
     const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([pending]);
+    expect(res.body).toEqual([{ ...pending, frames: [] }]);
+  });
+
+  it('frames가 없는 옛 DXF 레코드는 목록에서 한 번 계산해 저장한다', async () => {
+    const { app, drawings, originals } = setup();
+    const old = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete' });
+    await originals.save(old.objectKey, await readFile(templatePath));
+
+    const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
+
+    expect(res.body[0].frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect((await drawings.get(old.id))?.frames).toEqual(res.body[0].frames);
+  });
+
+  it('DWG 옛 레코드는 원본을 읽지 않고 빈 배열로 저장한다', async () => {
+    const { app, drawings, originals } = setup();
+    const old = await seed(drawings, { name: '교량.dwg', status: 'success', progress: 'complete' });
+    const readSpy = vi.spyOn(originals, 'read');
+
+    const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
+
+    expect(res.body[0].frames).toEqual([]);
+    expect(readSpy).not.toHaveBeenCalled();
+    expect((await drawings.get(old.id))?.frames).toEqual([]);
+  });
+
+  it('원본이 없는 DXF 레코드도 빈 배열로 저장해 다시 시도하지 않는다', async () => {
+    const { app, drawings } = setup();
+    const old = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete' });
+    const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
+    expect(res.body[0].frames).toEqual([]);
+    expect((await drawings.get(old.id))?.frames).toEqual([]);
+  });
+
+  it('이미 frames가 있는 레코드는 다시 계산하지 않는다', async () => {
+    const { app, drawings, originals } = setup();
+    await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete', frames: [] });
+    const readSpy = vi.spyOn(originals, 'read');
+    const updateSpy = vi.spyOn(drawings, 'update');
+
+    await request(app).get('/api/drawings').set('x-access-key', KEY);
+
+    expect(readSpy).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 });
 
