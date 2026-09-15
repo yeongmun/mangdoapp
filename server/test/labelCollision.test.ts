@@ -141,6 +141,7 @@ describe('placeLabels', () => {
     const placed = placeLabels(items, { gap: GAP, font: FONT }).get('b')!;
     expect(placed.anchor).toEqual([100, 200 + GAP + MAX_STEPS * 100]);
     expect(placed.displaced).toBe(true);
+    expect(placed.leader).not.toBeNull(); // 밀려났으니 화살표도 있다
   });
 
   it('자기 손상의 경계상자는 장애물로 보지 않는다', () => {
