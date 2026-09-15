@@ -771,6 +771,20 @@ describe('exportDamagesToDxf', () => {
       expect(moved[0].bounds.minX).toBeCloseTo(2000, 6); // 틀 0 제자리
       expect(moved[1].bounds.minX).toBeCloseTo(100000, 6); // 틀 1은 49000
       expect(moved[2].bounds.minX).toBeCloseTo(198000, 6); // 틀 2는 49000 + 49000
+
+      // 틀 1의 복사본은 틀 1의 이동량(49000) + 틀 1의 간격(49000) = 98000 만큼 원래 자리에서 옮겨진다.
+      //   틀 1 삽입점 50000 → 복사본 148000 → 표 원점 149000, 번호 칸 149100, 데이터 1행 y 3260.
+      const four = texts(result.dxfText).filter((t) => t.value === '4' && Math.abs(t.y - 3260) < 1e-6);
+      expect(four.map((t) => t.x)).toContain(149100);
+      // 틀 1의 4번 손상(r4, x 51500)은 복사본에만 그려진다: 51500 + 98000 = 149500. 한 번만 밀린
+      // 자리(100500)에는 없다. (51500 자체에는 틀 0의 4번 손상 l4가 2500 + 49000으로 와 있다.)
+      const doc = parseDxf(result.dxfText);
+      const polyXs = doc.pairs
+        .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
+        .filter((i) => i >= 0)
+        .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
+      expect(polyXs.filter((x) => x === 149500)).toHaveLength(1);
+      expect(polyXs).not.toContain(100500);
     });
 
     it('틀이 없는 도면은 옛 넘침(표를 아래에) 그대로다', async () => {
