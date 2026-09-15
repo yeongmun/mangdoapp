@@ -344,84 +344,72 @@ describe('labelAnchor', () => {
   });
 });
 
-describe('labelLayout', () => {
+// 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 2장
+// (이 규칙이 2026-09-13 설계 §5.2·§9.5의 라벨 배치를 대체한다)
+describe('labelLayout (화면 어댑터)', () => {
   const anchor: Pt = [100, 50];
   const fontPx = 20;
   const circleRPx = 17;
+  const lineGap = fontPx * 1.3; // 26
+  const circleWidth = circleRPx * 2 + circleRPx * 0.5; // 42.5
 
-  it('번호가 null이면 원을 그리지 않고 이름만 가운데 정렬로 그린다', () => {
+  it('화면은 y가 아래로 증가한다 — 윗줄일수록 y가 작다', () => {
+    const layout = labelLayout({ anchor, name: '망상균열', dimension: '1.2x1.2', photo: '#5', number: 17, fontPx, circleRPx });
+    const name = layout.lines.find((l) => l.key === 'name')!;
+    const dimension = layout.lines.find((l) => l.key === 'dimension')!;
+    const photo = layout.lines.find((l) => l.key === 'photo')!;
+    expect(photo.y).toBe(anchor[1]);
+    expect(dimension.y).toBeCloseTo(anchor[1] - lineGap, 6);
+    expect(name.y).toBeCloseTo(anchor[1] - lineGap * 2, 6);
+    expect(layout.circle!.cy).toBeCloseTo(name.y - fontPx * 0.35, 6);
+  });
+
+  it('번호가 없으면 원 없이 이름부터 시작하고 블록이 기준점에 가운데 맞춰진다', () => {
     const layout = labelLayout({ anchor, name: '균열/백태', dimension: '', number: null, fontPx, circleRPx });
     expect(layout.circle).toBeNull();
-    expect(layout.lines).toEqual([{ x: 100, y: 50, text: '균열/백태', anchor: 'middle' }]);
+    // '균열/백태' = 한글 4 + 아스키 1 = 4*20 + 11 = 91
+    expect(layout.lines).toEqual([{ x: 100 - 91 / 2, y: 50, text: '균열/백태', anchor: 'start', key: 'name' }]);
   });
 
-  // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2 예외(균열 라벨).
-  // 이름이 없어도 번호가 있으면 번호 원은 그린다 — 이름·번호가 둘 다 없을 때만 첫 줄을 건너뛴다.
-  it('이름이 없어도 번호가 있으면 번호 원만 가운데에 그린다', () => {
-    const layout = labelLayout({ anchor, name: '', dimension: '0.2/0.8', number: 17, fontPx, circleRPx });
-    expect(layout.circle).not.toBeNull();
-    expect(layout.circle!.r).toBe(circleRPx);
-    // 이름이 없으므로 원의 폭만으로 가운데 정렬 — 원 중심이 anchor.x와 같다.
-    expect(layout.circle!.cx).toBeCloseTo(anchor[0], 6);
-    expect(layout.lines.map((l) => l.text)).toEqual(['17', '0.2/0.8']);
-    const numberLine = layout.lines.find((l) => l.text === '17')!;
-    expect(numberLine.anchor).toBe('middle');
-    expect(numberLine.x).toBeCloseTo(anchor[0], 6);
+  it('균열(이름 없음)은 치수가 원 옆 첫 줄로 올라오고 사진이 그 아래 들여쓰기된다', () => {
+    const layout = labelLayout({ anchor, name: '', dimension: '0.2/0.3', photo: '#12', number: 17, fontPx, circleRPx });
+    expect(layout.lines.map((l) => [l.key, l.text])).toEqual([
+      ['number', '17'],
+      ['dimension', '0.2/0.3'],
+      ['photo', '#12'],
+    ]);
+    const dimension = layout.lines.find((l) => l.key === 'dimension')!;
+    const photo = layout.lines.find((l) => l.key === 'photo')!;
+    // 둘째 줄부터 A의 왼쪽 x에 맞춘다
+    expect(photo.x).toBe(dimension.x);
+    expect(photo.y).toBe(anchor[1]);
+    expect(dimension.y).toBeCloseTo(anchor[1] - lineGap, 6);
   });
 
-  it('둘째 줄(치수)이 빈 문자열이면 그리지 않는다', () => {
-    const layout = labelLayout({ anchor, name: '박락', dimension: '', number: null, fontPx, circleRPx });
-    expect(layout.lines).toHaveLength(1);
-    expect(layout.lines[0].text).toBe('박락');
-  });
-
-  it('번호가 있으면 원을 그리고 이름을 원 오른쪽에 붙인다', () => {
+  it('첫 줄의 원은 A 왼쪽에 놓이고 번호 글자만 가운데 정렬이다', () => {
     const layout = labelLayout({ anchor, name: '균열/백태', dimension: '', number: 17, fontPx, circleRPx });
-    expect(layout.circle).not.toBeNull();
-    expect(layout.circle!.r).toBe(circleRPx);
-    // 번호 텍스트는 원 중심에, 이름 텍스트는 원 오른쪽에서 시작(anchor: 'start')한다.
-    const numberLine = layout.lines.find((l) => l.text === '17')!;
-    const nameLine = layout.lines.find((l) => l.text === '균열/백태')!;
-    expect(numberLine.anchor).toBe('middle');
-    expect(numberLine.x).toBeCloseTo(layout.circle!.cx, 6);
-    expect(nameLine.anchor).toBe('start');
-    expect(nameLine.x).toBeGreaterThan(layout.circle!.cx + circleRPx);
+    const number = layout.lines.find((l) => l.key === 'number')!;
+    const name = layout.lines.find((l) => l.key === 'name')!;
+    expect(number.anchor).toBe('middle');
+    expect(number.x).toBeCloseTo(layout.circle!.cx, 6);
+    expect(name.anchor).toBe('start');
+    expect(name.x).toBeCloseTo(layout.circle!.cx + circleRPx + circleRPx * 0.5, 6);
   });
 
-  it('두 줄 모두 있으면 이름이 위(작은 y), 치수가 아래(anchor.y)다', () => {
-    const layout = labelLayout({ anchor, name: '망상균열', dimension: '1.2x1.2', number: 17, fontPx, circleRPx });
-    const dimensionLine = layout.lines.find((l) => l.text === '1.2x1.2')!;
-    const nameLine = layout.lines.find((l) => l.text === '망상균열')!;
-    expect(dimensionLine.y).toBe(anchor[1]);
-    expect(nameLine.y).toBeLessThan(dimensionLine.y);
-  });
-
-  it('첫 줄(원+이름) 묶음은 anchor.x를 가운데로 정렬한다', () => {
+  it('블록 전체(원 + 가장 긴 줄)를 기준점 x에 가운데 맞춘다', () => {
     const layout = labelLayout({ anchor, name: '균열', dimension: '', number: 5, fontPx, circleRPx });
-    const numberLine = layout.lines.find((l) => l.text === '5')!;
-    const nameLine = layout.lines.find((l) => l.text === '균열')!;
-    const nameWidth = estimateTextWidthPx('균열', fontPx);
+    const name = layout.lines.find((l) => l.key === 'name')!;
     const left = layout.circle!.cx - circleRPx;
-    const right = nameLine.x + nameWidth;
-    expect((left + right) / 2).toBeCloseTo(anchor[0], 1);
+    const right = name.x + estimateTextWidthPx('균열', fontPx);
+    expect((left + right) / 2).toBeCloseTo(anchor[0], 6);
+    expect(layout.box.x).toBeCloseTo(left, 6);
+    expect(layout.box.width).toBeCloseTo(circleWidth + estimateTextWidthPx('균열', fontPx), 6);
   });
 
-  it('원의 세로 중심은 이름줄 베이스라인에서 글자 높이의 0.35배 위에 있다 (근사 상수를 테스트로 묶어둔다)', () => {
-    // 이름 줄만 있을 때(치수 없음) 이름줄 베이스라인은 anchor.y 그대로다.
-    const layout = labelLayout({ anchor, name: '균열', dimension: '', number: 5, fontPx, circleRPx });
-    expect(layout.circle!.cy).toBeCloseTo(anchor[1] - fontPx * 0.35, 6);
-  });
-
-  it('두 줄일 때는 이름줄(anchor.y보다 위)을 기준으로 원 중심을 잡는다', () => {
-    const layout = labelLayout({ anchor, name: '망상균열', dimension: '1.2x1.2', number: 17, fontPx, circleRPx });
-    const nameLine = layout.lines.find((l) => l.text === '망상균열')!;
-    expect(layout.circle!.cy).toBeCloseTo(nameLine.y - fontPx * 0.35, 6);
-  });
-
-  it('이름·치수가 없어도 번호가 있으면 번호 원만 그린다', () => {
+  it('번호가 있고 이름·치수가 없으면 원만 그린다 (원 중심 = 기준점 x)', () => {
     const layout = labelLayout({ anchor, name: '', dimension: '', number: 1, fontPx, circleRPx });
-    expect(layout.circle).not.toBeNull();
-    expect(layout.lines).toEqual([{ x: layout.circle!.cx, y: anchor[1], text: '1', anchor: 'middle' }]);
+    expect(layout.circle!.cx).toBeCloseTo(anchor[0], 6);
+    expect(layout.lines).toEqual([{ x: layout.circle!.cx, y: anchor[1], text: '1', anchor: 'middle', key: 'number' }]);
   });
 
   it('이름·번호가 둘 다 없으면 아무것도 그리지 않는다', () => {
@@ -430,53 +418,16 @@ describe('labelLayout', () => {
     expect(layout.lines).toEqual([]);
   });
 
-  // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md 9.5
-  // 줄 순서는 이름/치수/사진이고, 라벨은 도형 위쪽 바깥에 놓인다 — 줄이 늘면 위로(작은 y) 쌓이고
-  // 맨 아래 줄(가장 큰 y, anchor.y)이 도형에 가장 가깝다.
-  it('세 줄 모두 있으면 이름(맨 위)·치수(가운데)·사진(맨 아래, anchor.y)순으로 쌓인다', () => {
-    const layout = labelLayout({
-      anchor,
-      name: '균열/백태',
-      dimension: '0.2/0.8',
-      photo: '사진 12, 13',
-      number: 17,
-      fontPx,
-      circleRPx,
-    });
-    const nameLine = layout.lines.find((l) => l.text === '균열/백태')!;
-    const dimensionLine = layout.lines.find((l) => l.text === '0.2/0.8')!;
-    const photoLine = layout.lines.find((l) => l.text === '사진 12, 13')!;
-    expect(photoLine.y).toBe(anchor[1]);
-    expect(dimensionLine.y).toBeCloseTo(anchor[1] - fontPx * 1.3, 6);
-    expect(nameLine.y).toBeCloseTo(anchor[1] - fontPx * 1.3 * 2, 6);
-    expect(dimensionLine.y).toBeLessThan(photoLine.y);
-    expect(nameLine.y).toBeLessThan(dimensionLine.y);
-    expect(photoLine.anchor).toBe('middle');
-    expect(photoLine.x).toBe(anchor[0]);
+  it('없는 줄은 건너뛰어 빈 줄을 남기지 않는다 (치수 없이 사진만)', () => {
+    const layout = labelLayout({ anchor, name: '망상균열', dimension: '', photo: '#5', number: 3, fontPx, circleRPx });
+    expect(layout.lines.map((l) => l.text)).toEqual(['3', '망상균열', '#5']);
+    expect(layout.lines.find((l) => l.key === 'photo')!.y).toBe(anchor[1]);
   });
 
-  it('치수가 없고 사진만 있으면 사진이 둘째 줄(치수 자리, anchor.y)로 올라가 빈 줄을 남기지 않는다', () => {
-    const layout = labelLayout({ anchor, name: '망상균열', dimension: '', photo: '사진 5', number: 3, fontPx, circleRPx });
-    expect(layout.lines).toHaveLength(3); // 번호줄의 원 텍스트 + 이름 + 사진(치수 줄 없음)
-    const photoLine = layout.lines.find((l) => l.text === '사진 5')!;
-    const nameLine = layout.lines.find((l) => l.text === '망상균열')!;
-    expect(photoLine.y).toBe(anchor[1]);
-    expect(nameLine.y).toBeCloseTo(anchor[1] - fontPx * 1.3, 6);
-  });
-
-  it('사진이 없으면 지금과 같이 두 줄(이름·치수)만 그린다', () => {
-    const layout = labelLayout({ anchor, name: '망상균열', dimension: '1.2x1.2', photo: '', number: 17, fontPx, circleRPx });
-    expect(layout.lines.map((l) => l.text)).toEqual(['17', '망상균열', '1.2x1.2']);
-    const dimensionLine = layout.lines.find((l) => l.text === '1.2x1.2')!;
-    expect(dimensionLine.y).toBe(anchor[1]);
-  });
-
-  it('번호가 없어도 세 줄이 같은 순서로 쌓이고 원은 그리지 않는다', () => {
-    const layout = labelLayout({ anchor, name: '박락', dimension: '1.2x1.2', photo: '사진 1', number: null, fontPx, circleRPx });
-    expect(layout.circle).toBeNull();
-    expect(layout.lines.map((l) => l.text)).toEqual(['박락', '1.2x1.2', '사진 1']);
-    expect(layout.lines[0].anchor).toBe('middle');
-    expect(layout.lines[2].y).toBe(anchor[1]);
+  it('화면 상자의 (x, y)는 위 변이다 (y가 아래로 증가하므로)', () => {
+    const layout = labelLayout({ anchor, name: '박락', dimension: '1.2x1.2', number: 7, fontPx, circleRPx });
+    expect(layout.box.y).toBeLessThan(anchor[1]);
+    expect(layout.box.y + layout.box.height).toBeGreaterThanOrEqual(anchor[1]);
   });
 });
 

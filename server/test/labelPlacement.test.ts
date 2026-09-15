@@ -35,13 +35,11 @@ describe('damageLabel', () => {
 
   it('맨 아래 줄이 도형 위쪽 경계에서 100만큼 떨어진 자리다', () => {
     const label = damageLabel(rect('spalling', { width: 1.2, length: 1.5, count: 1 }), 7)!;
-    // 줄이 둘(이름줄, 치수줄)이고 맨 아래가 치수줄이다.
     expect(label.lines).toHaveLength(3); // 번호 + 이름 + 치수
     const dimension = label.lines.find((l) => l.text === '1.2x1.5')!;
     // 베이스라인은 400 + 100, 중간 정렬점은 거기서 글자 높이 × 0.35 위
     expect(dimension.position[1]).toBeCloseTo(400 + LABEL_GAP_MM + FONT_HEIGHT_MM * BASELINE_CENTER_FACTOR, 6);
-    expect(dimension.position[0]).toBeCloseTo(500, 6);
-    expect(dimension.align).toBe('center');
+    expect(dimension.align).toBe('left');
   });
 
   it('윗줄은 한 줄 간격(글자 높이 × 1.3)만큼 위에 있다', () => {
@@ -51,16 +49,15 @@ describe('damageLabel', () => {
     expect(name.position[1] - dimension.position[1]).toBeCloseTo(FONT_HEIGHT_MM * 1.3, 6);
   });
 
-  it('번호 원의 반지름은 글자 높이 × 0.85이고 중심은 이름줄과 같은 높이다', () => {
+  it('번호 원의 반지름은 글자 높이 × 0.85이고 중심은 첫 줄과 같은 높이다', () => {
     const label = damageLabel(rect('spalling', { width: 1.2, length: 1.5, count: 1 }), 7)!;
     const name = label.lines.find((l) => l.text === '박락')!;
-    expect(label.circle).not.toBeNull();
     expect(label.circle!.radius).toBeCloseTo(FONT_HEIGHT_MM * CIRCLE_RADIUS_FACTOR, 6);
     expect(label.circle!.center[1]).toBeCloseTo(name.position[1], 6);
     expect(label.circle!.center[0]).toBeLessThan(name.position[0]);
   });
 
-  it('번호 글자는 원 가운데, 이름은 원 오른쪽에서 왼쪽 정렬이다', () => {
+  it('번호 글자는 원 가운데, 첫 줄 글자는 원 오른쪽에서 왼쪽 정렬이다', () => {
     const label = damageLabel(rect('spalling', { width: 1.2, length: 1.5, count: 1 }), 7)!;
     const number = label.lines.find((l) => l.text === '7')!;
     const name = label.lines.find((l) => l.text === '박락')!;
@@ -69,18 +66,34 @@ describe('damageLabel', () => {
     expect(name.align).toBe('left');
   });
 
-  it('균열은 이름 없이 번호 원만 그린다', () => {
+  // 근거: 2026-09-16 설계 2장 — 균열은 A = 치수라 원 옆에 치수가 붙는다.
+  it('균열은 치수가 원 옆 첫 줄이고 치수 줄을 또 그리지 않는다', () => {
     const label = damageLabel(rect('crack', { width: 0.2, length: 1.5, count: 1 }), 3)!;
     expect(label.lines.map((l) => l.text)).toEqual(['3', '0.2/1.5']);
-    expect(label.circle!.center[0]).toBeCloseTo(500, 6);
+    const dimension = label.lines.find((l) => l.text === '0.2/1.5')!;
+    expect(dimension.position[1]).toBeCloseTo(400 + LABEL_GAP_MM + FONT_HEIGHT_MM * BASELINE_CENTER_FACTOR, 6);
+    expect(dimension.key).toBe('dimension');
   });
 
-  it('사진번호가 있으면 맨 아래 줄이 사진 줄이다', () => {
+  it('둘째 줄부터 첫 줄 글자의 x에 맞춰 들여쓴다', () => {
+    const label = damageLabel(
+      rect('spalling', { width: 1.2, length: 1.5, count: 1 }, { photoNumbers: ['12', '13'] }),
+      7,
+    )!;
+    const name = label.lines.find((l) => l.text === '박락')!;
+    const dimension = label.lines.find((l) => l.text === '1.2x1.5')!;
+    const photo = label.lines.find((l) => l.text === '#12, #13')!;
+    expect(dimension.position[0]).toBeCloseTo(name.position[0], 6);
+    expect(photo.position[0]).toBeCloseTo(name.position[0], 6);
+  });
+
+  it('사진번호가 있으면 맨 아래 줄이 사진 줄이고 key가 photo다', () => {
     const label = damageLabel(
       rect('spalling', { width: 1.2, length: 1.5, count: 1 }, { photoNumbers: ['12', '13'] }),
       7,
     )!;
     const photo = label.lines.find((l) => l.text === '#12, #13')!;
+    expect(photo.key).toBe('photo');
     expect(photo.position[1]).toBeCloseTo(400 + LABEL_GAP_MM + FONT_HEIGHT_MM * BASELINE_CENTER_FACTOR, 6);
     const dimension = label.lines.find((l) => l.text === '1.2x1.5')!;
     expect(dimension.position[1] - photo.position[1]).toBeCloseTo(FONT_HEIGHT_MM * 1.3, 6);
@@ -93,7 +106,7 @@ describe('damageLabel', () => {
     expect(photo.position[1]).toBeCloseTo(400 + LABEL_GAP_MM + FONT_HEIGHT_MM * BASELINE_CENTER_FACTOR, 6);
   });
 
-  it('번호가 없고 이름도 없으면 그릴 것이 없다', () => {
+  it('번호가 없고 이름도 치수도 없으면 그릴 것이 없다', () => {
     const label = damageLabel(rect('crack', {}), null)!;
     expect(label.circle).toBeNull();
     expect(label.lines).toEqual([]);

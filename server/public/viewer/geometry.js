@@ -137,6 +137,23 @@ export function translatePoints(points, dx, dy) {
 }
 
 // 광선 교차 방식. 경계선 위의 점은 안쪽으로 본다(탭으로 고를 때 가장자리를 놓치지 않도록).
+// 점 목록의 경계상자. 숫자가 아닌 점은 건너뛰고, 쓸 점이 하나도 없으면 null이다.
+// 라벨 배치(labelLayout.js)와 화면·도면 어댑터가 모두 이 함수를 쓴다.
+export function boundsOf(points) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of Array.isArray(points) ? points : []) {
+    if (!Array.isArray(point) || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) continue;
+    minX = Math.min(minX, point[0]);
+    maxX = Math.max(maxX, point[0]);
+    minY = Math.min(minY, point[1]);
+    maxY = Math.max(maxY, point[1]);
+  }
+  return minX === Infinity ? null : { minX, minY, maxX, maxY };
+}
+
 export function pointInPolygon(point, polygon) {
   const [px, py] = point;
   for (let i = 0; i < polygon.length; i++) {

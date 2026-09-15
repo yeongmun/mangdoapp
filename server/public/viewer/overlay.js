@@ -3,7 +3,8 @@
 // 두 줄 라벨은 docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2 근거.
 
 import { getDamageType } from './damageTypes.js';
-import { rectCenter } from './geometry.js';
+import { boundsOf, rectCenter } from './geometry.js';
+import { estimateTextWidth, labelBlock, placeBlock } from './labelLayout.js';
 import { computeNumbers, dimensionTextOf, drawingNameOf, photoTextOf } from './quantities.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -32,14 +33,10 @@ export const MIN_LINE_WIDTH_PX = 0.5;
 // 이보다 촘촘한 무늬는 화면을 거의 단색으로 칠하고 브라우저를 느리게 하므로 테두리만 그린다.
 export const MIN_PATTERN_SPACING_PX = 1;
 
-// 라벨 배치 어림값들. 브라우저에 실제 글자 폭을 물어볼 수 없어 근사치를 쓴다(조금 어긋나도 된다).
-const ASCII_CHAR_WIDTH_FACTOR = 0.55;
-const WIDE_CHAR_WIDTH_FACTOR = 1.0;
-const CIRCLE_TEXT_GAP_FACTOR = 0.5; // 원과 이름 사이 간격 (원 반지름의 배수)
-const LINE_GAP_FACTOR = 1.3; // 이름줄~치수줄 간격 (글자 높이의 배수)
-// 텍스트 베이스라인에서 원 중심까지 거리 (글자 높이의 배수).
-// 산출 DXF는 TEXT를 중간 정렬(73=2)로 놓으므로 이 값을 그대로 쓴다 — server/src/export/labelPlacement.ts
-export const BASELINE_CENTER_FACTOR = 0.35;
+// 라벨 배치 규칙과 그 상수는 labelLayout.js에 있다(화면·DXF가 같은 한 벌을 쓴다).
+// BASELINE_CENTER_FACTOR는 산출 DXF(server/src/export/labelPlacement.ts)와 기존 테스트가
+// overlay.js에서 가져오므로 여기서 그대로 다시 내보낸다.
+export { BASELINE_CENTER_FACTOR, CIRCLE_TEXT_GAP_FACTOR, LINE_GAP_FACTOR } from './labelLayout.js';
 
 function distance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -118,15 +115,9 @@ export function resolveFillPattern(pattern, spacingMm, pxPerMm) {
   return { id: hatchPatternId(pattern, spacingPx), sizePx: Math.round(spacingPx), lineWidthPx };
 }
 
-// 브라우저에 실제 글자 폭을 물어볼 수 없어(DOM 밖에서도 계산해야 함) 어림한다.
-// 아스키 글자는 글자 높이의 0.55배, 그 밖(한글 등)은 1.0배로 본다.
+// 이름만 다른 겉포장. 화면은 픽셀을 넣으므로 Px를 붙여 부른다(규칙은 labelLayout.js 한 벌뿐이다).
 export function estimateTextWidthPx(text, fontPx) {
-  let width = 0;
-  for (const ch of String(text ?? '')) {
-    const isAscii = ch.charCodeAt(0) < 128;
-    width += fontPx * (isAscii ? ASCII_CHAR_WIDTH_FACTOR : WIDE_CHAR_WIDTH_FACTOR);
-  }
-  return width;
+  return estimateTextWidth(text, fontPx);
 }
 
 // 해치 패턴의 화면 표현. 캐드 패턴을 그대로 그리는 것이 아니라 구분이 되도록 흉내 낸다.
@@ -204,74 +195,21 @@ export function rectHandlePositions(screenRect) {
   };
 }
 
-// 라벨(전체 두 줄 묶음)이 도형 위쪽 바깥 어디에 놓일지의 기준점. gapPx는 배율에 따라 달라지므로
-// (실치수 100mm 또는 폴백 LABEL_OFFSET_PX) 호출하는 쪽이 매번 계산해 넘긴다.
+// 겹침 방지를 하지 않는 도면(mmPerWorld 없음)에서 쓰는 화면 기준 기본 자리. 화면 좌표는 y가
+// 아래로 증가하므로 도형 위쪽(작은 y)으로 gapPx만큼 뗀다. 겹침 방지를 하는 도면은 대신
+// labelCollision이 world 좌표로 구해 둔 기준점을 쓴다(createOverlay).
 export function labelAnchor(screenPoints, gapPx) {
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  for (const [x, y] of screenPoints) {
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-  }
-  if (minX === Infinity) return [0, 0];
-  return [(minX + maxX) / 2, minY - gapPx];
+  const bounds = boundsOf(screenPoints);
+  if (!bounds) return [0, 0];
+  return [(bounds.minX + bounds.maxX) / 2, bounds.minY - gapPx];
 }
 
-// 세 줄 라벨(첫 줄: 원+이름, 둘째 줄: 치수, 셋째 줄: 사진번호)의 배치를 정하는 순수 함수. DOM을
-// 만들지 않아 테스트하기 쉽다. anchor는 labelAnchor가 돌려준, 도형에서 gapPx만큼 떨어진 기준점
-// (라벨 블록에서 도형에 가장 가까운 줄의 기준선)이다.
-//
-// 줄 순서는 이름/치수/사진이고, 없는 줄은 건너뛰어 빈 줄을 남기지 않는다 — 예를 들어 치수가 없고
-// 사진만 있으면 사진이 둘째 줄(치수가 있었다면 있었을 자리, anchor.y) 자리로 올라간다. 라벨
-// 전체는 도형 위쪽 바깥에 놓이므로, 줄이 늘수록 위(작은 y)로 쌓이고 맨 아래 줄(가장 큰 y)이
-// 항상 anchor.y — 도형에 가장 가까운 자리를 차지한다.
-//
-// 첫 줄(이름 자리)은 이름이 없어도 번호가 있으면 그린다 — 번호 원만 가운데에 놓인다(균열의 라벨
-// 예외, 사내 망도 `(17) 0.2/1.5` 표기). 이름·번호가 둘 다 없을 때만 첫 줄 자체를 건너뛴다.
-// 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2, §9.5
+// 라벨 배치의 화면 어댑터. 규칙은 labelLayout.js에 있고 여기서는 화면 픽셀(y가 아래로 증가)로
+// 옮기기만 한다 — 그 뒤집기는 placeBlock(yDir = -1) 한 곳에서만 일어난다.
+// 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 2장
 export function labelLayout({ anchor, name, dimension, photo = '', number, fontPx, circleRPx }) {
-  const [ax, ay] = anchor;
-  const hasName = typeof name === 'string' && name.length > 0;
-  const hasDimension = typeof dimension === 'string' && dimension.length > 0;
-  const hasPhoto = typeof photo === 'string' && photo.length > 0;
-  const hasNumber = number !== null && number !== undefined;
-
-  // 위(이름)에서 아래(사진)로, 실제로 있는 줄만 남긴다. 이 순서 그대로 화면에 위→아래로 그려진다.
-  // 이름 줄은 이름이 있거나 번호가 있으면(번호 원만이라도) 남긴다.
-  const rows = [];
-  if (hasName || hasNumber) rows.push({ key: 'name', text: hasName ? name : '' });
-  if (hasDimension) rows.push({ key: 'dimension', text: dimension });
-  if (hasPhoto) rows.push({ key: 'photo', text: photo });
-
-  if (rows.length === 0) return { circle: null, lines: [] };
-
-  const lines = [];
-  let circle = null;
-  const lastIndex = rows.length - 1;
-
-  for (let index = 0; index < rows.length; index++) {
-    const row = rows[index];
-    // 맨 아래 줄(lastIndex)이 anchor.y 그대로다. 위로 갈수록 한 줄 간격(LINE_GAP_FACTOR)씩 뺀다.
-    const y = ay - (lastIndex - index) * fontPx * LINE_GAP_FACTOR;
-    if (row.key === 'name' && hasNumber) {
-      // 이름이 없으면 원 폭만으로 가운데 정렬한다(간격·이름 폭을 0으로 둔다) — 원 중심이 ax와 같아진다.
-      const gapPx = hasName ? circleRPx * CIRCLE_TEXT_GAP_FACTOR : 0;
-      const nameWidth = hasName ? estimateTextWidthPx(row.text, fontPx) : 0;
-      const totalWidth = circleRPx * 2 + gapPx + nameWidth;
-      const left = ax - totalWidth / 2;
-      const cx = left + circleRPx;
-      const cy = y - fontPx * BASELINE_CENTER_FACTOR;
-      circle = { cx, cy, r: circleRPx };
-      lines.push({ x: cx, y, text: String(number), anchor: 'middle' });
-      if (hasName) lines.push({ x: left + circleRPx * 2 + gapPx, y, text: row.text, anchor: 'start' });
-    } else {
-      lines.push({ x: ax, y, text: row.text, anchor: 'middle' });
-    }
-  }
-
-  return { circle, lines };
+  const block = labelBlock({ name, dimension, photo, number, font: fontPx, circleR: circleRPx });
+  return placeBlock(block, anchor, -1);
 }
 
 function pointsAttr(points) {

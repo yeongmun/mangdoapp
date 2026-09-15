@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   angleOf,
+  boundsOf,
   distanceToPolyline,
   distanceToSegment,
   pointInPolygon,
@@ -214,5 +215,24 @@ describe('translatePoints', () => {
 
   it('빈 배열은 빈 배열', () => {
     expect(translatePoints([], 1, 1)).toEqual([]);
+  });
+});
+
+describe('boundsOf', () => {
+  it('점들의 경계상자를 준다', () => {
+    expect(boundsOf([[0, 0], [1000, 0], [1000, 400], [0, 400]])).toEqual({ minX: 0, minY: 0, maxX: 1000, maxY: 400 });
+  });
+
+  it('선(두 점)도 같은 방식이다', () => {
+    expect(boundsOf([[60, 20], [0, 100]])).toEqual({ minX: 0, minY: 20, maxX: 60, maxY: 100 });
+  });
+
+  it('숫자가 아닌 점은 건너뛴다', () => {
+    expect(boundsOf([[0, 0], ['a', 1] as unknown as number[], [10, 10]])).toEqual({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
+  });
+
+  it('쓸 점이 하나도 없으면 null', () => {
+    expect(boundsOf([])).toBeNull();
+    expect(boundsOf(null as unknown as number[][])).toBeNull();
   });
 });
