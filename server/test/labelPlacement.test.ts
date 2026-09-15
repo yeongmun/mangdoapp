@@ -80,7 +80,7 @@ describe('damageLabel', () => {
       rect('spalling', { width: 1.2, length: 1.5, count: 1 }, { photoNumbers: ['12', '13'] }),
       7,
     )!;
-    const photo = label.lines.find((l) => l.text === '사진 12, 13')!;
+    const photo = label.lines.find((l) => l.text === '#12, #13')!;
     expect(photo.position[1]).toBeCloseTo(400 + LABEL_GAP_MM + FONT_HEIGHT_MM * BASELINE_CENTER_FACTOR, 6);
     const dimension = label.lines.find((l) => l.text === '1.2x1.5')!;
     expect(dimension.position[1] - photo.position[1]).toBeCloseTo(FONT_HEIGHT_MM * 1.3, 6);
@@ -88,8 +88,8 @@ describe('damageLabel', () => {
 
   it('치수가 없으면 사진 줄이 그 자리로 올라온다 — 빈 줄을 남기지 않는다', () => {
     const label = damageLabel(rect('spalling', {}, { photoNumbers: ['12'] }), 7)!;
-    expect(label.lines.map((l) => l.text)).toEqual(['7', '박락', '사진 12']);
-    const photo = label.lines.find((l) => l.text === '사진 12')!;
+    expect(label.lines.map((l) => l.text)).toEqual(['7', '박락', '#12']);
+    const photo = label.lines.find((l) => l.text === '#12')!;
     expect(photo.position[1]).toBeCloseTo(400 + LABEL_GAP_MM + FONT_HEIGHT_MM * BASELINE_CENTER_FACTOR, 6);
   });
 

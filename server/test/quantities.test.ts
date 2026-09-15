@@ -406,9 +406,21 @@ describe('parsePhotoNumbers', () => {
 });
 
 describe('photoTextOf', () => {
-  it('photoNumbers가 있으면 "사진 "으로 시작해 쉼표+공백으로 잇는다', () => {
+  // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3장
+  // '사진 ' 접두어를 없애고 번호마다 '#'를 붙인다.
+  it('번호마다 #를 붙이고 쉼표+공백으로 잇는다', () => {
     const damage = { id: 'a', type: 'crack', attrs: { note: '', statusText: '', photoNumbers: ['12', '13', '15'] } };
-    expect(photoTextOf(damage)).toBe('사진 12, 13, 15');
+    expect(photoTextOf(damage)).toBe('#12, #13, #15');
+  });
+
+  it('한 장이면 #만 붙는다', () => {
+    const damage = { id: 'a', type: 'crack', attrs: { note: '', statusText: '', photoNumbers: ['12'] } };
+    expect(photoTextOf(damage)).toBe('#12');
+  });
+
+  it('숫자가 아닌 번호(P-013·012)도 그대로 둔다 — 사진 파일 이름과 짝을 맞춰야 한다', () => {
+    const damage = { id: 'a', type: 'crack', attrs: { note: '', statusText: '', photoNumbers: ['012', 'P-013'] } };
+    expect(photoTextOf(damage)).toBe('#012, #P-013');
   });
 
   it('photoNumbers가 빈 배열이면 빈 문자열', () => {

@@ -147,7 +147,7 @@ describe('describeDamageRender', () => {
       measured: { width: 0.2, length: 1.5, count: 1 },
       attrs: { note: '', statusText: '', photoNumbers: ['12', '13'] },
     };
-    expect(describeDamageRender(withPhotos, null).photo).toBe('사진 12, 13');
+    expect(describeDamageRender(withPhotos, null).photo).toBe('#12, #13');
 
     const noPhotos = {
       id: 'b',
