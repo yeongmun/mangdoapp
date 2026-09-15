@@ -372,7 +372,7 @@ export function createOverlay(svg, mapper) {
   let selectedId = null;
   let draft = null;
   let frame = 0;
-  // 번호는 damages가 실제로 바뀔 때만(setDamages) 다시 계산해 여기 담아 둔다. CAMERA_CHANGE는
+  // 번호는 입력이 실제로 바뀔 때만(setDamages·setFrames → recompute) 다시 계산해 여기 담아 둔다. CAMERA_CHANGE는
   // 팬·줌마다 한 번씩(때로는 초당 여러 번) requestRender를 부르므로, render()마다 다시 계산하면
   // 값은 같더라도 매 프레임 불필요한 계산이 반복된다.
   let numbers = new Map();
