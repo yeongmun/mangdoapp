@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { layerNames, parseDxf } from '../src/export/dxfDocument.js';
 import { EXPORT_WARNINGS, ExportError, exportDamagesToDxf } from '../src/export/exportDrawing.js';
+import { flatTable, withSecondFrame } from './fixtureDocs.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
 
@@ -26,8 +27,10 @@ function damage(id: string, type: string, worldX: number, dwg: Pt[] | null, meas
   };
 }
 
-const RECT_A: Pt[] = [[0, 0], [1000, 0], [1000, 400], [0, 400]];
-const RECT_B: Pt[] = [[2000, 0], [3000, 0], [3000, 400], [2000, 400]];
+// 픽스처의 망도틀 영역: x 2000~4280, y 3160~3400 (frames.test.ts에서 손으로 계산).
+// 손상의 dwg 경계상자 **중심**이 이 안에 있어야 그 틀의 번호와 표를 받는다.
+const RECT_A: Pt[] = [[2100, 3200], [3100, 3200], [3100, 3300], [2100, 3300]]; // 중심 (2600, 3250)
+const RECT_B: Pt[] = [[3200, 3200], [4200, 3200], [4200, 3300], [3200, 3300]]; // 중심 (3700, 3250)
 
 function entityCount(text: string, type: string): number {
   const doc = parseDxf(text);
@@ -99,7 +102,7 @@ describe('exportDamagesToDxf', () => {
     expect(texts).toContain('2');
   });
 
-  it('dwg가 없는 손상은 빼고 세어서 알린다. 번호는 그대로 소비한다', async () => {
+  it('dwg가 없는 손상은 빼고 세어서 알린다. 번호도 차지하지 않는다', async () => {
     const result = exportDamagesToDxf(await template(), [
       damage('a', 'spalling', 0, null, { width: 1, length: 1, count: 1 }),
       damage('b', 'spalling', 500, RECT_A, { width: 2, length: 2, count: 1 }),
@@ -107,13 +110,14 @@ describe('exportDamagesToDxf', () => {
     expect(result.skipped).toBe(1);
     expect(entityCount(result.dxfText, 'LWPOLYLINE')).toBe(1);
     const doc = parseDxf(result.dxfText);
-    // 2번 손상의 값이 데이터 2행에 들어간다 (모델 y = 2000 + 2*(700-90) = 3220)
+    // b가 1번이 되어 데이터 1행에 들어간다 (모델 y = 2000 + 2*(700-70) = 3260).
+    // 예전 규칙이었다면 b는 2번이라 3220에 들어갔다.
     const ys = doc.pairs
       .map((p, i) => (p.code === 0 && p.value === 'TEXT' ? i : -1))
       .filter((i) => i >= 0)
       .map((i) => Number(doc.pairs.slice(i, i + 24).find((p) => p.code === 21)!.value));
-    expect(ys).toContain(3220);
-    expect(ys).not.toContain(3260);
+    expect(ys).toContain(3260);
+    expect(ys).not.toContain(3220);
   });
 
   it('표가 없으면 경고만 붙이고 도형은 그린다', async () => {
@@ -127,7 +131,9 @@ describe('exportDamagesToDxf', () => {
 
   it('표의 배율이 가로·세로가 다르면 던진다', async () => {
     const text = (await template()).replace(' 41\n2.0\n 42\n2.0\n', ' 41\n2.0\n 42\n3.0\n');
-    expect(() => exportDamagesToDxf(text, [damage('a', 'crack', 0, RECT_A)])).toThrow(
+    // 세로 배율 3이면 틀 영역은 y 2000+3*580=3740 ~ 2000+3*700=4100이다. 그 안에 손상을 둔다.
+    const inStretched: Pt[] = [[2100, 3800], [3100, 3800], [3100, 3900], [2100, 3900]];
+    expect(() => exportDamagesToDxf(text, [damage('a', 'crack', 0, inStretched)])).toThrow(
       '표의 배율이 가로·세로가 달라 채울 수 없습니다',
     );
   });
@@ -149,7 +155,8 @@ describe('exportDamagesToDxf', () => {
   // (이 픽스처는 데이터 행 3개라 손상 3,000개면 넘침 표가 1,000장) "Maximum call stack size
   // exceeded"로 죽는다. exportDrawing.ts는 인자 전개 없이 하나씩 옮겨 붙이도록 고쳤다.
   it('넘침 표가 아주 많아도(인자 전개 없이) 산출되고 다시 읽힌다', async () => {
-    const text = await template();
+    // 틀이 없는 도면(표가 최상위)이라 번호가 3,000번까지 쭉 이어지고 넘침 표가 1,000장 생긴다.
+    const text = flatTable(await template());
     const damages = [];
     for (let i = 0; i < 3000; i++) {
       const x = i * 20;
@@ -251,7 +258,8 @@ describe('exportDamagesToDxf', () => {
       ...[4, 5, 6].map((n) => damage(`s${n}`, 'spalling', n * 10, null, { width: 1, length: 1, count: 1 })),
       ...[7, 8, 9].map((n) => damage(`q${n}`, 'spalling', n * 10, RECT_A, { width: 1, length: 1, count: 1 })),
     ];
-    const result = exportDamagesToDxf(await template(), damages);
+    // 틀이 없는 도면에서만 "건너뛴 손상이 번호를 차지한다"는 예전 규칙이 남는다(설계 6장).
+    const result = exportDamagesToDxf(flatTable(await template()), damages);
     expect(result.skipped).toBe(3);
     expect(result.warnings).toEqual([]);
 
@@ -270,8 +278,10 @@ describe('exportDamagesToDxf', () => {
 
   // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3·4장
   describe('라벨 겹침 방지와 사진번호 레이어', () => {
+    // 세로 3100~3500이라 경계상자 중심 y = 3300이 틀 안(3160~3400)이다. 도형 자체는 틀보다
+    // 위아래로 튀어나와도 된다 — 배정은 중심만 본다.
     function wide(id: string, x: number, photoNumbers: string[] = []) {
-      const points: Pt[] = [[x, 0], [x + 1000, 0], [x + 1000, 400], [x, 400]];
+      const points: Pt[] = [[x, 3100], [x + 1000, 3100], [x + 1000, 3500], [x, 3500]];
       return {
         id,
         type: 'spalling',
@@ -306,7 +316,7 @@ describe('exportDamagesToDxf', () => {
 
     it('나란히 붙은 손상 둘이면 2번 라벨이 위로 블록 높이만큼 어긋나고 화살표 LINE 3개가 생긴다', async () => {
       const original = await template();
-      const result = exportDamagesToDxf(original, [wide('a', 0), wide('b', 1050)]);
+      const result = exportDamagesToDxf(original, [wide('a', 2000), wide('b', 3050)]);
       const dimensions = texts(result.dxfText)
         .filter((t) => t.value === '1.2x1.5')
         .map((t) => t.y)
@@ -319,7 +329,7 @@ describe('exportDamagesToDxf', () => {
     });
 
     it('사진 줄은 사진번호 레이어·색 2로 나가고 레이어가 없으면 더해진다', async () => {
-      const result = exportDamagesToDxf(await template(), [wide('a', 0, ['12', '13'])]);
+      const result = exportDamagesToDxf(await template(), [wide('a', 2000, ['12', '13'])]);
       expect(layerNames(parseDxf(result.dxfText))).toContain('사진번호');
       const photo = texts(result.dxfText).find((t) => t.value === '#12, #13')!;
       expect(photo.layer).toBe('사진번호');
@@ -329,8 +339,112 @@ describe('exportDamagesToDxf', () => {
     });
 
     it('사진이 없는 도면에도 사진번호 레이어는 만들어 둔다 (같은 도면이 두 번 다르게 나오지 않게)', async () => {
-      const result = exportDamagesToDxf(await template(), [wide('a', 0)]);
+      const result = exportDamagesToDxf(await template(), [wide('a', 2000)]);
       expect(layerNames(parseDxf(result.dxfText))).toContain('사진번호');
+    });
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-16-frame-numbering-design.md 5·6장
+  describe('망도틀별 번호와 표', () => {
+    // 왼쪽 틀(원본, x 2000~4280)과 오른쪽 틀(x 51000~53280)이 있는 도면.
+    async function twoFrames(): Promise<string> {
+      return withSecondFrame(await template(), 50000);
+    }
+
+    const IN_LEFT: Pt[] = [[2100, 3200], [3100, 3200], [3100, 3300], [2100, 3300]];
+    const IN_RIGHT: Pt[] = [[51100, 3200], [52100, 3200], [52100, 3300], [51100, 3300]];
+
+    function texts(dxfText: string) {
+      const doc = parseDxf(dxfText);
+      const out: Array<{ value: string; x: number; y: number }> = [];
+      for (let i = 0; i < doc.pairs.length; i++) {
+        if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== 'TEXT') continue;
+        const entry = { value: '', x: 0, y: 0 };
+        let j = i + 1;
+        for (; j < doc.pairs.length && doc.pairs[j].code !== 0; j++) {
+          const p = doc.pairs[j];
+          if (p.code === 1) entry.value = p.value;
+          else if (p.code === 11) entry.x = Number(p.value);
+          else if (p.code === 21) entry.y = Number(p.value);
+        }
+        out.push(entry);
+        i = j - 1;
+      }
+      return out;
+    }
+
+    // 주의: '박락'·'1.2x1.5' 같은 글자는 **라벨에도 표에도** 나온다. 표 칸만 가리려면 라벨에
+    // 없는 값을 봐야 한다 — 단위 칸('㎡'·'m')과 물량 칸이 그렇다. 개소도 1로 두면 번호 원의
+    // '1'과 구별되지 않으므로 2 이상으로 둔다.
+    it('틀마다 1번부터 매기고 자기 틀의 표에만 값을 넣는다', async () => {
+      const result = exportDamagesToDxf(await twoFrames(), [
+        damage('l', 'spalling', 0, IN_LEFT, { width: 1.2, length: 1.5, count: 2 }),
+        damage('r', 'crack', 500, IN_RIGHT, { width: 0.2, length: 1.5, count: 2 }),
+      ]);
+      expect(result.warnings).toEqual([]);
+
+      const all = texts(result.dxfText);
+      // 번호 원 글자는 둘 다 '1'이다 — 표의 번호 칸은 원본에 인쇄돼 있어 우리가 쓰지 않는다.
+      expect(all.filter((t) => t.value === '1')).toHaveLength(2);
+
+      // 왼쪽 틀의 표: 데이터 1행 7열(단위) 중앙 → 모델 (4170, 3260)
+      //   7열 중앙 로컬 x = (1030+1140)/2 = 1085 → 1000 + 2*(500+1085) = 4170
+      //   데이터 1행 중앙 로컬 y = -70 → 2000 + 2*(700-70) = 3260
+      const left = all.find((t) => t.value === '㎡')!;
+      expect(left.x).toBeCloseTo(4170, 6);
+      expect(left.y).toBeCloseTo(3260, 6);
+      // 오른쪽 틀의 표: 같은 칸이 삽입점만 49000 오른쪽 → (53170, 3260)
+      const right = all.find((t) => t.value === 'm')!;
+      expect(right.x).toBeCloseTo(53170, 6);
+      expect(right.y).toBeCloseTo(3260, 6);
+    });
+
+    it('손상이 없는 틀의 표는 건드리지 않는다', async () => {
+      const result = exportDamagesToDxf(await twoFrames(), [
+        damage('l', 'spalling', 0, IN_LEFT, { width: 1.2, length: 1.5, count: 2 }),
+      ]);
+      // 오른쪽 틀 표(x ≈ 51000~53300) 자리에는 글자가 하나도 생기지 않는다.
+      expect(texts(result.dxfText).filter((t) => t.x > 40000)).toEqual([]);
+    });
+
+    it('틀 밖 손상은 번호 없이 그려지고 경고와 개수를 낸다', async () => {
+      const result = exportDamagesToDxf(await template(), [
+        damage('in', 'spalling', 0, RECT_A, { width: 1.2, length: 1.5, count: 1 }),
+        damage('out', 'spalling', 500, [[0, 0], [100, 0], [100, 100], [0, 100]], { width: 1, length: 1, count: 1 }),
+      ]);
+      expect(result.warnings).toEqual([EXPORT_WARNINGS.outsideFrames(1)]);
+      expect(result.skipped).toBe(0);
+      // 도형은 둘 다 그려지고, 번호 원은 틀 안 손상 하나에만 생긴다.
+      expect(entityCount(result.dxfText, 'LWPOLYLINE')).toBe(2);
+      expect(entityCount(result.dxfText, 'CIRCLE')).toBe(1);
+      // 표에는 틀 안 손상만 들어간다 — 데이터 2행(y 3220)은 비어 있다.
+      const ys = texts(result.dxfText).map((t) => t.y);
+      expect(ys).toContain(3260);
+      expect(ys).not.toContain(3220);
+    });
+
+    it('경고 문구에 개수가 그대로 들어간다', () => {
+      expect(EXPORT_WARNINGS.outsideFrames(3)).toBe('망도틀 밖 손상 3개는 번호 없이 그려지고 물량표에서 빠집니다');
+    });
+
+    it('틀이 없는 도면은 옛 동작 그대로다 — 전체 한 묶음 번호와 가장 가까운 표 하나', async () => {
+      // 개소를 3으로 둬 개소 칸('3')이 번호 원의 '1'·'2'와 섞이지 않게 한다.
+      const result = exportDamagesToDxf(flatTable(await template()), [
+        damage('a', 'spalling', 0, RECT_A, { width: 1.2, length: 1.5, count: 3 }),
+        damage('b', 'spalling', 500, RECT_B, { width: 1.2, length: 1.5, count: 3 }),
+      ]);
+      expect(result.warnings).toEqual([]);
+      const all = texts(result.dxfText);
+      // 번호가 1, 2로 이어진다(틀마다 1부터가 아니다).
+      expect(all.filter((t) => t.value === '1')).toHaveLength(1);
+      expect(all.filter((t) => t.value === '2')).toHaveLength(1);
+      // 표는 최상위에 배율·삽입점 없이 놓여 있다 — 단위 칸은 표 삽입점 (500, 700) 기준
+      // 7열 중앙 1085, 데이터 1행 중앙 −70 → (1585, 630), 데이터 2행 중앙 −90 → (1585, 610)
+      const units = all.filter((t) => t.value === '㎡');
+      expect(units).toHaveLength(2);
+      expect(units[0].x).toBeCloseTo(1585, 6);
+      expect(units[0].y).toBeCloseTo(630, 6);
+      expect(units[1].y).toBeCloseTo(610, 6);
     });
   });
 });

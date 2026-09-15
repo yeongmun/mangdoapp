@@ -3,7 +3,7 @@
 // 매기면 페이지→모델 변환의 회전·반전 때문에 앱 화면의 번호와 어긋날 수 있다.
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 4~8·10장
 
-import { computeNumbers } from '../../public/viewer/quantities.js';
+import { computeNumbers, countOutsideFrames, frameIndexOf } from '../../public/viewer/quantities.js';
 import { damageEntities, dwgPointsOf, type DamageEntitiesWarnings } from './damageEntities.js';
 import {
   createHandleAllocator,
@@ -22,11 +22,13 @@ import {
   setHeaderValue,
   type DxfDocument,
   type DxfPair,
+  type HandleAllocator,
 } from './dxfDocument.js';
 import type { Point } from './dxfEntities.js';
+import { findFrames } from './frames.js';
 import { damageLabels, labelEntities } from './labelPlacement.js';
 import { COLUMN_COUNT, fillTable, rowValuesOf, type TableRow } from './tableFill.js';
-import { buildGrid, findTableCandidates, hasUniformScale, nearestTable } from './tableGrid.js';
+import { buildGrid, findTableCandidates, hasUniformScale, nearestTable, type TableCandidate } from './tableGrid.js';
 
 export class ExportError extends Error {
   constructor(message: string) {
@@ -40,6 +42,10 @@ export const EXPORT_WARNINGS = {
   unknownTable: '표 모양을 알 수 없음',
   units: '도면 단위 확인 필요',
   circlesTruncated: '균열/백태 원이 1000개에서 잘렸습니다',
+  // 개수가 들어가는 유일한 경고라 함수다. 결과는 여전히 문자열이고, 라우트(app.ts)는 그대로
+  // warnings.join('; ')으로 X-Mangdo-Warning 헤더에 싣는다.
+  outsideFrames: (count: number) =>
+    `망도틀 밖 손상 ${count}개는 번호 없이 그려지고 물량표에서 빠집니다`,
 } as const;
 
 export interface ExportResult {
@@ -88,6 +94,52 @@ function recordHandleOrThrow(doc: DxfDocument): string {
   return handle;
 }
 
+/** 도면에 놓을 수 있는(도면 좌표가 있는) 손상 하나 */
+interface Included {
+  id: string;
+  damage: unknown;
+  /** 틀 안이면 그 틀에서의 번호(1부터), 틀 밖이면 0 */
+  number: number;
+  points: Point[];
+  /** 틀이 없는 도면에서는 모두 null이다 */
+  frameIndex: number | null;
+}
+
+// 1부터 maxNumber까지 빠짐없는 행 목록. fillTable의 호출 규칙(tableFill.ts의 JSDoc)이다 —
+// 번호가 빠지면 그 번호가 속한 넘침 표의 틀이 그려지지 않는다. 틀이 있는 도면에서는 번호를
+// 받은 손상이 모두 표에 들어가므로 빈 행이 생기지 않고, 틀이 없는 도면에서만 dwg가 없어
+// 건너뛴 손상의 자리가 빈 행으로 남는다.
+function rowsFor(entries: Included[], maxNumber: number): TableRow[] {
+  const byNumber = new Map(entries.map((entry) => [entry.number, entry.damage] as const));
+  const rows: TableRow[] = [];
+  for (let number = 1; number <= maxNumber; number++) {
+    const damage = byNumber.get(number);
+    rows.push(damage !== undefined ? rowValuesOf(damage, number) : { number, cells: new Array(COLUMN_COUNT).fill('') });
+  }
+  return rows;
+}
+
+// 표 하나를 채운다. 배율이 어긋나면 던지고(설계 6장), 격자를 읽지 못하면 경고만 붙인다.
+function fillCandidate(
+  doc: DxfDocument,
+  candidate: TableCandidate,
+  rows: TableRow[],
+  alloc: HandleAllocator,
+  owner: string,
+  warnings: string[],
+): DxfPair[] {
+  if (!hasUniformScale(candidate.transform)) {
+    throw new ExportError('표의 배율이 가로·세로가 달라 채울 수 없습니다');
+  }
+  const grid = buildGrid(doc, candidate);
+  if (!grid) {
+    // 틀이 여럿이면 같은 경고가 여러 번 나올 수 있다. 한 번만 알린다.
+    if (!warnings.includes(EXPORT_WARNINGS.unknownTable)) warnings.push(EXPORT_WARNINGS.unknownTable);
+    return [];
+  }
+  return fillTable(grid, rows, alloc, owner);
+}
+
 export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportResult {
   const list = Array.isArray(damages) ? damages : [];
   if (list.length === 0) throw new ExportError('표기한 손상이 없습니다');
@@ -105,12 +157,17 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   const insUnits = Number(headerValue(doc, '$INSUNITS')?.trim() ?? '');
   if (!Number.isFinite(insUnits) || !ALLOWED_INSUNITS.has(insUnits)) warnings.push(EXPORT_WARNINGS.units);
 
-  // 번호는 dwg가 없는 손상까지 포함한 전체 목록에서 world 좌표로 매긴다.
-  const numbers = computeNumbers(list);
+  // 틀은 레코드가 아니라 원본에서 다시 구한다 — 원본이 곧 진실이다(설계 6장).
+  const frames = findFrames(doc);
+  const frameBounds = frames.map((frame) => frame.bounds);
+
+  // 번호는 dwg가 없는 손상까지 포함한 전체 목록에서 world 좌표로 매긴다. 틀이 있으면 틀마다
+  // 1번부터이고 틀 밖 손상은 Map에 없다(설계 5장). 틀이 없으면 예전과 똑같다.
+  const numbers = computeNumbers(list, frameBounds);
   let maxNumber = 0;
   for (const value of numbers.values()) if (value > maxNumber) maxNumber = value;
 
-  const included: Array<{ id: string; damage: unknown; number: number; points: Point[] }> = [];
+  const included: Included[] = [];
   let skipped = 0;
   for (const damage of list) {
     const id = String((damage as { id?: unknown } | null)?.id);
@@ -120,7 +177,7 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
       skipped += 1;
       continue;
     }
-    included.push({ id, damage, number, points });
+    included.push({ id, damage, number, points, frameIndex: frameIndexOf(damage, frameBounds) });
   }
   included.sort((a, b) => a.number - b.number);
 
@@ -144,31 +201,28 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
     if (label) appendAll(pairs, labelEntities(label, alloc, owner));
   }
   if (circleWarnings.circlesTruncated) warnings.push(EXPORT_WARNINGS.circlesTruncated);
+  // 도면에는 그렸지만 번호를 받지 못한 손상. dwg가 없어 아예 그리지 못한 손상(skipped)은
+  // 응답 헤더 X-Mangdo-Skipped로 따로 알리므로 여기서 두 번 세지 않는다.
+  const outside = countOutsideFrames(included.map((entry) => entry.damage), frameBounds);
+  if (outside > 0) warnings.push(EXPORT_WARNINGS.outsideFrames(outside));
 
-  const candidates = findTableCandidates(doc);
-  if (candidates.length === 0) {
-    warnings.push(EXPORT_WARNINGS.noTable);
-  } else {
-    const center = boundsCenter(included.map((entry) => entry.points));
-    const candidate = nearestTable(candidates, center)!;
-    if (!hasUniformScale(candidate.transform)) {
-      throw new ExportError('표의 배율이 가로·세로가 달라 채울 수 없습니다');
-    }
-    const grid = buildGrid(doc, candidate);
-    if (!grid) {
-      warnings.push(EXPORT_WARNINGS.unknownTable);
+  if (frames.length === 0) {
+    // 틀이 없는 도면은 예전 규칙 그대로 — 전체 한 묶음 번호, 손상 중심에서 가장 가까운 표 하나.
+    const candidates = findTableCandidates(doc);
+    if (candidates.length === 0) {
+      warnings.push(EXPORT_WARNINGS.noTable);
     } else {
-      // fillTable의 호출 규칙(tableFill.ts의 fillTable JSDoc): 1부터 최댓값까지 모든 번호의
-      // 행을 넘겨야 한다. geometry.dwg가 없어 건너뛴 손상의 번호도 표에서는 그대로 자리를
-      // 차지하고(칸은 전부 빈 문자열), 그래야 그 번호가 속한 넘침 표의 틀이 흔들리지 않고
-      // 계속 그려진다.
-      const byNumber = new Map(included.map((entry) => [entry.number, entry.damage] as const));
-      const rows: TableRow[] = [];
-      for (let number = 1; number <= maxNumber; number++) {
-        const damage = byNumber.get(number);
-        rows.push(damage !== undefined ? rowValuesOf(damage, number) : { number, cells: new Array(COLUMN_COUNT).fill('') });
-      }
-      appendAll(pairs, fillTable(grid, rows, alloc, owner));
+      const candidate = nearestTable(candidates, boundsCenter(included.map((entry) => entry.points)))!;
+      appendAll(pairs, fillCandidate(doc, candidate, rowsFor(included, maxNumber), alloc, owner, warnings));
+    }
+  } else {
+    // 틀마다 자기 표에 그 틀 손상만 1번부터 채운다. 손상이 없는 틀의 표는 건드리지 않는다.
+    for (const frame of frames) {
+      const entries = included.filter((entry) => entry.frameIndex === frame.index);
+      if (entries.length === 0) continue;
+      let frameMax = 0;
+      for (const entry of entries) if (entry.number > frameMax) frameMax = entry.number;
+      appendAll(pairs, fillCandidate(doc, frame.table, rowsFor(entries, frameMax), alloc, owner, warnings));
     }
   }
 
