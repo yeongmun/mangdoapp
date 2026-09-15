@@ -20,18 +20,23 @@ export interface EntityBounds {
 /**
  * 종류별 그룹 코드의 역할.
  * - points: 절대 점 (x코드, y코드) — 이동량을 더하고 변환을 적용한다
- * - vectors: 방향 벡터 (x코드, y코드) — 회전만 적용하고 이동하지 않는다
+ * - vectors: 방향 벡터 (x코드, y코드) — 회전만 적용하고 이동·배율은 적용하지 않는다
+ *   (MTEXT 11/21처럼 캐드가 어차피 정규화하는 "방향"에 쓴다)
+ * - scaledVectors: 상대 거리 벡터 (x코드, y코드) — 회전과 배율을 모두 적용하지만 이동은
+ *   하지 않는다 (HATCH 45/46처럼 원점이 아니라 길이·방향이 뜻이 있는 "간격 오프셋"에 쓴다.
+ *   controller ruling: "45/46 rotated AND multiplied by s")
  * - lengths: 길이·높이·반지름 — 배율만 곱한다
  * - angles: 도(度) 단위 각도 — 회전각을 더한다
  */
 interface CodeRoles {
   points: ReadonlyArray<readonly [number, number]>;
   vectors: ReadonlyArray<readonly [number, number]>;
+  scaledVectors: ReadonlyArray<readonly [number, number]>;
   lengths: readonly number[];
   angles: readonly number[];
 }
 
-const NONE: CodeRoles = { points: [], vectors: [], lengths: [], angles: [] };
+const NONE: CodeRoles = { points: [], vectors: [], scaledVectors: [], lengths: [], angles: [] };
 
 // 여기 없는 종류는 복사하지 않는다(허용 목록). DIMENSION·LEADER·MLEADER·VIEWPORT처럼 다른
 // 객체를 가리키는 엔티티, ATTRIB/SEQEND처럼 여러 엔티티가 한 벌을 이루는 것이 모두 빠진다.
@@ -49,7 +54,10 @@ const ROLES: ReadonlyMap<string, CodeRoles> = new Map([
   // INSERT의 41/42/43은 배율이라 이동에서는 그대로, 변환에서는 곱한다.
   ['INSERT', { ...NONE, points: [[10, 20]], lengths: [41, 42, 43], angles: [50] }],
   // HATCH의 10/20·11/21은 아래 xyRoleOf가 따로 판단한다(첫 10/20은 고도 기준점이라 뺀다).
-  ['HATCH', { ...NONE, points: [[43, 44]], vectors: [[45, 46]], lengths: [41, 47, 49], angles: [52, 53] }],
+  // 45/46(패턴 선 간격 벡터)은 방향이 아니라 실제 거리다 — scaledVectors로 회전과 배율을
+  // 모두 받는다(controller ruling, fix round 1). 49(대시 길이)·41(패턴 축척)은 lengths라
+  // 이동에서는 그대로, 변환에서는 배율이 곱해진다(이미 그렇게 동작했다 — 테스트로 고정한다).
+  ['HATCH', { ...NONE, points: [[43, 44]], scaledVectors: [[45, 46]], lengths: [41, 47, 49], angles: [52, 53] }],
 ]);
 
 function typeOf(pairs: DxfPair[]): string {
@@ -63,7 +71,7 @@ function xyRoleOf(
   x: number,
   y: number,
   hatchElevationSeen: boolean,
-): 'point' | 'vector' | null {
+): 'point' | 'vector' | 'scaledVector' | null {
   if (type === 'HATCH') {
     // 첫 (10,20)은 고도 기준점 — 규격상 x·y가 늘 0이라 옮기면 안 된다.
     if (x === 10 && y === 20) return hatchElevationSeen ? 'point' : null;
@@ -72,12 +80,14 @@ function xyRoleOf(
   }
   for (const [px, py] of roles.points) if (px === x && py === y) return 'point';
   for (const [vx, vy] of roles.vectors) if (vx === x && vy === y) return 'vector';
+  for (const [sx, sy] of roles.scaledVectors) if (sx === x && sy === y) return 'scaledVector';
   return null;
 }
 
 interface Mapper {
   point(x: number, y: number): Point;
   vector(x: number, y: number): Point;
+  scaledVector(x: number, y: number): Point;
   length(value: number): number;
   angle(degrees: number): number;
 }
@@ -114,7 +124,8 @@ function mapPairs(pairs: DxfPair[], m: Mapper): DxfPair[] {
         const x = Number(p.value.trim());
         const y = Number(next.value.trim());
         if (Number.isFinite(x) && Number.isFinite(y)) {
-          const [nx, ny] = role === 'point' ? m.point(x, y) : m.vector(x, y);
+          const [nx, ny] =
+            role === 'point' ? m.point(x, y) : role === 'vector' ? m.vector(x, y) : m.scaledVector(x, y);
           if (put(out, i, p, nx)) changed = true;
           if (put(out, i + 1, next, ny)) changed = true;
           i += 1;
@@ -141,6 +152,8 @@ export function translateEntityPairs(pairs: DxfPair[], dx: number, dy: number): 
   return mapPairs(pairs, {
     point: (x, y) => [x + dx, y + dy],
     vector: (x, y) => [x, y],
+    // 상대 벡터라 이동량이 뜻이 없다 — vector와 마찬가지로 그대로 둔다.
+    scaledVector: (x, y) => [x, y],
     length: (value) => value,
     angle: (degrees) => degrees,
   });
@@ -215,6 +228,59 @@ function intAt(pairs: DxfPair[], code: number): number | null {
 // 옳게 옮길 수 없다 — 복사하지 않고 경고로 센다(설계 5.1 마지막 항목과 같은 취급).
 const HATCH_POLYLINE_BIT = 2;
 
+// 소유자 칸(핸들 5 바로 뒤의 첫 330) 밖에서 다른 엔티티·객체를 가리키는 참조가 있는지 살핀다.
+// 340/350/360은 예외 없이 다른 객체를 가리키는 핸들 참조다(조사 3장). 330은 소유자 한 번은
+// 정상이고, 연관 HATCH의 경계 원본 참조(97 뒤에 이어지는 330들, copyEntityPairs가 정리해
+// 주는 자리)도 알려진 자리라 예외로 둔다 — 그 밖의 두 번째 330은 아직 다루지 못하는 참조다.
+// `102 {...} 102 }` 묶음(ACAD_REACTORS·ACAD_XDICTIONARY) 안은 copyEntityPairs가 통째로 지워
+// 주므로 건너뛴다. 조사 3장이 실측한 두 사례(HATCH의 두 번째 330, TEXT의 XDICTIONARY 360)는
+// 둘 다 이 예외들로 걸러지므로 기존 허용 목록의 동작은 바뀌지 않는다(fix round 1, 발견 3).
+function hasUnhandledReference(pairs: DxfPair[]): boolean {
+  const type = typeOf(pairs);
+  const associative = type === 'HATCH' && intAt(pairs, 71) === 1;
+
+  let handleSeen = false;
+  let ownerSeen = false;
+  let boundaryRefsRemaining = 0;
+
+  for (let i = 0; i < pairs.length; i++) {
+    const p = pairs[i];
+
+    if (p.code === 102 && p.value.startsWith('{')) {
+      let j = i + 1;
+      while (j < pairs.length && !(pairs[j].code === 102 && pairs[j].value.trim() === '}')) j += 1;
+      i = j;
+      continue;
+    }
+
+    if (p.code === 5) {
+      handleSeen = true;
+      continue;
+    }
+
+    if (associative && p.code === 97) {
+      const count = Number(p.value.trim());
+      if (Number.isFinite(count) && count > 0) boundaryRefsRemaining = count;
+      continue;
+    }
+
+    if (p.code === 330) {
+      if (handleSeen && !ownerSeen) {
+        ownerSeen = true;
+        continue;
+      }
+      if (boundaryRefsRemaining > 0) {
+        boundaryRefsRemaining -= 1;
+        continue;
+      }
+      return true; // 소유자도 아니고 알려진 경계 원본 참조 자리도 아닌 두 번째 330
+    }
+
+    if (p.code === 340 || p.code === 350 || p.code === 360) return true;
+  }
+  return false;
+}
+
 export function isCopyable(pairs: DxfPair[]): boolean {
   const type = typeOf(pairs);
   if (!ROLES.has(type)) return false;
@@ -227,6 +293,7 @@ export function isCopyable(pairs: DxfPair[]): boolean {
       if (!Number.isFinite(flags) || (flags & HATCH_POLYLINE_BIT) === 0) return false;
     }
   }
+  if (hasUnhandledReference(pairs)) return false;
   return true;
 }
 
@@ -247,6 +314,13 @@ export function transformEntityPairs(pairs: DxfPair[], t: Transform): DxfPair[] 
     point: (x, y) => applyTransform(t, [x, y]),
     // 방향 벡터는 회전만 한다(배율을 곱해도 뜻이 같고, 캐드가 어차피 정규화한다).
     vector: (x, y) => [x * cos - y * sin, x * sin + y * cos],
+    // 상대 거리 벡터(HATCH 45/46)는 방향뿐 아니라 길이도 뜻이 있다 — 균일 배율을 곱한 뒤
+    // 회전한다(균일 배율이라 순서가 회전 뒤 곱하기와 같다). controller ruling(fix round 1).
+    scaledVector: (x, y) => {
+      const sx = x * scale;
+      const sy = y * scale;
+      return [sx * cos - sy * sin, sx * sin + sy * cos];
+    },
     length: (value) => value * scale,
     angle: (value) => normalizeDegrees(value + degrees),
   });

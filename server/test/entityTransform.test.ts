@@ -33,6 +33,14 @@ const HATCH = pairsOf(
   [47, '0.115'], [98, '        1'], [10, '10.0'], [20, '10.0'],
 );
 
+// 네 꼭짓점 (0,0) (10,0) (10,10) (0,10) — 정사각형.
+const SOLID = pairsOf(
+  [0, 'SOLID'], [5, 'A6'], [330, '30'],
+  [10, '0.0'], [20, '0.0'], [11, '10.0'], [21, '0.0'], [12, '10.0'], [22, '10.0'], [13, '0.0'], [23, '10.0'],
+);
+
+const POINT_ENTITY = pairsOf([0, 'POINT'], [5, 'A7'], [330, '30'], [10, '3.0'], [20, '4.0'], [30, '0.0']);
+
 function valueAt(pairs: DxfPair[], code: number, occurrence = 0): string {
   const hits = pairs.filter((p) => p.code === code);
   return hits[occurrence].value;
@@ -108,6 +116,25 @@ describe('translateEntityPairs', () => {
     expect(moved.filter((p) => p.code === 10).map((p) => p.value)).toEqual(['110.0', '15.0']);
     expect(moved.filter((p) => p.code === 40).map((p) => p.value)).toEqual(['2.0']);
   });
+
+  it('SOLID은 네 꼭짓점을 모두 옮긴다', () => {
+    // (0,0)+(5,7)=(5,7), (10,0)+(5,7)=(15,7), (10,10)+(5,7)=(15,17), (0,10)+(5,7)=(5,17)
+    const moved = translateEntityPairs(SOLID, 5, 7);
+    expect(valueAt(moved, 10)).toBe('5.0');
+    expect(valueAt(moved, 20)).toBe('7.0');
+    expect(valueAt(moved, 11)).toBe('15.0');
+    expect(valueAt(moved, 21)).toBe('7.0');
+    expect(valueAt(moved, 12)).toBe('15.0');
+    expect(valueAt(moved, 22)).toBe('17.0');
+    expect(valueAt(moved, 13)).toBe('5.0');
+    expect(valueAt(moved, 23)).toBe('17.0');
+  });
+
+  it('POINT은 점 하나를 옮긴다', () => {
+    const moved = translateEntityPairs(POINT_ENTITY, 1, 1);
+    expect(valueAt(moved, 10)).toBe('4.0');
+    expect(valueAt(moved, 20)).toBe('5.0');
+  });
 });
 
 describe('entityBoundsOf · isCopyable', () => {
@@ -124,11 +151,41 @@ describe('entityBoundsOf · isCopyable', () => {
     expect(entityBoundsOf(pairsOf([0, 'LINE'], [5, 'B1']))).toBeNull();
   });
 
+  it('SOLID의 경계상자는 네 꼭짓점을 모두 감싼다', () => {
+    expect(entityBoundsOf(SOLID)).toEqual({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
+  });
+
+  it('POINT의 경계상자는 점 자신이다(한 점, 폭·높이 0)', () => {
+    expect(entityBoundsOf(POINT_ENTITY)).toEqual({ minX: 3, minY: 4, maxX: 3, maxY: 4 });
+  });
+
   it('허용 목록 밖의 종류는 복사하지 않는다', () => {
     expect(isCopyable(LINE)).toBe(true);
     expect(isCopyable(HATCH)).toBe(true);
+    expect(isCopyable(SOLID)).toBe(true);
+    expect(isCopyable(POINT_ENTITY)).toBe(true);
     expect(isCopyable(pairsOf([0, 'DIMENSION'], [5, 'B2'], [2, '*D1']))).toBe(false);
     expect(isCopyable(pairsOf([0, 'ACAD_TABLE'], [5, 'B3']))).toBe(false);
+  });
+
+  it('102 묶음 밖에서 소유자가 아닌 340을 가진 엔티티는 복사하지 않는다', () => {
+    // fix round 1 — controller ruling 3. 340/350/360은 102{...} 묶음(ACAD_REACTORS·
+    // ACAD_XDICTIONARY, copyEntityPairs가 통째로 지운다) 밖에 있으면 이 모듈이 다루지 못하는
+    // 참조다 — LEADER의 스타일 참조(340) 같은 자리를 흉내낸 합성 픽스처다(조사표는 LEADER를
+    // 관찰하지 못했지만 방어 규칙은 340/350/360 전부에 적용된다).
+    const strayReference = pairsOf(
+      [0, 'LWPOLYLINE'], [5, 'B5'], [330, '1F'], [340, '99'],
+      [10, '0.0'], [20, '0.0'], [10, '10.0'], [20, '0.0'],
+    );
+    expect(isCopyable(strayReference)).toBe(false);
+  });
+
+  it('소유자 칸 밖의 두 번째 330(102 묶음도, 연관 HATCH 경계 참조도 아님)은 복사하지 않는다', () => {
+    const strayOwner = pairsOf(
+      [0, 'LINE'], [5, 'B6'], [330, '1F'], [330, '99'],
+      [10, '0.0'], [20, '0.0'], [11, '10.0'], [21, '0.0'],
+    );
+    expect(isCopyable(strayOwner)).toBe(false);
   });
 
   it('속성이 따라오는 INSERT(66=1)는 복사하지 않는다 — ATTRIB이 따로 떨어져 나간다', () => {
@@ -188,6 +245,107 @@ describe('transformEntityPairs', () => {
     // 30 + 90 = 120, 300 + 90 = 390 → 360으로 나눈 나머지 30
     expect(Number(valueAt(out, 50))).toBeCloseTo(120, 6);
     expect(Number(valueAt(out, 51))).toBeCloseTo(30, 6);
+  });
+
+  it('LINE의 두 점을 함께 변환한다', () => {
+    // x = 10 + 2*100 = 210, y = 20 + 2*200 = 420 / x = 10 + 2*300 = 610, y = 20 + 2*400 = 820
+    const out = transformEntityPairs(LINE, SCALE2);
+    expect(valueAt(out, 10)).toBe('210.0');
+    expect(valueAt(out, 20)).toBe('420.0');
+    expect(valueAt(out, 11)).toBe('610.0');
+    expect(valueAt(out, 21)).toBe('820.0');
+  });
+
+  it('LWPOLYLINE은 반복되는 10/20을 모두 변환하고 42(bulge)는 그대로, 43(폭)은 배율이 곱해진다', () => {
+    const poly = pairsOf(
+      [0, 'LWPOLYLINE'], [5, 'F1'], [330, '30'], [90, '        3'], [70, '     1'], [43, '2.5'],
+      [10, '0.0'], [20, '0.0'], [42, '0.5'], [10, '10.0'], [20, '0.0'], [10, '10.0'], [20, '10.0'],
+    );
+    const out = transformEntityPairs(poly, SCALE2);
+    // (10+2*0,20+2*0)=(10,20), (10+2*10,20+2*0)=(30,20), (10+2*10,20+2*10)=(30,40)
+    expect(out.filter((p) => p.code === 10).map((p) => p.value)).toEqual(['10.0', '30.0', '30.0']);
+    expect(out.filter((p) => p.code === 20).map((p) => p.value)).toEqual(['20.0', '20.0', '40.0']);
+    expect(valueAt(out, 42)).toBe('0.5'); // bulge는 형상 비율이라 배율과 무관하다
+    expect(valueAt(out, 43)).toBe('5.0'); // 2.5 * 2
+  });
+
+  it('MTEXT는 삽입점(10/20)을 변환하고 방향 벡터(11/21)는 회전만 하며 40/41에 배율을 곱한다', () => {
+    const mtext = pairsOf(
+      [0, 'MTEXT'], [5, 'F2'], [330, '30'], [10, '50.0'], [20, '60.0'], [40, '10.0'], [41, '5.0'],
+      [11, '1.0'], [21, '0.0'], [1, '가나'],
+    );
+    const rotated: Transform = { x: 0, y: 0, scaleX: 2, scaleY: 2, rotationRad: Math.PI / 2 };
+    const out = transformEntityPairs(mtext, rotated);
+    // 삽입점: sx = 50*2 = 100, sy = 60*2 = 120. cos90≈0, sin90=1.
+    // x = 0 + 100*cos90 - 120*sin90 = -120, y = 0 + 100*sin90 + 120*cos90 = 100.
+    expect(Number(valueAt(out, 10))).toBeCloseTo(-120, 6);
+    expect(Number(valueAt(out, 20))).toBeCloseTo(100, 6);
+    // 방향 벡터(1,0)는 배율 없이 회전만 한다: x' = 1*cos90 - 0*sin90 = 0, y' = 1*sin90 + 0*cos90 = 1.
+    // 원래 크기(1)가 그대로 유지된 채 방향만 90도 돈 것 — 배율이 곱해졌다면 크기가 2가 됐을 것이다.
+    expect(Number(valueAt(out, 11))).toBeCloseTo(0, 6);
+    expect(Number(valueAt(out, 21))).toBeCloseTo(1, 6);
+    expect(valueAt(out, 40)).toBe('20.0'); // 10 * 2
+    expect(valueAt(out, 41)).toBe('10.0'); // 5 * 2
+  });
+
+  it('SOLID은 네 꼭짓점을 모두 변환한다', () => {
+    // (0,0)→(10+2*0,20+2*0)=(10,20), (10,0)→(10+20,20+0)=(30,20),
+    // (10,10)→(10+20,20+20)=(30,40), (0,10)→(10+0,20+20)=(10,40)
+    const out = transformEntityPairs(SOLID, SCALE2);
+    expect(valueAt(out, 10)).toBe('10.0');
+    expect(valueAt(out, 20)).toBe('20.0');
+    expect(valueAt(out, 11)).toBe('30.0');
+    expect(valueAt(out, 21)).toBe('20.0');
+    expect(valueAt(out, 12)).toBe('30.0');
+    expect(valueAt(out, 22)).toBe('40.0');
+    expect(valueAt(out, 13)).toBe('10.0');
+    expect(valueAt(out, 23)).toBe('40.0');
+  });
+
+  it('HATCH는 43/44(점)·45/46(회전+배율이 걸리는 상대 벡터)·49(대시 길이)·41(패턴 축척)·52/53(각도)를 모두 규칙대로 변환한다', () => {
+    // fix round 1 — controller ruling 1. scale=2, rotation=90도, 삽입점 이동 없음(x=y=0)으로
+    // 회전·배율만 따로 볼 수 있게 한다. cos90 = Math.cos(Math.PI/2) ≈ 6.12e-17(0에 아주 가깝지만
+    // 정확히 0은 아니다) — 그래서 회전이 걸리는 값은 toBeCloseTo로 비교한다.
+    const hatch = pairsOf(
+      [0, 'HATCH'], [5, 'F4'], [330, '30'],
+      [10, '0.0'], [20, '0.0'], // 고도 기준점 — 변환에서도 완전히 제외된다
+      [10, '5.0'], [20, '0.0'], // 경계점 하나(이 모듈은 경계 점 개수를 검사하지 않는다)
+      [43, '1.0'], [44, '0.0'], // 패턴 기준점(절대 점)
+      [45, '2.0'], [46, '0.0'], // 패턴 오프셋(상대 거리 벡터) — 길이 2, x축 방향
+      [49, '3.0'], // 대시 길이
+      [41, '1.5'], // 패턴 축척
+      [52, '10.0'], [53, '20.0'], // 해치각 · 패턴각
+    );
+    const t: Transform = { x: 0, y: 0, scaleX: 2, scaleY: 2, rotationRad: Math.PI / 2 };
+    const out = transformEntityPairs(hatch, t);
+
+    // 고도 기준점은 손대지 않는다(첫 10/20이라 계산에서 아예 빠진다).
+    expect(valueAt(out, 10, 0)).toBe('0.0');
+    expect(valueAt(out, 20, 0)).toBe('0.0');
+
+    // 경계점(절대 점): sx = 5*2 = 10, sy = 0*2 = 0.
+    // x = 0 + 10*cos90 - 0*sin90 ≈ 0, y = 0 + 10*sin90 + 0*cos90 = 10.
+    expect(Number(valueAt(out, 10, 1))).toBeCloseTo(0, 6);
+    expect(Number(valueAt(out, 20, 1))).toBeCloseTo(10, 6);
+
+    // 43/44(절대 점): sx = 1*2 = 2, sy = 0*2 = 0. x ≈ 0, y = 2.
+    expect(Number(valueAt(out, 43))).toBeCloseTo(0, 6);
+    expect(Number(valueAt(out, 44))).toBeCloseTo(2, 6);
+
+    // 45/46(상대 거리 벡터): 먼저 배율을 곱한다 — sx = 2*2 = 4, sy = 0*2 = 0.
+    // 그다음 회전한다 — x' = 4*cos90 - 0*sin90 ≈ 0, y' = 4*sin90 + 0*cos90 = 4.
+    // 원래 길이 2가 배율 2배로 4가 된 뒤 방향만 90도 돈 것 — vector(회전만)였다면 길이가 2로
+    // 남았을 것이다.
+    expect(Number(valueAt(out, 45))).toBeCloseTo(0, 6);
+    expect(Number(valueAt(out, 46))).toBeCloseTo(4, 6);
+
+    // 49(대시 길이)·41(패턴 축척): 길이라 배율만 곱한다. 3*2=6, 1.5*2=3.
+    expect(valueAt(out, 49)).toBe('6.0');
+    expect(valueAt(out, 41)).toBe('3.0');
+
+    // 52/53(각도): 90도(회전각)를 더한다. 10+90=100, 20+90=110.
+    expect(valueAt(out, 52)).toBe('100.0');
+    expect(valueAt(out, 53)).toBe('110.0');
   });
 });
 
