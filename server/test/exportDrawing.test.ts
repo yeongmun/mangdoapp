@@ -423,6 +423,20 @@ describe('exportDamagesToDxf', () => {
       expect(ys).not.toContain(3220);
     });
 
+    // 컨트롤러 판정 R1: dwg가 없어 건너뛴 손상은 skipped로 이미 알리므로 틀 밖 개수에 넣지 않는다.
+    it('dwg가 없어 건너뛴 손상은 틀 밖 경고 개수에 들어가지 않는다', async () => {
+      const result = exportDamagesToDxf(await template(), [
+        damage('in', 'spalling', 0, RECT_A, { width: 1.2, length: 1.5, count: 1 }),
+        damage('out', 'spalling', 500, [[0, 0], [100, 0], [100, 100], [0, 100]], { width: 1, length: 1, count: 1 }),
+        damage('nodwg', 'spalling', 900, null, { width: 1, length: 1, count: 1 }),
+      ]);
+      expect(result.skipped).toBe(1);
+      expect(result.warnings).toEqual([EXPORT_WARNINGS.outsideFrames(1)]);
+      // 건너뛴 손상은 도형도 없고, 틀이 있는 도면에서는 번호도 차지하지 않는다(빈 행 없음).
+      expect(entityCount(result.dxfText, 'LWPOLYLINE')).toBe(2);
+      expect(entityCount(result.dxfText, 'CIRCLE')).toBe(1);
+    });
+
     it('경고 문구에 개수가 그대로 들어간다', () => {
       expect(EXPORT_WARNINGS.outsideFrames(3)).toBe('망도틀 밖 손상 3개는 번호 없이 그려지고 물량표에서 빠집니다');
     });
