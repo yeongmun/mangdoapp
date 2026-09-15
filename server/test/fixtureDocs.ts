@@ -18,20 +18,23 @@ function replaceOnce(text: string, from: string, to: string): string {
   return text.replace(from, to);
 }
 
-/** 모델 공간의 망도틀 INSERT 한 벌 (ENTITIES의 첫 엔티티) */
-function insertBlockOf(text: string): string {
-  const start = text.indexOf('  0\nINSERT\n');
-  const end = text.indexOf('  0\nLINE\n  5\n81\n');
-  if (start < 0 || end < start) throw new Error('픽스처의 망도틀 INSERT를 찾지 못했습니다');
-  return text.slice(start, end);
+// 픽스처의 망도틀 INSERT를 글자 그대로 옮겨 놓은 것. 핸들과 삽입점 x만 바꿔 쓴다.
+const FRAME_INSERT = [
+  '  0', 'INSERT', '  5', '80', '330', '1F', '100', 'AcDbEntity', '  8', '0',
+  '100', 'AcDbBlockReference', '  2', '망도틀', ' 10', '1000.0', ' 20', '2000.0', ' 30', '0.0',
+  ' 41', '2.0', ' 42', '2.0', ' 43', '2.0', ' 50', '0.0', '',
+].join('\n');
+
+/** 같은 망도틀을 x = insertX에, 주어진 핸들로 한 벌 더 삽입한다. */
+export function withFrameAt(text: string, insertX: number, handle: string): string {
+  const insert = FRAME_INSERT.replace('\n80\n', `\n${handle}\n`).replace('\n1000.0\n', `\n${insertX.toFixed(1)}\n`);
+  // 원본 INSERT 바로 뒤(최상위 LINE 앞)에 넣는다 — 예전 withSecondFrame과 같은 자리다.
+  return replaceOnce(text, '  0\nLINE\n  5\n81\n', insert + '  0\nLINE\n  5\n81\n');
 }
 
 /** 같은 망도틀을 x = insertX에 한 벌 더 삽입한다(틀 2개짜리 도면). */
 export function withSecondFrame(text: string, insertX: number): string {
-  const insert = insertBlockOf(text);
-  // INSERT 블록 안에서 처음 나오는 '1000.0'이 코드 10(삽입점 x)이다.
-  const second = replaceOnce(insert, '\n1000.0\n', `\n${insertX.toFixed(1)}\n`);
-  return replaceOnce(text, insert, insert + second);
+  return withFrameAt(text, insertX, '8A');
 }
 
 /** 망도틀 INSERT를 도(度) 단위로 회전시킨다(코드 50). */
