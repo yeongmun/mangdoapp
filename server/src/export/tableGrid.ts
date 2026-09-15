@@ -155,23 +155,37 @@ export function numbersAt(entity: RawEntity, code: number): number[] {
   return (entity.values.get(code) ?? []).map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
 }
 
-// (0, 타입)부터 다음 (0, …) 직전까지를 한 엔티티로 모은다.
-function readEntities(pairs: DxfPair[], from: number, to: number): RawEntity[] {
-  const entities: RawEntity[] = [];
-  let current: RawEntity | null = null;
+/** doc.pairs 안에서 엔티티 하나가 차지하는 구간. start는 (0, 타입) 쌍, end는 그 다음 엔티티의 시작이다. */
+export interface EntityRange {
+  type: string;
+  start: number;
+  end: number;
+}
+
+// (0, 타입)부터 다음 (0, …) 직전까지를 한 엔티티로 본다. 첫 (0, …) 앞의 쌍은 버린다.
+export function entityRanges(pairs: DxfPair[], from: number, to: number): EntityRange[] {
+  const ranges: EntityRange[] = [];
   for (let i = from; i < to; i++) {
-    const p = pairs[i];
-    if (p.code === 0) {
-      current = { type: p.value, values: new Map() };
-      entities.push(current);
-      continue;
-    }
-    if (!current) continue;
-    const list = current.values.get(p.code);
-    if (list) list.push(p.value);
-    else current.values.set(p.code, [p.value]);
+    if (pairs[i].code !== 0) continue;
+    if (ranges.length > 0) ranges[ranges.length - 1].end = i;
+    ranges.push({ type: pairs[i].value, start: i, end: to });
   }
-  return entities;
+  return ranges;
+}
+
+export function rawEntityAt(pairs: DxfPair[], range: EntityRange): RawEntity {
+  const entity: RawEntity = { type: range.type, values: new Map() };
+  for (let i = range.start + 1; i < range.end; i++) {
+    const p = pairs[i];
+    const list = entity.values.get(p.code);
+    if (list) list.push(p.value);
+    else entity.values.set(p.code, [p.value]);
+  }
+  return entity;
+}
+
+function readEntities(pairs: DxfPair[], from: number, to: number): RawEntity[] {
+  return entityRanges(pairs, from, to).map((range) => rawEntityAt(pairs, range));
 }
 
 interface BlockContents {
@@ -196,6 +210,33 @@ function readBlocks(doc: DxfDocument): BlockContents[] {
     }
   }
   return blocks;
+}
+
+/** 블록 이름 → 그 블록 안 엔티티들의 쌍 범위(BLOCK 머리말은 뺀다). */
+export function blockEntityRanges(doc: DxfDocument): Map<string, EntityRange[]> {
+  const section = findSection(doc, 'BLOCKS');
+  const blocks = new Map<string, EntityRange[]>();
+  if (!section) return blocks;
+  let start = -1;
+  for (let i = section.start; i < section.end; i++) {
+    const p = doc.pairs[i];
+    if (p.code !== 0) continue;
+    if (p.value === 'BLOCK') start = i;
+    else if (p.value === 'ENDBLK' && start >= 0) {
+      const ranges = entityRanges(doc.pairs, start, i);
+      const name = textAt(rawEntityAt(doc.pairs, ranges[0]), 2) ?? '';
+      blocks.set(name, ranges.slice(1));
+      start = -1;
+    }
+  }
+  return blocks;
+}
+
+/** 모델 공간(ENTITIES) 최상위 엔티티들의 쌍 범위. readModelSpace().entities와 순서가 같다. */
+export function modelSpaceRanges(doc: DxfDocument): EntityRange[] {
+  const section = findSection(doc, 'ENTITIES');
+  if (!section) return [];
+  return entityRanges(doc.pairs, section.start + 1, section.end);
 }
 
 export function insertTransform(entity: RawEntity): Transform {
@@ -322,7 +363,7 @@ export function nearestTable(candidates: TableCandidate[], center: Point): Table
   return best;
 }
 
-function indexOfBand(boundaries: number[], value: number): number {
+export function indexOfBand(boundaries: number[], value: number): number {
   for (let i = 0; i + 1 < boundaries.length; i++) {
     const lo = Math.min(boundaries[i], boundaries[i + 1]);
     const hi = Math.max(boundaries[i], boundaries[i + 1]);
