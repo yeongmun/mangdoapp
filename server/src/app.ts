@@ -57,19 +57,23 @@ function framesOf(original: Buffer, objectKey: string): FrameBounds[] {
 }
 
 // frames 필드가 없는 옛 레코드를 목록을 돌려주기 전에 한 번 채운다. 원본이 없거나 DWG면
-// 빈 배열로 저장해 다시 시도하지 않는다(설계 3장).
+// 빈 배열로 저장해 다시 시도하지 않는다(설계 3장). 계산이든 저장이든 실패하면 refreshStatus와
+// 같은 방식으로 통째로 삼킨다 — 이 레코드는 저장하지 않고 응답만 frames: []로 채우므로,
+// 실패 하나가 Promise.all 전체를 reject시켜 목록 요청을 500으로 만들지 않고, 다음 목록
+// 요청 때 다시 시도한다.
 async function ensureFrames(deps: AppDeps, record: DrawingRecord): Promise<DrawingRecord> {
   if (record.frames !== undefined) return record;
-  let frames: FrameBounds[] = [];
-  if (record.objectKey.toLowerCase().endsWith('.dxf')) {
-    try {
+  try {
+    let frames: FrameBounds[] = [];
+    if (record.objectKey.toLowerCase().endsWith('.dxf')) {
       const original = await deps.originals.read(record.objectKey);
       if (original) frames = framesOf(original, record.objectKey);
-    } catch (err) {
-      console.error('[frames]', record.objectKey, messageOf(err));
     }
+    return (await deps.drawings.update(record.id, { frames })) ?? { ...record, frames };
+  } catch (err) {
+    console.error('[frames]', record.id, messageOf(err));
+    return { ...record, frames: [] };
   }
-  return (await deps.drawings.update(record.id, { frames })) ?? { ...record, frames };
 }
 
 const apiErrorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
@@ -184,7 +188,9 @@ export function createApp(deps: AppDeps) {
       res.status(502).json({ error: `변환 재요청에 실패했습니다: ${messageOf(err)}` });
       return;
     }
-    res.json(await deps.drawings.update(drawing.id, { status: 'pending', progress: '', error: null }));
+    const updated = await deps.drawings.update(drawing.id, { status: 'pending', progress: '', error: null });
+    // 옛 레코드(frames 없음)를 재시도할 수도 있으니, GET과 같은 헬퍼로 frames를 채워 보낸다.
+    res.json(await ensureFrames(deps, updated ?? drawing));
   });
 
   api.get('/viewer-token', async (_req, res) => {

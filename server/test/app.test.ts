@@ -357,6 +357,35 @@ describe('GET /api/drawings', () => {
     expect(readSpy).not.toHaveBeenCalled();
     expect(updateSpy).not.toHaveBeenCalled();
   });
+
+  // 회귀: 레거시 레코드 하나의 frames 저장 실패가 Promise.all을 reject시켜 목록 전체를
+  // 500으로 만들던 결함(리뷰 1건) — 이제 그 레코드만 frames: []로 응답하고 저장은 건너뛴다.
+  it('레거시 레코드 하나의 frames 저장이 실패해도 나머지 목록은 200으로 돌아온다', async () => {
+    const { app, drawings, originals } = setup();
+    const good = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete' });
+    await originals.save(good.objectKey, await readFile(templatePath));
+    const bad = await seed(drawings, { name: '교량2.dxf', status: 'success', progress: 'complete' });
+    await originals.save(bad.objectKey, await readFile(templatePath));
+
+    const originalUpdate = drawings.update.bind(drawings);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(drawings, 'update').mockImplementation(async (id, patch) => {
+      if (id === bad.id) throw new Error('disk full');
+      return originalUpdate(id, patch);
+    });
+
+    const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
+
+    expect(res.status).toBe(200);
+    const byId = Object.fromEntries((res.body as DrawingRecord[]).map((r) => [r.id, r]));
+    expect(byId[bad.id].frames).toEqual([]);
+    expect(byId[good.id].frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect(errorSpy).toHaveBeenCalledWith('[frames]', bad.id, expect.any(String));
+    // 저장은 건너뛰었으므로 다음 요청에서 다시 시도한다.
+    expect((await drawings.get(bad.id))?.frames).toBeUndefined();
+
+    errorSpy.mockRestore();
+  });
 });
 
 describe('POST /api/drawings/:id/retry', () => {
@@ -365,8 +394,20 @@ describe('POST /api/drawings/:id/retry', () => {
     const failed = await seed(drawings, { status: 'failed', progress: 'complete', error: '파일 오류' });
     const res = await request(app).post(`/api/drawings/${failed.id}/retry`).set('x-access-key', KEY);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ...failed, status: 'pending', progress: '', error: null });
+    expect(res.body).toEqual({ ...failed, status: 'pending', progress: '', error: null, frames: [] });
     expect(aps.startTranslation).toHaveBeenCalledWith(failed.urn);
+  });
+
+  it('frames 없는 옛 레코드를 재시도해도 응답에 frames가 채워진다', async () => {
+    const { app, drawings, originals } = setup();
+    const failed = await seed(drawings, { name: '망도.dxf', status: 'failed', progress: '', error: '파일 오류' });
+    await originals.save(failed.objectKey, await readFile(templatePath));
+
+    const res = await request(app).post(`/api/drawings/${failed.id}/retry`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect((await drawings.get(failed.id))?.frames).toEqual(res.body.frames);
   });
 
   it('실패 상태가 아니면 409', async () => {
