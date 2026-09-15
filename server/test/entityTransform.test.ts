@@ -429,3 +429,134 @@ describe('copyEntityPairs', () => {
     expect(copy.filter((p) => p.code === 10).map((p) => p.value)).toEqual(['0.0', '10.0', '20.0', '10.0', '10.0']);
   });
 });
+
+// fix round 2, review Important #1 — 92(경로 종류)에 폴리라인 비트가 없는 경계도 모서리 종류
+// (72)가 선(1)·원호(2)면 이동·변환이 정확하다. 실제 템플릿에서 이 모양(92=[1], 72 전부 1)의
+// 단색 화살촉 HATCH 2개가 isCopyable=false로 매 복사본마다 빠졌었다(final-review.md I1).
+describe('HATCH 비폴리라인 경계(72 모서리 종류) — fix round 2', () => {
+  // 연관 해치(71=1), 선 모서리 3개로 된 삼각형 경계 — (0,0)-(10,0)-(10,10)-(0,0).
+  const HATCH_LINE_EDGES = pairsOf(
+    [0, 'HATCH'], [5, 'E1'], [330, '1F'], [100, 'AcDbEntity'], [8, '0'], [100, 'AcDbHatch'],
+    [10, '0.0'], [20, '0.0'], [30, '0.0'],
+    [2, 'ANSI31'], [70, '     0'], [71, '     1'],
+    [91, '        1'], [92, '        1'], [93, '        3'],
+    [72, '     1'], [10, '0.0'], [20, '0.0'], [11, '10.0'], [21, '0.0'],
+    [72, '     1'], [10, '10.0'], [20, '0.0'], [11, '10.0'], [21, '10.0'],
+    [72, '     1'], [10, '10.0'], [20, '10.0'], [11, '0.0'], [21, '0.0'],
+    [97, '        1'], [330, '39AA'],
+    [75, '     0'], [76, '     1'], [52, '45.0'], [41, '1.0'], [77, '     0'], [78, '     1'],
+    [53, '45.0'], [43, '5.0'], [44, '6.0'], [45, '0.0'], [46, '3.0'], [79, '     0'],
+    [47, '0.115'], [98, '        1'], [10, '5.0'], [20, '5.0'],
+  );
+
+  // 비연관(71=0), 원호 모서리 하나 — 중심 (20,30), 반지름 5, 0~180도.
+  const HATCH_ARC_EDGE = pairsOf(
+    [0, 'HATCH'], [5, 'E2'], [330, '1F'], [100, 'AcDbEntity'], [8, '0'], [100, 'AcDbHatch'],
+    [10, '0.0'], [20, '0.0'], [30, '0.0'],
+    [2, 'ANSI31'], [70, '     0'], [71, '     0'],
+    [91, '        1'], [92, '        1'], [93, '        1'],
+    [72, '     2'], [10, '20.0'], [20, '30.0'], [40, '5.0'], [50, '0.0'], [51, '180.0'], [73, '     1'],
+    [75, '     0'], [76, '     1'], [52, '0.0'], [41, '1.0'], [77, '     0'], [78, '     0'],
+    [79, '        0'], [47, '0.115'], [98, '        1'], [10, '20.0'], [20, '30.0'],
+  );
+
+  // 타원호 모서리(72=3) — 11/21이 중심 기준 상대 장축 벡터라 여전히 복사하지 않는다.
+  const HATCH_ELLIPTIC_EDGE = pairsOf(
+    [0, 'HATCH'], [5, 'E3'], [330, '1F'], [100, 'AcDbEntity'], [8, '0'], [100, 'AcDbHatch'],
+    [10, '0.0'], [20, '0.0'], [30, '0.0'],
+    [2, 'ANSI31'], [70, '     0'], [71, '     0'],
+    [91, '        1'], [92, '        1'], [93, '        1'],
+    [72, '     3'], [10, '20.0'], [20, '30.0'], [11, '10.0'], [21, '0.0'], [40, '0.5'], [50, '0.0'], [51, '180.0'], [73, '     1'],
+    [79, '        0'], [47, '0.115'], [98, '        1'], [10, '20.0'], [20, '30.0'],
+  );
+
+  // 같은 비폴리라인 경로 안에 선 모서리와 타원호 모서리가 섞이면 — 하나라도 안전하지 않으면
+  // 전체를 거부해야 한다(루프가 첫 안전한 모서리에서 멈추지 않는지 확인).
+  const HATCH_MIXED_EDGES = pairsOf(
+    [0, 'HATCH'], [5, 'E4'], [330, '1F'],
+    [91, '        1'], [92, '        1'], [93, '        2'],
+    [72, '     1'], [10, '0.0'], [20, '0.0'], [11, '10.0'], [21, '0.0'],
+    [72, '     3'], [10, '10.0'], [20, '0.0'], [11, '5.0'], [21, '5.0'], [40, '0.5'], [50, '0.0'], [51, '90.0'],
+  );
+
+  it('isCopyable: 선 모서리·원호 모서리 경계는 복사할 수 있고, 타원호·혼합 경계는 여전히 못 한다', () => {
+    expect(isCopyable(HATCH_LINE_EDGES)).toBe(true);
+    expect(isCopyable(HATCH_ARC_EDGE)).toBe(true);
+    expect(isCopyable(HATCH_ELLIPTIC_EDGE)).toBe(false);
+    expect(isCopyable(HATCH_MIXED_EDGES)).toBe(false);
+  });
+
+  it('bounds: 선 모서리 경계의 경계상자는 세 모서리 점 + 패턴 기준점 + 씨앗점을 모두 감싼다', () => {
+    // x: 0,10,10,10,10,0,5(패턴),5(씨앗) → 0..10 / y: 0,0,0,10,10,0,6,5 → 0..10
+    expect(entityBoundsOf(HATCH_LINE_EDGES)).toEqual({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
+  });
+
+  it('translate: 선 모서리 경계는 고도 기준점을 빼고 세 모서리·패턴 기준점·씨앗점만 옮긴다', () => {
+    const moved = translateEntityPairs(HATCH_LINE_EDGES, 1000, 0);
+    // 10 등장 순서: [0]고도(그대로) [1]모서리1 시작 [2]모서리2 시작 [3]모서리3 시작 [4]씨앗점
+    expect(moved.filter((p) => p.code === 10).map((p) => p.value)).toEqual([
+      '0.0', '1000.0', '1010.0', '1010.0', '1005.0',
+    ]);
+    // 11 등장 순서: 모서리1·2·3의 끝점
+    expect(moved.filter((p) => p.code === 11).map((p) => p.value)).toEqual(['1010.0', '1010.0', '1000.0']);
+    expect(valueAt(moved, 43)).toBe('1005.0'); // 패턴 기준점(절대 점) 5 + 1000
+    expect(valueAt(moved, 44)).toBe('6.0');
+    expect(valueAt(moved, 45)).toBe('0.0'); // 패턴 오프셋(상대 벡터)은 이동에서 그대로
+    expect(valueAt(moved, 46)).toBe('3.0');
+  });
+
+  it('translate: 원호 모서리 경계는 중심점만 옮기고 반지름·각도는 그대로다', () => {
+    const moved = translateEntityPairs(HATCH_ARC_EDGE, 1000, 0);
+    expect(moved.filter((p) => p.code === 10).map((p) => p.value)).toEqual(['0.0', '1020.0', '1020.0']);
+    expect(valueAt(moved, 40)).toBe('5.0'); // 반지름은 길이라 이동에서 그대로
+    expect(valueAt(moved, 50)).toBe('0.0');
+    expect(valueAt(moved, 51)).toBe('180.0');
+  });
+
+  it('transform: 선 모서리 경계는 배율 2·회전 90도에서 점은 변환되고 패턴 오프셋은 배율+회전이 걸린다', () => {
+    const t: Transform = { x: 0, y: 0, scaleX: 2, scaleY: 2, rotationRad: Math.PI / 2 };
+    const out = transformEntityPairs(HATCH_LINE_EDGES, t);
+    // 고도 기준점은 손대지 않는다.
+    expect(valueAt(out, 10, 0)).toBe('0.0');
+    expect(valueAt(out, 20, 0)).toBe('0.0');
+    // 모서리2 끝점(10,10): sx=20,sy=20 → x=20cos90-20sin90≈-20, y=20sin90+20cos90≈20.
+    expect(Number(valueAt(out, 11, 1))).toBeCloseTo(-20, 6);
+    expect(Number(valueAt(out, 21, 1))).toBeCloseTo(20, 6);
+    // 패턴 기준점(43,44)=(5,6, 절대 점): sx=10,sy=12 → x=10cos90-12sin90≈-12, y=10sin90+12cos90≈10.
+    expect(Number(valueAt(out, 43))).toBeCloseTo(-12, 6);
+    expect(Number(valueAt(out, 44))).toBeCloseTo(10, 6);
+    // 패턴 오프셋(45,46)=(0,3, 상대 거리 벡터): 먼저 배율 → sx=0,sy=6 → x'≈-6, y'≈0.
+    expect(Number(valueAt(out, 45))).toBeCloseTo(-6, 6);
+    expect(Number(valueAt(out, 46))).toBeCloseTo(0, 6);
+  });
+
+  it('transform: 원호 모서리 경계는 중심이 변환되고 반지름에 배율이, 각도에 회전이 걸린다', () => {
+    const t: Transform = { x: 0, y: 0, scaleX: 2, scaleY: 2, rotationRad: Math.PI / 2 };
+    const out = transformEntityPairs(HATCH_ARC_EDGE, t);
+    // 중심(20,30): sx=40,sy=60 → x=40cos90-60sin90≈-60, y=40sin90+60cos90≈40.
+    expect(Number(valueAt(out, 10, 1))).toBeCloseTo(-60, 6);
+    expect(Number(valueAt(out, 20, 1))).toBeCloseTo(40, 6);
+    expect(valueAt(out, 40)).toBe('10.0'); // 반지름 5 × 배율 2
+    expect(valueAt(out, 50)).toBe('90.0'); // 시작각 0 + 회전 90
+    expect(valueAt(out, 51)).toBe('270.0'); // 끝각 180 + 회전 90
+  });
+
+  it('copy: 선 모서리 경계의 연관 해치도 비연관으로 바뀌고 경계 원본 참조가 지워진다', () => {
+    const copy = copyEntityPairs(HATCH_LINE_EDGES, new HandleAllocator(0x300), '1F');
+    expect(valueAt(copy, 5)).toBe('300');
+    expect(valueAt(copy, 71)).toBe('     0');
+    expect(valueAt(copy, 97)).toBe('        0');
+    expect(copy.filter((p) => p.code === 330).map((p) => p.value)).toEqual(['1F']); // 39AA가 사라졌다
+    // 좌표는 손대지 않는다(옮기는 것은 호출부 몫)
+    expect(copy.filter((p) => p.code === 10).map((p) => p.value)).toEqual(['0.0', '0.0', '10.0', '10.0', '5.0']);
+  });
+
+  it('copy: 원호 모서리 경계는 비연관이라 71·경계가 그대로고 핸들·소유자만 바뀐다', () => {
+    const copy = copyEntityPairs(HATCH_ARC_EDGE, new HandleAllocator(0x300), '1F');
+    expect(valueAt(copy, 5)).toBe('300');
+    expect(valueAt(copy, 330)).toBe('1F');
+    expect(valueAt(copy, 71)).toBe('     0'); // 원래부터 비연관 — 안 바뀐다
+    expect(valueAt(copy, 10, 1)).toBe('20.0'); // 중심점은 그대로
+    expect(valueAt(copy, 40)).toBe('5.0');
+  });
+});

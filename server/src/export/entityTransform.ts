@@ -57,7 +57,10 @@ const ROLES: ReadonlyMap<string, CodeRoles> = new Map([
   // 45/46(패턴 선 간격 벡터)은 방향이 아니라 실제 거리다 — scaledVectors로 회전과 배율을
   // 모두 받는다(controller ruling, fix round 1). 49(대시 길이)·41(패턴 축척)은 lengths라
   // 이동에서는 그대로, 변환에서는 배율이 곱해진다(이미 그렇게 동작했다 — 테스트로 고정한다).
-  ['HATCH', { ...NONE, points: [[43, 44]], scaledVectors: [[45, 46]], lengths: [41, 47, 49], angles: [52, 53] }],
+  // 40(원호 모서리 반지름)·50/51(원호 모서리 시작·끝 각도)은 fix round 2에서 더했다 — 원호
+  // 모서리(72=2)를 isCopyable이 허용하면서 변환(transformEntityPairs)도 반지름에 배율을,
+  // 각도에 회전을 옳게 적용해야 한다(원 중심은 10/20이라 xyRoleOf가 이미 점으로 다룬다).
+  ['HATCH', { ...NONE, points: [[43, 44]], scaledVectors: [[45, 46]], lengths: [40, 41, 47, 49], angles: [50, 51, 52, 53] }],
 ]);
 
 function typeOf(pairs: DxfPair[]): string {
@@ -282,10 +285,15 @@ function intAt(pairs: DxfPair[], code: number): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-// 경계 경로 종류 플래그(92)의 2번 비트가 폴리라인이다. 그 비트가 없는 경로(선·호·타원호
-// 조각으로 이뤄진 경계)는 11/21이 '중심 기준 상대 벡터'로 쓰이는 자리가 있어 단순 이동으로는
-// 옳게 옮길 수 없다 — 복사하지 않고 경고로 센다(설계 5.1 마지막 항목과 같은 취급).
+// 경계 경로 종류 플래그(92)의 2번 비트가 폴리라인이다. 그 비트가 없는 경로는 모서리 종류(72)를
+// 하나씩 봐야 한다 — 선(72=1)은 10/20·11/21이 모두 절대 점이고, 원호(72=2)는 10/20이 중심점,
+// 40이 반지름, 50/51이 각도라 전부 옳게 옮기고 변환할 수 있다. 타원호(72=3)만 11/21이 '중심
+// 기준 상대 장축 벡터'라 단순 이동으로는 옳게 옮길 수 없고, 스플라인(72=4)은 제어점·맞춤점이
+// 섞여 있다 — 이 둘만 복사하지 않고 경고로 센다(fix round 2, 실제 템플릿에서 해치 화살촉 2개가
+// 매 복사본마다 빠지던 것을 고친다 — 설계 5.1 마지막 항목과 같은 취급은 타원호·스플라인만).
 const HATCH_POLYLINE_BIT = 2;
+// 비폴리라인 경계 경로에서 그대로 옮기고 변환해도 안전한 모서리 종류(선·원호).
+const SAFE_HATCH_EDGE_TYPES = new Set([1, 2]);
 
 // 소유자 칸(핸들 5 바로 뒤의 첫 330) 밖에서 다른 엔티티·객체를 가리키는 참조가 있는지 살핀다.
 // 340/350/360은 예외 없이 다른 객체를 가리키는 핸들 참조다(조사 3장). 330은 소유자 한 번은
@@ -346,10 +354,16 @@ export function isCopyable(pairs: DxfPair[]): boolean {
   // 속성(ATTRIB)이 따라오는 INSERT는 ATTRIB…SEQEND까지 한 벌이라 이 모듈이 다루지 못한다.
   if (type === 'INSERT' && intAt(pairs, 66) === 1) return false;
   if (type === 'HATCH') {
+    // 92(경로 종류)에 폴리라인 비트가 없으면 그 경로 안의 모서리 종류(72)를 하나씩 본다 — 72는
+    // 폴리라인 경로에서는 "bulge 있음" 플래그로 재사용되므로 비폴리라인 경로 안에서만 본다.
+    let inNonPolylinePath = false;
     for (const p of pairs) {
-      if (p.code !== 92) continue;
-      const flags = Number(p.value.trim());
-      if (!Number.isFinite(flags) || (flags & HATCH_POLYLINE_BIT) === 0) return false;
+      if (p.code === 92) {
+        const flags = Number(p.value.trim());
+        inNonPolylinePath = !Number.isFinite(flags) || (flags & HATCH_POLYLINE_BIT) === 0;
+        continue;
+      }
+      if (inNonPolylinePath && p.code === 72 && !SAFE_HATCH_EDGE_TYPES.has(Number(p.value.trim()))) return false;
     }
   }
   if (hasUnhandledReference(pairs)) return false;
