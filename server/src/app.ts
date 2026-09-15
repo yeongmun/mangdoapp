@@ -166,9 +166,12 @@ export function createApp(deps: AppDeps) {
 
   api.get('/drawings', async (_req, res) => {
     const records = await deps.drawings.list();
-    res.json(
-      await Promise.all(records.map(async (record) => ensureFrames(deps, await refreshStatus(deps, record)))),
-    );
+    const refreshed = await Promise.all(records.map((record) => refreshStatus(deps, record)));
+    // frames 채우기는 원본(수 MB DXF)을 읽어 동기로 파싱하므로 한 번에 하나씩 한다 — 옛 레코드가
+    // 여럿이면 병렬로 돌릴 때 메모리가 레코드 수만큼 겹친다. 이미 frames가 있는 레코드는 그냥 지나간다.
+    const withFrames: DrawingRecord[] = [];
+    for (const record of refreshed) withFrames.push(await ensureFrames(deps, record));
+    res.json(withFrames);
   });
 
   api.post('/drawings/:id/retry', async (req, res) => {
