@@ -13,7 +13,6 @@
 import { boundsOf } from '../../public/viewer/geometry.js';
 import { placeLabels } from '../../public/viewer/labelCollision.js';
 import {
-  baseAnchor,
   BASELINE_CENTER_FACTOR,
   labelBlock,
   placeBlock,
