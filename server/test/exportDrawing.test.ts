@@ -1007,8 +1007,8 @@ describe('exportDamagesToDxf', () => {
       // 복사본 표의 36번이 원래 틀 1 자리(x > 151570) 쪽에 있다. 36은 표 칸뿐 아니라 36번
       // 손상 자신의 번호 라벨에도 나온다(twoFrames 테스트와 같은 문제, Task 3 보고서 10장) —
       // 라벨은 항상 DAMAGE_LAYER(신규손상)에 그려지므로(labelEntities) 그 레이어를 걸러 표
-      // 칸만 남긴다. flattenTable이 원본 표의 기존 인쇄 번호에서 레이어를 그대로 읽어 쓰므로
-      // (sheetCopy.ts의 flattenTable) 표 칸은 원본 도면 레이어(신규손상이 아니다)를 쓴다.
+      // 칸만 남긴다. 복사본 표의 번호는 flattenTable이 TABLE_LAYER(손상물량표)·색 7로 새로 쓰므로
+      // (sheetCopy.ts, 2차 피드백 B) 신규손상 레이어가 아니다.
       const numbers = doc.pairs
         .map((p, i) => (p.code === 0 && p.value === 'TEXT' ? i : -1))
         .filter((i) => i >= 0)
