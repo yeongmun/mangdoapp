@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { viewerUrl, type Drawing } from '../api';
+import { takePhotoAndSave } from '../photo';
 
 interface Props {
   drawing: Drawing;
@@ -23,6 +24,9 @@ export function ViewerScreen({ drawing, onBack }: Props) {
   const pendingFlushRef = useRef<((saved: boolean) => void) | null>(null);
   const flushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leavingRef = useRef(false);
+  // 카메라 요청이 겹치지 않게 막는다(설계 5장) — 버튼이 뷰어에서 비활성(⏳)이라 실제로는 거의
+  // 오지 않지만, 혹시 겹쳐 와도 두 번째 요청은 조용히 무시한다.
+  const photoBusyRef = useRef(false);
 
   const clearPendingFlush = useCallback(() => {
     if (flushTimeoutRef.current !== null) {
@@ -71,11 +75,32 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       return;
     }
     if (typeof message !== 'object' || message === null) return;
-    const { type, saved } = message as { type?: unknown; saved?: unknown };
+    const { type, saved, requestId } = message as { type?: unknown; saved?: unknown; requestId?: unknown };
     if (type === 'ready') {
       viewerReadyRef.current = true;
     } else if (type === 'flushResult') {
       pendingFlushRef.current?.(saved === true);
+    } else if (type === 'takePhoto') {
+      if (typeof requestId !== 'string') return;
+      // 겹친 요청은 무시한다 — 뷰어는 응답이 올 때까지 버튼을 비활성(⏳)으로 바꾸므로 실제로는
+      // 거의 오지 않는다.
+      if (photoBusyRef.current) return;
+      photoBusyRef.current = true;
+      const reply = (result: { ok: true; filename: string } | { ok: false; reason: string }) => {
+        webViewRef.current?.injectJavaScript(
+          `window.mangdoPhotoResult && window.mangdoPhotoResult(${JSON.stringify({ requestId, ...result })}); true;`,
+        );
+      };
+      takePhotoAndSave()
+        .then(reply)
+        .catch((err: unknown) => {
+          // takePhotoAndSave는 내부에서 모든 실패를 이미 잡아 { ok:false } 로 돌려주지만, 만약
+          // 그 밖의 예외가 새어 나와도 여기서 던지지 않고 같은 형식으로 회신한다.
+          reply({ ok: false, reason: `사진을 저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` });
+        })
+        .finally(() => {
+          photoBusyRef.current = false;
+        });
     }
   }, []);
 

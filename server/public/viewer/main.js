@@ -17,7 +17,16 @@ import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, offsetShape, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
-import { formatQuantity, parsePhotoNumbers, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
+import {
+  appendPhotoNumber,
+  formatQuantity,
+  parsePhotoNumbers,
+  photoNumberFromFilename,
+  quantityOf,
+  statusTextOf,
+  unitOf,
+  widthUnitOf,
+} from './quantities.js';
 
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
@@ -467,6 +476,55 @@ async function start() {
     $('propsError').hidden = true;
     $('propsPanel').hidden = true;
   });
+
+  // 📷 버튼(2026-09-17 카메라 버튼 설계 6장). 앱에 takePhoto를 보내고 window.mangdoPhotoResult로
+  // 회신을 받는다 — mangdoFlush(170행)와 같은 방식. requestId로 늦게 온 답(타임아웃 뒤 응답 등)을
+  // 가려낸다.
+  let photoRequestId = null;
+  let photoTimeoutId = null;
+
+  function resetPhotoButton() {
+    $('photoCamera').disabled = false;
+    $('photoCamera').textContent = '📷';
+  }
+
+  $('photoCamera').addEventListener('click', () => {
+    // PC 브라우저 등 앱 밖에서 열었을 때는 ReactNativeWebView가 없다 — 앱에 보내지 않고 바로 알린다.
+    if (!window.ReactNativeWebView) {
+      showPropsError('이 환경에서는 카메라를 쓸 수 없습니다');
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    photoRequestId = requestId;
+    $('photoCamera').disabled = true;
+    $('photoCamera').textContent = '⏳';
+    postToApp({ type: 'takePhoto', requestId });
+    // 15초 안에 답이 없으면 버튼을 되살리고 안내한다(설계 6장). 그 뒤 늦게 답이 오면 photoRequestId가
+    // 이미 null이라 mangdoPhotoResult가 무시한다.
+    photoTimeoutId = setTimeout(() => {
+      if (photoRequestId !== requestId) return;
+      photoRequestId = null;
+      resetPhotoButton();
+      showPropsError('카메라 응답이 없습니다');
+    }, 15000);
+  });
+
+  // 앱(ViewerScreen.handleMessage)이 촬영 결과를 injectJavaScript로 회신할 때 부른다.
+  window.mangdoPhotoResult = (result) => {
+    // requestId가 다르면(타임아웃 뒤 늦게 온 답 등) 무시한다.
+    if (!result || result.requestId !== photoRequestId) return;
+    clearTimeout(photoTimeoutId);
+    photoRequestId = null;
+    resetPhotoButton();
+    // 찍는 동안 속성창이 닫혔으면(다른 손상 선택 등) 결과를 버린다 — 잘못된 손상에 번호가 붙지 않게.
+    if (!isPropsOpen()) return;
+    if (result.ok) {
+      $('photoInput').value = appendPhotoNumber($('photoInput').value, photoNumberFromFilename(result.filename));
+      updateSummary();
+    } else {
+      showPropsError(result.reason);
+    }
+  };
 
   $('fingerDraw').addEventListener('click', () => {
     fingerDraw = !fingerDraw;
