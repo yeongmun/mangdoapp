@@ -147,6 +147,22 @@ describe('describeDamageRender', () => {
     expect(describeDamageRender(filled, null).number).toBeNull();
   });
 
+  it('선택된 도형 번호를 handleShapeIndex로 돌려준다 — 핸들은 그 도형에만 그린다', () => {
+    const rect = { id: 'x', type: 'spalling', geometry: { kind: 'rect', world: [] }, copies: [] };
+    expect(describeDamageRender(rect, 'x', null, 1).handleShapeIndex).toBe(1);
+    expect(describeDamageRender(rect, 'x', null).handleShapeIndex).toBe(0);
+    // 선택되지 않았거나 선형이면 핸들 자체가 없다
+    expect(describeDamageRender(rect, null, null, 1).handleShapeIndex).toBeNull();
+    const line = { id: 'y', type: 'crack', geometry: { kind: 'polyline', world: [] }, copies: [] };
+    expect(describeDamageRender(line, 'y', null, 0).handleShapeIndex).toBeNull();
+  });
+
+  it('선택된 손상은 도형이 몇 개든 모두 강조색이다 — 색은 손상 단위다', () => {
+    const rect = { id: 'x', type: 'spalling', geometry: { kind: 'rect', world: [] }, copies: [{ world: [], dwg: null }] };
+    expect(describeDamageRender(rect, 'x', null, 1).color).toBe(SELECTED_COLOR);
+    expect(describeDamageRender(rect, 'other', null, 0).color).toBe(CRACK_COLOR);
+  });
+
   it('photo는 photoTextOf를 그대로 쓴다', () => {
     const withPhotos = {
       id: 'a',

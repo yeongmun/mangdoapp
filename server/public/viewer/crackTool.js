@@ -1,10 +1,12 @@
 // 손상 입력. 펜은 항상 그리기, 손가락은 기본적으로 뷰어 줌·팬.
 // "손가락 그리기"를 켜면 한 손가락 드래그와 마우스 드래그로 그리고, 두 손가락 핀치·회전은 뷰어에 넘긴다.
 
+import { shapesOf } from './damageDoc.js';
 import { getDamageType } from './damageTypes.js';
 import { HANDLE_SIZE_PX, rectHandlePositions } from './overlay.js';
 import {
   angleOf,
+  boundsOf,
   distanceToPolyline,
   pointInPolygon,
   polygonArea,
@@ -97,22 +99,30 @@ export function finalizeRect(startClient, endClient, mapper, options) {
   return damage;
 }
 
+// 누른 자리에서 가장 가까운 손상과 **그 도형 번호**를 돌려준다(설계 3.3). 사각형 안쪽을 누르면
+// 거리를 따지지 않고 그 도형이 이긴다 — 겹쳐 놓인 도형 중 위에 있는 것을 고르는 기존 규칙 그대로다.
+/** @type {(damages: any[], clientPoint: number[], mapper: any, radiusPx?: number) => { id: string, shapeIndex: number } | null} */
 export function pickDamage(damages, clientPoint, mapper, radiusPx = PICK_RADIUS_PX) {
-  let bestId = null;
+  let best = null;
   let bestDistance = radiusPx;
   for (const damage of damages) {
-    const screen = damage.geometry.world.map((p) => mapper.worldToClient(p));
-    if (damage.geometry.kind === 'rect' && pointInPolygon(clientPoint, screen)) return damage.id;
-    const distance =
-      damage.geometry.kind === 'rect'
-        ? distanceToPolyline(clientPoint, [...screen, screen[0]])
-        : distanceToPolyline(clientPoint, screen);
-    if (distance <= bestDistance) {
-      bestId = damage.id;
-      bestDistance = distance;
+    const kind = damage.geometry.kind;
+    const shapes = shapesOf(damage);
+    for (let shapeIndex = 0; shapeIndex < shapes.length; shapeIndex++) {
+      const screen = shapes[shapeIndex].world.map((p) => mapper.worldToClient(p));
+      if (screen.length < 2) continue;
+      if (kind === 'rect' && pointInPolygon(clientPoint, screen)) return { id: damage.id, shapeIndex };
+      const distance =
+        kind === 'rect'
+          ? distanceToPolyline(clientPoint, [...screen, screen[0]])
+          : distanceToPolyline(clientPoint, screen);
+      if (distance <= bestDistance) {
+        best = { id: damage.id, shapeIndex };
+        bestDistance = distance;
+      }
     }
   }
-  return bestId;
+  return best;
 }
 
 export function hitHandle(clientPoint, screenRect, sizePx = HANDLE_SIZE_PX) {
@@ -132,6 +142,26 @@ export function hitSelectedShape(clientPoint, shape, radiusPx = PICK_RADIUS_PX) 
   if (!shape) return false;
   if (shape.kind === 'rect') return pointInPolygon(clientPoint, shape.points);
   return distanceToPolyline(clientPoint, shape.points) <= radiusPx;
+}
+
+// 복제본을 놓을 자리(설계 3.2): 고른 도형을 그 경계상자 너비의 1.2배(너비 + 20%)만큼 오른쪽으로
+// 옮긴다. world에서 옮긴 뒤 dwg를 다시 구한다 — world→dwg 변환에 회전·반전이 있을 수 있어 dwg를
+// 같은 만큼 옮기면 엉뚱한 방향으로 밀린다(finalizeStroke가 dwg를 만드는 방식과 같다).
+// 세로로만 그은 선은 너비가 0이라 복제본이 원본에 완전히 겹쳐 사용자가 찾지 못한다 — 그때는 높이로
+// 대신한다(스펙에 없는 경우라 여기서 정한다).
+export const DUPLICATE_OFFSET_FACTOR = 1.2;
+
+/** @type {(worldPoints: number[][], mapper: any, factor?: number) => { world: number[][], dwg: number[][] | null } | null} */
+export function offsetShape(worldPoints, mapper, factor = DUPLICATE_OFFSET_FACTOR) {
+  if (!Array.isArray(worldPoints) || worldPoints.length < 2 || !worldPoints.every(isFinitePoint)) return null;
+  const bounds = boundsOf(worldPoints);
+  if (!bounds) return null;
+  const span = bounds.maxX - bounds.minX || bounds.maxY - bounds.minY;
+  const dx = span * factor;
+  if (!(dx > 0)) return null;
+  const world = normalizePoints(translatePoints(worldPoints, dx, 0));
+  const dwg = toDwg(world, mapper);
+  return { world, dwg: dwg ? normalizePoints(dwg) : null };
 }
 
 export function createCrackInput({

@@ -289,14 +289,15 @@ function handleElement(point, shape) {
 // 그러면 손상이 화면에서 사라져 선택할 수도, 지울 수도 없게 되어 저장이 영영 막힌다. 대신 테두리만
 // 그리고 drawingNameOf가 돌려주는 원본 type 문자열을 이름으로 보여줘, 선택해서 `선택 삭제`로 지울 수
 // 있게 한다(drawingNameOf도 유형을 못 찾으면 같은 방식으로 원본 문자열을 돌려준다).
-/** @type {(damage: any, selectedId: string | null, number?: number | null) => any} */
-export function describeDamageRender(damage, selectedId, number = null) {
+/** @type {(damage: any, selectedId: string | null, number?: number | null, selectedShapeIndex?: number) => any} */
+export function describeDamageRender(damage, selectedId, number = null, selectedShapeIndex = 0) {
   const type = getDamageType(damage.type);
   const selected = damage.id === selectedId;
   const isRect = damage.geometry.kind === 'rect';
   return {
     known: type !== null,
     shape: isRect ? 'polygon' : 'polyline',
+    // 색은 손상 단위다 — 선택하면 복제본까지 모두 주황이다(설계 3.3).
     color: selected ? SELECTED_COLOR : CRACK_COLOR,
     selected,
     fillPattern: type && type.fill ? type.fill.pattern : null,
@@ -306,6 +307,8 @@ export function describeDamageRender(damage, selectedId, number = null) {
     photo: photoTextOf(damage),
     number,
     showHandles: selected && isRect,
+    // 핸들은 선택된 **도형 하나**에만 그린다. 선택되지 않았거나 선형이면 null이다.
+    handleShapeIndex: selected && isRect ? selectedShapeIndex : null,
   };
 }
 
@@ -387,6 +390,7 @@ export function computeLabelPlacements(damages, numbers, dwgToWorld) {
 export function createOverlay(svg, mapper) {
   let damages = [];
   let selectedId = null;
+  let selectedShape = 0;
   let draft = null;
   let frame = 0;
   // 번호는 입력이 실제로 바뀔 때만(setDamages·setFrames → recompute) 다시 계산해 여기 담아 둔다. CAMERA_CHANGE는
@@ -413,29 +417,7 @@ export function createOverlay(svg, mapper) {
     placements = computeLabelPlacements(damages, numbers, dwgToWorld);
   }
 
-  function renderDamage(damage, number, elements, sizes, patternsNeeded) {
-    const plan = describeDamageRender(damage, selectedId, number);
-    const screen = damage.geometry.world.map((p) => mapper.worldToClient(p));
-    const width = plan.selected ? sizes.selectedLineWidthPx : sizes.lineWidthPx;
-
-    let fillPatternId = null;
-    if (plan.fillPattern) {
-      // resolveFillPattern이 null이면(간격이 1px 미만) 무늬를 그리지 않고 테두리만 그린다.
-      const resolved = resolveFillPattern(plan.fillPattern, plan.fillSpacingMm, sizes.pxPerMm);
-      if (resolved) {
-        fillPatternId = resolved.id;
-        if (!patternsNeeded.has(resolved.id)) {
-          patternsNeeded.set(resolved.id, { pattern: plan.fillPattern, sizePx: resolved.sizePx, lineWidthPx: resolved.lineWidthPx });
-        }
-      }
-    }
-
-    if (plan.shape === 'polyline') {
-      elements.push(polylineElement(screen, plan.color, width, 1));
-    } else {
-      elements.push(polygonElement(screen, plan.color, width, fillPatternId, 1));
-    }
-
+  function renderLabel(damage, plan, screen, elements, sizes, width) {
     // 겹침 방지를 한 도면은 미리 구해 둔 world 기준점을 화면 좌표로 옮겨 쓴다. 못 구한 도면은
     // 예전처럼 화면 좌표에서 도형 바로 위를 잡는다.
     const placement = placements ? placements.get(String(damage.id)) ?? null : null;
@@ -464,12 +446,45 @@ export function createOverlay(svg, mapper) {
       elements.push(polylineElement([from, to], plan.color, width, 1));
       elements.push(polylineElement([head[0], to, head[1]], plan.color, width, 1));
     }
+  }
 
-    if (!plan.showHandles) return;
+  // skipShape: 미리보기(draft)가 대신 보여주는 도형 번호. 그 도형만 빼고 나머지는 그대로 그린다 —
+  // 예전에는 손상 전체를 건너뛰었지만, 복제본이 있으면 같이 사라져 보인다.
+  function renderDamage(damage, number, elements, sizes, patternsNeeded, skipShape) {
+    const plan = describeDamageRender(damage, selectedId, number, selectedShape);
+    const width = plan.selected ? sizes.selectedLineWidthPx : sizes.lineWidthPx;
 
-    const handles = rectHandlePositions(screen);
-    for (const corner of handles.corners) elements.push(handleElement(corner, 'rect'));
-    elements.push(handleElement(handles.rotate, 'circle'));
+    let fillPatternId = null;
+    if (plan.fillPattern) {
+      // resolveFillPattern이 null이면(간격이 1px 미만) 무늬를 그리지 않고 테두리만 그린다.
+      const resolved = resolveFillPattern(plan.fillPattern, plan.fillSpacingMm, sizes.pxPerMm);
+      if (resolved) {
+        fillPatternId = resolved.id;
+        if (!patternsNeeded.has(resolved.id)) {
+          patternsNeeded.set(resolved.id, { pattern: plan.fillPattern, sizePx: resolved.sizePx, lineWidthPx: resolved.lineWidthPx });
+        }
+      }
+    }
+
+    const shapes = shapesOf(damage);
+    for (let index = 0; index < shapes.length; index++) {
+      if (index === skipShape) continue;
+      const screen = shapes[index].world.map((p) => mapper.worldToClient(p));
+      if (plan.shape === 'polyline') {
+        elements.push(polylineElement(screen, plan.color, width, 1));
+      } else {
+        elements.push(polygonElement(screen, plan.color, width, fillPatternId, 1));
+      }
+
+      // 번호 라벨은 첫 도형 위에만 그린다(설계 3.4). 복제본은 도형만이다.
+      if (index === 0) renderLabel(damage, plan, screen, elements, sizes, width);
+
+      if (plan.showHandles && index === plan.handleShapeIndex) {
+        const handles = rectHandlePositions(screen);
+        for (const corner of handles.corners) elements.push(handleElement(corner, 'rect'));
+        elements.push(handleElement(handles.rotate, 'circle'));
+      }
+    }
   }
 
   function render() {
@@ -480,10 +495,10 @@ export function createOverlay(svg, mapper) {
     const patternsNeeded = new Map();
     // 번호는 저장하지 않는다. setDamages에서 이미 계산해 둔 값을 그대로 쓴다(위 numbers 캐시).
     for (const damage of damages) {
-      // 크기·회전 조절 중인 손상은 움직이는 draft가 대신 보여준다 — 그대로 두면 손 떼기 전
-      // 원래 위치의 사각형·핸들과 draft가 겹쳐 두 개로 보인다.
-      if (draft && draft.activeId != null && damage.id === draft.activeId) continue;
-      renderDamage(damage, numbers.get(damage.id) ?? null, elements, sizes, patternsNeeded);
+      // 크기·회전·이동 중인 도형은 움직이는 draft가 대신 보여준다 — 그대로 두면 손 떼기 전 원래
+      // 자리의 도형·핸들과 draft가 겹쳐 두 개로 보인다. 그 **도형 하나만** 뺀다.
+      const skipShape = draft && draft.activeId != null && damage.id === draft.activeId ? draft.activeShape ?? 0 : null;
+      renderDamage(damage, numbers.get(damage.id) ?? null, elements, sizes, patternsNeeded, skipShape);
     }
     if (draft && draft.points.length > 1) {
       elements.push(
@@ -520,8 +535,9 @@ export function createOverlay(svg, mapper) {
       recompute();
       requestRender();
     },
-    setSelected(id) {
+    setSelected(id, shapeIndex = 0) {
       selectedId = id;
+      selectedShape = shapeIndex;
       requestRender();
     },
     setDraft(value) {

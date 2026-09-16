@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { polylineLength } from '../public/viewer/geometry.js';
 import {
+  DUPLICATE_OFFSET_FACTOR,
   finalizeRect,
   finalizeStroke,
   hitHandle,
   hitSelectedShape,
   MIN_RECT_PX,
   MIN_STROKE_PX,
+  offsetShape,
   pickDamage,
 } from '../public/viewer/crackTool.js';
 import { validateDamageDoc } from '../public/viewer/damageDoc.js';
@@ -111,28 +113,67 @@ describe('pickDamage', () => {
     id: 'a',
     type: 'crack',
     geometry: { kind: 'polyline', world: [[0, -5], [10, -5]] as Pt[] },
+    copies: [],
   };
+  // 복제본은 화면 x 200~300, y 100~200 자리다(world [[20,-10],[30,-10],[30,-20],[20,-20]]).
   const area = {
     id: 'b',
     type: 'spalling',
     geometry: { kind: 'rect', world: [[0, -10], [10, -10], [10, -20], [0, -20]] as Pt[] },
+    copies: [{ world: [[20, -10], [30, -10], [30, -20], [20, -20]] as Pt[], dwg: null }],
   };
 
   it('선형은 선 가까이를 누르면 선택된다', () => {
-    expect(pickDamage([line, area], [50, 55], mapper)).toBe('a');
+    expect(pickDamage([line, area], [50, 55], mapper)).toEqual({ id: 'a', shapeIndex: 0 });
     expect(pickDamage([line, area], [50, 20], mapper)).toBeNull();
   });
 
   it('면형은 안쪽을 눌러도 선택된다', () => {
-    expect(pickDamage([line, area], [50, 150], mapper)).toBe('b');
+    expect(pickDamage([line, area], [50, 150], mapper)).toEqual({ id: 'b', shapeIndex: 0 });
   });
 
   it('면형 테두리 근처도 선택된다', () => {
-    expect(pickDamage([line, area], [50, 95], mapper)).toBe('b');
+    expect(pickDamage([line, area], [50, 95], mapper)).toEqual({ id: 'b', shapeIndex: 0 });
+  });
+
+  it('복제본을 누르면 그 도형 번호가 나온다', () => {
+    expect(pickDamage([line, area], [250, 150], mapper)).toEqual({ id: 'b', shapeIndex: 1 });
+    expect(pickDamage([line, area], [295, 105], mapper)).toEqual({ id: 'b', shapeIndex: 1 });
   });
 
   it('아무것도 없으면 null', () => {
     expect(pickDamage([], [0, 0], mapper)).toBeNull();
+  });
+});
+
+describe('offsetShape', () => {
+  it('경계상자 너비의 1.2배만큼 오른쪽으로 옮기고 dwg를 다시 구한다', () => {
+    expect(DUPLICATE_OFFSET_FACTOR).toBe(1.2);
+    expect(offsetShape([[0, 0], [2, 0], [2, 1], [0, 1]], mapper)).toEqual({
+      world: [[2.4, 0], [4.4, 0], [4.4, 1], [2.4, 1]],
+      dwg: [[1002.4, 2000], [1004.4, 2000], [1004.4, 2001], [1002.4, 2001]],
+    });
+  });
+
+  it('세로로만 그은 선(너비 0)은 높이로 대신 옮긴다 — 그러지 않으면 복제본이 원본에 완전히 겹친다', () => {
+    expect(offsetShape([[5, 0], [5, 10]], mapper)).toEqual({
+      world: [[17, 0], [17, 10]],
+      dwg: [[1017, 2000], [1017, 2010]],
+    });
+  });
+
+  it('dwg를 못 구하면 world만 있는 복제본이 된다', () => {
+    const noDwg = { ...mapper, worldToDwg: () => null };
+    expect(offsetShape([[0, 0], [2, 0], [2, 1], [0, 1]], noDwg)).toEqual({
+      world: [[2.4, 0], [4.4, 0], [4.4, 1], [2.4, 1]],
+      dwg: null,
+    });
+  });
+
+  it('점이 모자라거나 크기가 0이면 null', () => {
+    expect(offsetShape([[1, 1]], mapper)).toBeNull();
+    expect(offsetShape([[1, 1], [1, 1]], mapper)).toBeNull();
+    expect(offsetShape(null as unknown as Pt[], mapper)).toBeNull();
   });
 });
 
