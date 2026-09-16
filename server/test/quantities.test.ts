@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getDamageType } from '../public/viewer/damageTypes.js';
 import {
+  appendPhotoNumber,
   computeNumbers,
   countOutsideFrames,
   CRACK_WIDTH_BREAKS,
@@ -9,6 +10,7 @@ import {
   formatQuantity,
   frameIndexOf,
   parsePhotoNumbers,
+  photoNumberFromFilename,
   photoTextOf,
   quantityOf,
   statusTextOf,
@@ -523,6 +525,52 @@ describe('parsePhotoNumbers', () => {
     expect(parsePhotoNumbers(null)).toEqual([]);
     expect(parsePhotoNumbers(undefined)).toEqual([]);
     expect(parsePhotoNumbers(42)).toEqual([]);
+  });
+});
+
+// 근거: docs/superpowers/specs/2026-09-17-photo-capture-design.md 3장
+describe('photoNumberFromFilename', () => {
+  it('IMG_숫자 형식이면 그 숫자를 돌려준다 — 앞자리 0을 보존한다', () => {
+    expect(photoNumberFromFilename('IMG_0021.JPG')).toBe('0021');
+  });
+
+  it('대소문자를 가리지 않는다', () => {
+    expect(photoNumberFromFilename('img_12.heic')).toBe('12');
+  });
+
+  it('YYYYMMDD_HHMMSS 형식이면 뒤 6자리(시각)를 돌려준다', () => {
+    expect(photoNumberFromFilename('20260917_101530.jpg')).toBe('101530');
+  });
+
+  it('그 밖의 형식은 확장자를 뗀 파일명 그대로', () => {
+    expect(photoNumberFromFilename('DSC_0001.jpg')).toBe('DSC_0001');
+  });
+
+  it('빈 값·문자열이 아니면 빈 문자열', () => {
+    expect(photoNumberFromFilename('')).toBe('');
+    expect(photoNumberFromFilename(null)).toBe('');
+  });
+});
+
+describe('appendPhotoNumber', () => {
+  it('현재 칸에 새 번호를 쉼표로 이어 붙인다', () => {
+    expect(appendPhotoNumber('12, 13', '14')).toBe('12, 13, 14');
+  });
+
+  it('빈 칸이면 번호만 남는다', () => {
+    expect(appendPhotoNumber('', '5')).toBe('5');
+  });
+
+  it('이미 있는 번호면 그대로 둔다', () => {
+    expect(appendPhotoNumber('12, 13', '13')).toBe('12, 13');
+  });
+
+  it('현재 칸을 parsePhotoNumbers로 정규화한다 — 공백·빈 항목 정리', () => {
+    expect(appendPhotoNumber(' 12 ,, 13 ', '14')).toBe('12, 13, 14');
+  });
+
+  it("새 번호가 ''이면 바꾸지 않는다(정규화만 반영)", () => {
+    expect(appendPhotoNumber('12', '')).toBe('12');
   });
 });
 

@@ -256,6 +256,39 @@ export function parsePhotoNumbers(text) {
   return result;
 }
 
+// 찍은 사진의 파일명에서 사진번호를 뽑아낸다(2026-09-17 카메라 버튼 설계 3장).
+// 1. 'IMG_(숫자)' (대소문자 무관) → 그 숫자, 앞자리 0을 그대로 둔다(앨범에 보이는 그대로).
+// 2. 'YYYYMMDD_HHMMSS' 형식(뒤에 8자리_6자리) → 뒤 6자리(시각).
+// 3. 그 밖에는 확장자를 뗀 파일명 그대로.
+// 4. filename이 빈 값이거나 문자열이 아니면 ''.
+/**
+ * @param {unknown} filename
+ * @returns {string}
+ */
+export function photoNumberFromFilename(filename) {
+  if (typeof filename !== 'string' || filename.trim() === '') return '';
+  const imgMatch = filename.match(/IMG_(\d+)/i);
+  if (imgMatch) return imgMatch[1];
+  const dateMatch = filename.match(/\d{8}_(\d{6})/);
+  if (dateMatch) return dateMatch[1];
+  return filename.replace(/\.[^./\\]+$/, '');
+}
+
+// 사진번호 칸의 현재 문자열에 새 번호를 이어 붙인다(2026-09-17 카메라 버튼 설계 3장).
+// parsePhotoNumbers로 정규화한 뒤(공백 정리·빈 항목 제거·중복 제거) 새 번호가 이미 있으면
+// 그대로 두고, 없으면 뒤에 붙여 ', '로 잇는다. number가 ''이면 바꾸지 않는다.
+/**
+ * @param {unknown} currentText
+ * @param {string} number
+ * @returns {string}
+ */
+export function appendPhotoNumber(currentText, number) {
+  const numbers = parsePhotoNumbers(currentText);
+  if (number === '') return numbers.join(', ');
+  if (!numbers.includes(number)) numbers.push(number);
+  return numbers.join(', ');
+}
+
 // 도면 라벨의 사진 줄 문구(2026-09-16 설계 3장). 번호마다 '#'를 붙이고 ', '로 잇는다:
 // ['12','13'] → '#12, #13'. 없거나 비어 있으면 빈 문자열. attrs가 없는 손상도 던지지 않는다.
 // '사진 ' 접두어는 2026-09-16에 없앴다 — 사내 망도 표기가 '#001' 형식이다.
