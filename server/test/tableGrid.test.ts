@@ -210,6 +210,24 @@ describe('buildGrid', () => {
     const doc = parseDxf(text.replace(' 92\n        8\n', ' 92\n        7\n').replace('142\n110.0\n', ''));
     expect(buildGrid(doc, findTableCandidates(doc)[0])).toBeNull();
   });
+
+  // 근거: 캐드 확인 2차 피드백(2026-09-16) — 열 매핑을 머리글 키워드로 찾기 위해 열마다
+  // 머리글 글자를 모은다. 픽스처의 표 제목('손상물량표')은 3열(가로/폭) 위 칸에 겹쳐 있어
+  // 그 열의 머리글에 함께 묶인다(rowValuesOf가 title 자체를 쓰지는 않는다 — tableFill.test.ts).
+  it('열마다 데이터 행 위쪽의 머리글 글자를 모은다 (headers)', async () => {
+    const doc = await templateDoc();
+    const grid = buildGrid(doc, findTableCandidates(doc)[0])!;
+    expect(grid.headers).toEqual([
+      '번호',
+      '손상위치',
+      '손상현황',
+      '손상물량표 가로/폭',
+      '세로/길이',
+      '개소',
+      '면적/연장',
+      '단위',
+    ]);
+  });
 });
 
 describe('cellCenter', () => {

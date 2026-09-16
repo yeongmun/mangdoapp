@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { DAMAGE_LAYER, layerNames, parseDxf } from '../src/export/dxfDocument.js';
 import { EXPORT_WARNINGS, ExportError, exportDamagesToDxf } from '../src/export/exportDrawing.js';
 import { findFrames } from '../src/export/frames.js';
-import { flatTable, rotatedFrame, withFrameAt, withSecondFrame } from './fixtureDocs.js';
+import { flatTable, rotatedFrame, withFrameAt, withSecondFrame, withUnreadableHeaders } from './fixtureDocs.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
 
@@ -144,6 +144,38 @@ describe('exportDamagesToDxf', () => {
     const text = (await template()).replace(' 92\n        8\n', ' 92\n        7\n').replace('142\n110.0\n', '');
     const result = exportDamagesToDxf(text, [damage('a', 'crack', 0, RECT_A)]);
     expect(result.warnings).toEqual([EXPORT_WARNINGS.unknownTable]);
+  });
+
+  // 근거: 캐드 확인 2차 피드백(2026-09-16) — 열을 머리글 키워드로 찾다가(설계 7.2 개정) 못
+  // 읽으면 경고를 내고 옛 고정 순서로 채운다. 값은 그대로 채워진다(비지 않는다).
+  it('표 머리글을 읽지 못하면 경고를 내고 옛 고정 순서로 채운다', async () => {
+    const text = withUnreadableHeaders(await template());
+    const result = exportDamagesToDxf(text, [
+      damage('a', 'spalling', 0, RECT_A, { width: 1.2, length: 1.5, count: 1 }),
+    ]);
+    expect(result.warnings).toContain(EXPORT_WARNINGS.headersUnknown);
+    // '박락'은 라벨에도 표 칸에도 나오므로(주석 참고, 380행) 라벨에 없는 값('㎡')으로 표 칸만
+    // 가려낸다. 픽스처는 원래 표준 순서라 고정 순서로 채워도 값 자리는 그대로다(7열 중앙 →
+    // 모델 (4170, 3260), "틀마다 1번부터 매기고…" 테스트와 같은 실측).
+    const doc = parseDxf(result.dxfText);
+    const texts = doc.pairs
+      .map((p, i) => (p.code === 0 && p.value === 'TEXT' ? i : -1))
+      .filter((i) => i >= 0)
+      .map((i) => {
+        const slice = doc.pairs.slice(i, i + 24);
+        return {
+          value: slice.find((p) => p.code === 1)?.value ?? '',
+          x: Number(slice.find((p) => p.code === 11)?.value ?? NaN),
+          y: Number(slice.find((p) => p.code === 21)?.value ?? NaN),
+        };
+      });
+    const unit = texts.find((t) => t.value === '㎡')!;
+    expect(unit.x).toBeCloseTo(4170, 6);
+    expect(unit.y).toBeCloseTo(3260, 6);
+  });
+
+  it('경고 문구가 정확하다', () => {
+    expect(EXPORT_WARNINGS.headersUnknown).toBe('물량표 머리글을 읽지 못해 열 순서를 기본값으로 채웠습니다');
   });
 
   it('$INSUNITS가 mm·없음·인치가 아니면 단위 경고를 붙인다', async () => {

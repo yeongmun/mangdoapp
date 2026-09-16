@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { HandleAllocator, type DxfPair } from '../src/export/dxfDocument.js';
 import { buildGrid, findTableCandidates, type TableGrid } from '../src/export/tableGrid.js';
-import { fillTable, rowValuesOf, TABLE_COLUMN } from '../src/export/tableFill.js';
+import { columnMapOf, fillTable, resolvedColumnMap, rowValuesOf, TABLE_COLUMN } from '../src/export/tableFill.js';
 import { parseDxf } from '../src/export/dxfDocument.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
@@ -83,31 +83,103 @@ describe('rowValuesOf', () => {
   it('손상현황·가로/폭·세로/길이·개소·물량·단위를 채우고 번호와 손상위치는 비운다', () => {
     const row = rowValuesOf(damage('crack', { width: 0.2, length: 1.5, count: 2 }), 7);
     expect(row.number).toBe(7);
-    expect(row.cells).toEqual(['', '', '균열(0.3mm미만)', '0.2', '1.5', '2', '3.0', 'm']);
+    expect(row.fields).toEqual({ status: '균열(0.3mm미만)', width: '0.2', length: '1.5', count: '2', quantity: '3.0', unit: 'm' });
+    expect(row.fields.number).toBeUndefined();
+    expect(row.fields.location).toBeUndefined();
   });
 
   it('면형은 가로 × 세로 × 개소가 물량이고 단위가 ㎡다', () => {
     const row = rowValuesOf(damage('spalling', { width: 1.2, length: 1.5, count: 1 }), 1);
-    expect(row.cells[TABLE_COLUMN.status]).toBe('박락');
-    expect(row.cells[TABLE_COLUMN.quantity]).toBe('1.8');
-    expect(row.cells[TABLE_COLUMN.unit]).toBe('㎡');
+    expect(row.fields.status).toBe('박락');
+    expect(row.fields.quantity).toBe('1.8');
+    expect(row.fields.unit).toBe('㎡');
   });
 
   it('값이 없는 칸은 비워 둔다 (-를 쓰지 않는다)', () => {
     const row = rowValuesOf(damage('spalling', { width: null, length: 1.5, count: null }), 2);
-    expect(row.cells).toEqual(['', '', '박락', '', '1.5', '', '', '㎡']);
+    expect(row.fields).toEqual({ status: '박락', width: '', length: '1.5', count: '', quantity: '', unit: '㎡' });
   });
 
   it('0은 유효한 값이라 적는다', () => {
     const row = rowValuesOf(damage('spalling', { width: 0, length: 0, count: 0 }), 3);
-    expect(row.cells[TABLE_COLUMN.width]).toBe('0.0');
-    expect(row.cells[TABLE_COLUMN.count]).toBe('0');
-    expect(row.cells[TABLE_COLUMN.quantity]).toBe('0.0');
+    expect(row.fields.width).toBe('0.0');
+    expect(row.fields.count).toBe('0');
+    expect(row.fields.quantity).toBe('0.0');
   });
 
   it('기타는 사용자가 적은 손상현황을 쓴다', () => {
     const row = rowValuesOf(damage('etc', {}, { statusText: '받침 손상' }), 4);
-    expect(row.cells[TABLE_COLUMN.status]).toBe('받침 손상');
+    expect(row.fields.status).toBe('받침 손상');
+  });
+});
+
+// 근거: 캐드 확인 2차 피드백(2026-09-16) — 열을 고정 순서가 아니라 표 머리글 키워드로 찾는다
+// (설계 7.2 개정). tableGrid.test.ts가 픽스처 표의 실제 headers를 확인해 뒀다.
+describe('columnMapOf / resolvedColumnMap', () => {
+  it('픽스처(표준 순서) 머리글이면 고정 순서와 같은 열 지도가 나온다', async () => {
+    const g = await grid();
+    const { map, matchedCount } = columnMapOf(g.headers);
+    expect(map).toEqual({ number: 0, location: 1, status: 2, width: 3, length: 4, count: 5, quantity: 6, unit: 7 });
+    expect(matchedCount).toBe(8);
+    expect(resolvedColumnMap(g.headers).usedFallback).toBe(false);
+  });
+
+  it('머리글을 하나도 못 읽으면(3개 미만 매치) 옛 고정 순서로 되돌아간다', () => {
+    const { map, usedFallback } = resolvedColumnMap(['', '', '', '', '', '', '', '']);
+    expect(usedFallback).toBe(true);
+    expect(map).toEqual(TABLE_COLUMN);
+  });
+
+  it('키워드 하나(예: 번호만 읽힘)만 매치돼도 3개 미만이면 되돌아간다', () => {
+    const { usedFallback } = resolvedColumnMap(['번호', '', '', '', '', '', '', '']);
+    expect(usedFallback).toBe(true);
+  });
+
+  it('매치가 3개 이상이면 머리글 그대로 쓴다(고정 순서로 되돌아가지 않는다)', () => {
+    const headers = ['번호', '손상현황', '비고', '개소', '가로', '세로', '면적', '단위'];
+    const { map, usedFallback } = resolvedColumnMap(headers);
+    expect(usedFallback).toBe(false);
+    expect(map).toEqual({ number: 0, status: 1, note: 2, count: 3, width: 4, length: 5, quantity: 6, unit: 7 });
+  });
+});
+
+describe('fillTable — 열 순서가 다른 표', () => {
+  // 실제 표 격자(9개 경계, 8열)를 흉내 낸 합성 격자다 — 열 너비는 모두 100, 데이터 행 2개
+  // (행 경계 0/-40/-70/-100, firstDataRow=1). 좌표계는 항등 변환이라 로컬 = 모델이다.
+  // 머리글 순서만 표준과 다르게 둔다: 번호/손상현황/비고/개소/가로/세로/면적/단위.
+  function reorderedGrid(): TableGrid {
+    return {
+      blockName: 'synthetic',
+      position: [0, 0],
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotationRad: 0 },
+      colBoundaries: [0, 100, 200, 300, 400, 500, 600, 700, 800],
+      rowBoundaries: [0, -40, -70, -100],
+      firstDataRow: 1,
+      dataRowCount: 2,
+      textHeight: 10,
+      numberColumn: 0,
+      headerLines: [],
+      headerTexts: [],
+      headers: ['번호', '손상현황', '비고', '개소', '가로', '세로', '면적', '단위'],
+    };
+  }
+
+  it('손상현황·가로·세로·개소·면적·단위가 재배열된 열 자리에 그대로 들어간다', () => {
+    const g = reorderedGrid();
+    const d = damage('spalling', { width: 1.2, length: 3.4, count: 5 });
+    const pairs = fillTable(g, [rowValuesOf(d, 1)], new HandleAllocator(0x400), '1F');
+    const texts = textsOf(pairs);
+    // 데이터 1행 로컬 y 중앙 = (-40 + -70)/2 = -55, 열 i 중앙 x = 100*i + 50.
+    const at = (value: string) => texts.find((t) => t.text === value);
+    expect(at('박락')).toMatchObject({ x: 150, y: -55 }); // 손상현황 → 열 1
+    expect(at('5')).toMatchObject({ x: 350, y: -55 }); // 개소 → 열 3
+    expect(at('1.2')).toMatchObject({ x: 450, y: -55 }); // 가로 → 열 4
+    expect(at('3.4')).toMatchObject({ x: 550, y: -55 }); // 세로 → 열 5
+    expect(at('20.4')).toMatchObject({ x: 650, y: -55 }); // 면적(물량) → 열 6
+    expect(at('㎡')).toMatchObject({ x: 750, y: -55 }); // 단위 → 열 7
+    // 번호 열(0)·비고 열(2)에는 rowValuesOf가 값을 채우지 않으니 아무 글자도 없다.
+    expect(texts.some((t) => t.x === 50)).toBe(false);
+    expect(texts.some((t) => t.x === 250)).toBe(false);
   });
 });
 

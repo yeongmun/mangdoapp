@@ -92,6 +92,11 @@ export interface TableGrid {
   headerLines: BlockLine[];
   /** 머리글 영역의 글자 */
   headerTexts: BlockText[];
+  /**
+   * 열마다 데이터 행 위쪽(머리글 행 전부)의 글자를 문서 순서대로 공백으로 이어 붙인 것.
+   * 길이 = 열 수. 그 열에 글자가 없으면 ''. tableFill.ts가 이 글자로 열을 찾는다(설계 7.2 개정).
+   */
+  headers: string[];
 }
 
 // MTEXT의 꾸밈 코드를 걷어내고 실제 글자만 남긴다.
@@ -431,6 +436,19 @@ export function buildGrid(doc: DxfDocument, candidate: TableCandidate): TableGri
     clampedLines.push({ from, to });
   }
 
+  // 열마다 데이터 행 위쪽(머리글 행 전부)의 글자를 문서 순서대로 모은다 — 열 매핑을 머리글
+  // 키워드로 찾기 위해서다(설계 7.2 개정, tableFill.ts columnMapOf). 여러 글자가 한 열에 걸치면
+  // (예: 표 제목이 특정 열 위에 겹쳐 있는 경우) 공백으로 이어 붙인다.
+  const headers = new Array<string>(colBoundaries.length - 1).fill('');
+  for (const text of texts) {
+    if (text.text === '') continue;
+    const row = indexOfBand(rowBoundaries, text.position[1]);
+    if (row < 0 || row >= firstDataRow) continue; // 데이터 행 이상은 머리글이 아니다
+    const column = indexOfBand(colBoundaries, text.position[0]);
+    if (column < 0) continue;
+    headers[column] = headers[column] ? `${headers[column]} ${text.text}` : text.text;
+  }
+
   return {
     blockName: candidate.blockName,
     position: candidate.position,
@@ -443,6 +461,7 @@ export function buildGrid(doc: DxfDocument, candidate: TableCandidate): TableGri
     numberColumn,
     headerLines: clampedLines,
     headerTexts: texts.filter((t) => t.position[1] > dataTop && t.text !== ''),
+    headers,
   };
 }
 

@@ -1,6 +1,8 @@
 // 손상물량표를 채운다. 표 객체를 고치지 않고 칸 가운데에 글자를 얹는다.
 // 데이터 행 수를 넘으면 원본 표 바로 아래에 같은 모양의 표를 LINE·TEXT로 직접 그린다.
 // 문구는 앱 화면과 같은 quantities.js 함수로 만든다.
+// 열은 표 머리글의 키워드로 찾는다(설계 7.2 개정, 2026-09-16 캐드 확인 2차 피드백) — 8열
+// 고정 순서는 머리글을 읽지 못했을 때만 쓰는 옛 자리다.
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 7장
 
 import { formatQuantity, quantityOf, statusTextOf, unitOf } from '../../public/viewer/quantities.js';
@@ -8,23 +10,84 @@ import { TABLE_COLOR, TABLE_LAYER, type DxfPair, type HandleAllocator } from './
 import { lineEntity, textEntity, type EntityBase, type Point } from './dxfEntities.js';
 import { applyTransform, cellCenter, modelTextHeight, type TableGrid } from './tableGrid.js';
 
-export const TABLE_COLUMN = {
+/** 표 칸 하나가 나타낼 수 있는 값의 종류. */
+export type RowField = 'number' | 'location' | 'status' | 'width' | 'length' | 'count' | 'quantity' | 'unit' | 'note';
+
+// 옛 고정 순서(스펙 7.2 초판) — 머리글을 읽지 못했을 때만 쓰는 자리다.
+export const TABLE_COLUMN: Record<Exclude<RowField, 'note'>, number> = {
   number: 0,
-  place: 1,
+  location: 1,
   status: 2,
   width: 3,
   length: 4,
   count: 5,
   quantity: 6,
   unit: 7,
-} as const;
+};
 
-export const COLUMN_COUNT = 8;
+/**
+ * 머리글 키워드 → 열(RowField). 우선순위 순서다: 열 하나의 머리글이 여러 키워드에 걸리면
+ * (예: 표 제목이 겹쳐 "가로/폭" 칸에 "물량"이라는 글자가 섞여 있어도) 먼저 오는 필드가 이긴다.
+ */
+const FIELD_KEYWORDS: ReadonlyArray<{ field: RowField; test: RegExp }> = [
+  { field: 'number', test: /번호/ },
+  { field: 'location', test: /손상위치/ },
+  { field: 'status', test: /손상현황|손상명|손상종류/ },
+  { field: 'width', test: /가로|폭/ },
+  { field: 'length', test: /세로|길이/ },
+  { field: 'count', test: /개소|수량\(개\)/ },
+  { field: 'quantity', test: /면적|연장|물량/ },
+  { field: 'unit', test: /단위/ },
+  { field: 'note', test: /비고/ },
+];
+
+/** 머리글 매치가 이 수보다 적으면 머리글을 못 읽은 것으로 보고 옛 고정 순서로 되돌아간다. */
+const MIN_MATCHED_HEADERS = 3;
+
+function normalizeHeader(text: string): string {
+  return text.replace(/\s/g, '').toLowerCase();
+}
+
+export interface ColumnMap {
+  map: Partial<Record<RowField, number>>;
+  matchedCount: number;
+}
+
+/**
+ * 표 머리글 글자(`TableGrid.headers`)로 열을 찾는다(설계 7.2 개정). 왼쪽 열부터 훑어, 아직
+ * 열을 못 찾은 필드 중 그 열의 머리글에 걸리는 첫 번째 필드가 그 열을 갖는다.
+ */
+export function columnMapOf(headers: readonly string[]): ColumnMap {
+  const map: Partial<Record<RowField, number>> = {};
+  for (let column = 0; column < headers.length; column++) {
+    const header = normalizeHeader(headers[column] ?? '');
+    if (!header) continue;
+    for (const { field, test } of FIELD_KEYWORDS) {
+      if (field in map) continue;
+      if (test.test(header)) {
+        map[field] = column;
+        break;
+      }
+    }
+  }
+  return { map, matchedCount: Object.keys(map).length };
+}
+
+/**
+ * fillTable이 실제로 쓸 열 지도. 머리글로 찾은 매치가 `MIN_MATCHED_HEADERS`보다 적으면
+ * (머리글을 못 읽는 표) `usedFallback: true`와 함께 옛 고정 순서(`TABLE_COLUMN`)로 되돌아간다 —
+ * 호출부(exportDrawing.ts)가 이 플래그로 `headersUnknown` 경고를 낸다.
+ */
+export function resolvedColumnMap(headers: readonly string[]): { map: Partial<Record<RowField, number>>; usedFallback: boolean } {
+  const { map, matchedCount } = columnMapOf(headers);
+  if (matchedCount >= MIN_MATCHED_HEADERS) return { map, usedFallback: false };
+  return { map: TABLE_COLUMN, usedFallback: true };
+}
 
 export interface TableRow {
   number: number;
-  /** 길이 8. 비울 칸은 빈 문자열 */
-  cells: string[];
+  /** 필드별 값. 없는 필드는 빈 칸으로 남는다(번호·손상위치는 항상 비워 둔다). */
+  fields: Partial<Record<RowField, string>>;
 }
 
 function amountText(value: unknown): string {
@@ -38,15 +101,16 @@ function countText(value: unknown): string {
 export function rowValuesOf(damage: unknown, number: number): TableRow {
   const measured = (damage as { measured?: Record<string, unknown> } | null)?.measured ?? {};
   const quantity = quantityOf(damage);
-  const cells = new Array<string>(COLUMN_COUNT).fill('');
-  // 번호(0)는 표에 이미 인쇄돼 있고 손상위치(1)는 비워 둔다.
-  cells[TABLE_COLUMN.status] = statusTextOf(damage);
-  cells[TABLE_COLUMN.width] = amountText(measured.width);
-  cells[TABLE_COLUMN.length] = amountText(measured.length);
-  cells[TABLE_COLUMN.count] = countText(measured.count);
-  cells[TABLE_COLUMN.quantity] = quantity === null ? '' : formatQuantity(quantity);
-  cells[TABLE_COLUMN.unit] = unitOf(damage) ?? '';
-  return { number, cells };
+  // 번호는 표에 이미 인쇄돼 있고 손상위치는 비워 둔다 — fields에 아예 넣지 않는다.
+  const fields: Partial<Record<RowField, string>> = {
+    status: statusTextOf(damage),
+    width: amountText(measured.width),
+    length: amountText(measured.length),
+    count: countText(measured.count),
+    quantity: quantity === null ? '' : formatQuantity(quantity),
+    unit: unitOf(damage) ?? '',
+  };
+  return { number, fields };
 }
 
 // 표에 쓰는 글자·선(값 칸·넘침 표의 머리글·격자선·번호)은 손상 도형과 다른 레이어·색이다
@@ -135,6 +199,10 @@ export function fillTable(grid: TableGrid, rows: TableRow[], alloc: HandleAlloca
   const capacity = grid.dataRowCount;
   if (capacity <= 0) return [];
 
+  const columnCount = grid.colBoundaries.length - 1;
+  const { map: columnMap } = resolvedColumnMap(grid.headers);
+  const entries = Object.entries(columnMap) as Array<[RowField, number]>;
+
   // 어느 넘침 표가 필요한지 먼저 모아 틀을 한 번씩만 그린다.
   const neededTables = new Set<number>();
   for (const row of rows) {
@@ -153,8 +221,9 @@ export function fillTable(grid: TableGrid, rows: TableRow[], alloc: HandleAlloca
     const dataRow = row.number - tableIndex * capacity;
     const dy = offsetOf(grid, tableIndex);
     const y = rowCenter(grid, dataRow);
-    for (let column = 0; column < COLUMN_COUNT; column++) {
-      const value = row.cells[column];
+    for (const [field, column] of entries) {
+      if (column < 0 || column >= columnCount) continue;
+      const value = row.fields[field];
       if (!value) continue;
       if (tableIndex === 0) {
         pairs.push(...textEntity(baseFor(alloc, owner), cellCenter(grid, dataRow, column), modelTextHeight(grid), value, 'center'));

@@ -47,6 +47,26 @@ export function withoutTable(text: string): string {
   return replaceOnce(text, '  0\nACAD_TABLE\n', '  0\nPOINT\n');
 }
 
+// 표 머리글 8칸(번호·손상위치·손상현황·가로/폭·세로/길이·개소·면적/연장·단위)의 MTEXT 값만
+// 지운다 — 표 제목('손상물량표')은 그대로 둔다. buildGrid는 데이터 1행 앵커('1' 글자)로
+// firstDataRow를 찾으므로(머리글과 무관) 이렇게 지워도 격자는 그대로 읽히고, headers[]만
+// 전부 빈 문자열이 된다 — "머리글을 읽지 못한 표"를 만드는 방법이다.
+const HEADER_TEXT_VALUES = [
+  '{\\f굴림|b0|i0|c129|p2;번}호',
+  '{\\f굴림|b0|i0|c129|p2;손상위}치',
+  '{\\f굴림|b0|i0|c129|p2;손상현}황',
+  '가로/폭',
+  '세로/길이',
+  '개소',
+  '면적/연장',
+  '단위',
+];
+
+/** 표 머리글 8칸의 글자를 모두 지운다(열 매핑이 머리글을 못 읽는 도면). */
+export function withUnreadableHeaders(text: string): string {
+  return HEADER_TEXT_VALUES.reduce((acc, value) => replaceOnce(acc, `  1\n${value}\n`, '  1\n\n'), text);
+}
+
 /**
  * ACAD_TABLE을 망도틀 블록 밖(ENTITIES 맨 앞)으로 옮긴다 — 틀이 0개이고 표는 하나인 옛 도면.
  * 소유자(330)는 여전히 망도틀 블록 레코드를 가리키지만 읽는 쪽(readEntities)은 보지 않는다.

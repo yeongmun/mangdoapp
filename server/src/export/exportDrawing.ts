@@ -44,7 +44,7 @@ import {
   type RegionIndex,
   type SheetContext,
 } from './sheetCopy.js';
-import { COLUMN_COUNT, fillTable, rowValuesOf, type TableRow } from './tableFill.js';
+import { fillTable, resolvedColumnMap, rowValuesOf, type TableRow } from './tableFill.js';
 import {
   buildGrid,
   findTableCandidates,
@@ -77,6 +77,9 @@ export const EXPORT_WARNINGS = {
     `복사할 수 없는 엔티티 ${count}개(치수·지시선 등)는 복사본에서 빠졌습니다`,
   sheetCopyUnsupported: (index: number) =>
     `망도틀 ${index + 1}은(는) 회전·비균일 배율이라 복사하지 못해 표를 아래에 그렸습니다`,
+  // 열 매핑을 머리글 키워드로 찾다가(설계 7.2 개정) 매치가 너무 적으면(캐드 확인 2차 피드백
+  // 2026-09-16) 옛 고정 순서로 되돌아간다 — 그래도 산출은 계속하되 알린다.
+  headersUnknown: '물량표 머리글을 읽지 못해 열 순서를 기본값으로 채웠습니다',
 } as const;
 
 export interface ExportResult {
@@ -145,7 +148,7 @@ function rowsFor(entries: Included[], maxNumber: number): TableRow[] {
   const rows: TableRow[] = [];
   for (let number = 1; number <= maxNumber; number++) {
     const damage = byNumber.get(number);
-    rows.push(damage !== undefined ? rowValuesOf(damage, number) : { number, cells: new Array(COLUMN_COUNT).fill('') });
+    rows.push(damage !== undefined ? rowValuesOf(damage, number) : { number, fields: {} });
   }
   return rows;
 }
@@ -160,6 +163,11 @@ function gridFor(doc: DxfDocument, candidate: TableCandidate, warnings: string[]
     // 틀이 여럿이면 같은 경고가 여러 번 나올 수 있다. 한 번만 알린다.
     if (!warnings.includes(EXPORT_WARNINGS.unknownTable)) warnings.push(EXPORT_WARNINGS.unknownTable);
     return null;
+  }
+  // 머리글 키워드로 열을 못 찾아 옛 고정 순서로 되돌아갔으면 알린다(설계 7.2 개정) — 이것도
+  // 틀마다 여러 번 나올 수 있어 한 번만 알린다.
+  if (resolvedColumnMap(grid.headers).usedFallback && !warnings.includes(EXPORT_WARNINGS.headersUnknown)) {
+    warnings.push(EXPORT_WARNINGS.headersUnknown);
   }
   return grid;
 }
