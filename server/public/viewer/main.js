@@ -352,6 +352,10 @@ async function start() {
   function openProps() {
     const damage = selectedDamage();
     if (!damage) return;
+    // 속성창을 새로 열 때마다 📷 버튼을 되살린다 — 앱이 답을 못 준 채 창을 닫았던 경우의 탈출구다.
+    // (photoRequestId·resetPhotoButton은 아래에서 정의되지만 이 함수는 초기화가 끝난 뒤에만 불린다.)
+    photoRequestId = null;
+    resetPhotoButton();
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
     // 균열류의 가로/폭만 mm다. 0.3mm·0.5mm 경계로 손상현황이 갈리고, 물량 계산에는 쓰이지 않는다.
@@ -478,10 +482,11 @@ async function start() {
   });
 
   // 📷 버튼(2026-09-17 카메라 버튼 설계 6장). 앱에 takePhoto를 보내고 window.mangdoPhotoResult로
-  // 회신을 받는다 — mangdoFlush(170행)와 같은 방식. requestId로 늦게 온 답(타임아웃 뒤 응답 등)을
-  // 가려낸다.
+  // 회신을 받는다 — mangdoFlush(170행)와 같은 방식. requestId로 다른 요청의 답을 가려낸다.
+  // 시간제한은 두지 않는다 — 카메라가 앱 위에 떠 있는 동안(사진 구도 잡기, 권한 대화상자) 얼마나
+  // 걸릴지 모르고, 앱은 취소·오류를 포함해 언제나 답을 보낸다. 답이 영영 안 오는 경우(앱 오류)는
+  // 속성창을 다시 열면(openProps) 버튼이 되살아난다.
   let photoRequestId = null;
-  let photoTimeoutId = null;
 
   function resetPhotoButton() {
     $('photoCamera').disabled = false;
@@ -499,21 +504,12 @@ async function start() {
     $('photoCamera').disabled = true;
     $('photoCamera').textContent = '⏳';
     postToApp({ type: 'takePhoto', requestId });
-    // 15초 안에 답이 없으면 버튼을 되살리고 안내한다(설계 6장). 그 뒤 늦게 답이 오면 photoRequestId가
-    // 이미 null이라 mangdoPhotoResult가 무시한다.
-    photoTimeoutId = setTimeout(() => {
-      if (photoRequestId !== requestId) return;
-      photoRequestId = null;
-      resetPhotoButton();
-      showPropsError('카메라 응답이 없습니다');
-    }, 15000);
   });
 
   // 앱(ViewerScreen.handleMessage)이 촬영 결과를 injectJavaScript로 회신할 때 부른다.
   window.mangdoPhotoResult = (result) => {
-    // requestId가 다르면(타임아웃 뒤 늦게 온 답 등) 무시한다.
+    // requestId가 다르면(속성창을 닫았다 다시 연 뒤 온 옛 답 등) 무시한다.
     if (!result || result.requestId !== photoRequestId) return;
-    clearTimeout(photoTimeoutId);
     photoRequestId = null;
     resetPhotoButton();
     // 찍는 동안 속성창이 닫혔으면(다른 손상 선택 등) 결과를 버린다 — 잘못된 손상에 번호가 붙지 않게.

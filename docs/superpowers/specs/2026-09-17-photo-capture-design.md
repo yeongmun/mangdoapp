@@ -45,7 +45,7 @@ appendPhotoNumber(currentText, number) → string
 앱 → 뷰어: `webViewRef.injectJavaScript('window.mangdoPhotoResult(' + JSON + '); true;')` (기존 `mangdoFlush`와 같은 방식).
 
 - `{ requestId, ok: true, filename }` — `filename`은 앨범에 저장된 결과의 `asset.filename`(없으면 앱이 지은 이름).
-- `{ requestId, ok: false, reason }` — `reason`: `'취소'`(사용자가 카메라를 닫음), `'카메라 권한이 없습니다'`, `'앨범 저장 권한이 없습니다'`, `'사진을 저장하지 못했습니다: …'`, `'이 환경에서는 카메라를 쓸 수 없습니다'`(웹 브라우저 등 `ReactNativeWebView`가 없을 때 — 뷰어가 앱에 보내지 않고 바로 표시).
+- `{ requestId, ok: false, reason }` — `reason`: `'취소'`(사용자가 카메라를 닫음), `'카메라 권한이 없습니다'`, `'앨범 저장 권한이 없습니다'`, `'사진을 저장하지 못했습니다: …'`, `'이미 촬영 중입니다'`(앞 촬영이 끝나기 전의 겹친 요청), `'이 환경에서는 카메라를 쓸 수 없습니다'`(웹 브라우저 등 `ReactNativeWebView`가 없을 때 — 뷰어가 앱에 보내지 않고 바로 표시).
 
 ## 5. 앱 쪽 (`src/screens/ViewerScreen.tsx`, 새 `src/photo.ts`)
 
@@ -58,14 +58,14 @@ appendPhotoNumber(currentText, number) → string
 5. `MediaLibrary.createAssetAsync(uri)` → `asset.filename ?? 지은 이름`을 돌려준다. 앨범 이름을 따로 만들지 않는다(기본 카메라 앨범/DCIM — 사용자가 늘 보던 곳).
 6. 예외는 `사진을 저장하지 못했습니다: <message>`.
 
-`ViewerScreen.handleMessage`에 `takePhoto` 분기: `takePhotoAndSave()` 결과에 `requestId`를 붙여 `injectJavaScript`. 한 번에 한 요청만 처리한다(진행 중이면 새 요청은 `취소`로 답하지 않고 무시 — 버튼이 뷰어에서 비활성이라 실제로는 오지 않는다).
+`ViewerScreen.handleMessage`에 `takePhoto` 분기: `takePhotoAndSave()` 결과에 `requestId`를 붙여 `injectJavaScript`. 한 번에 한 요청만 처리한다(진행 중이면 새 요청에는 `이미 촬영 중입니다`로 바로 답한다).
 
 `app.json` plugins에 `["expo-image-picker", { "cameraPermission": "손상 사진을 찍기 위해 카메라를 씁니다." }]`, `["expo-media-library", { "savePhotosPermission": "찍은 사진을 앨범에 저장합니다.", "isAccessMediaLocationEnabled": false }]`.
 
 ## 6. 뷰어 쪽 (`server/public/viewer.html`, `main.js`)
 
 - 사진번호 입력 옆 `<button id="photoCamera" type="button" title="사진 찍기">📷</button>`.
-- 누르면: `ReactNativeWebView`가 없으면 `#propsError`에 `이 환경에서는 카메라를 쓸 수 없습니다`(PC 브라우저). 있으면 버튼을 비활성(`⏳`)으로 바꾸고 `takePhoto` 메시지를 보낸다. 15초 안에 답이 없으면 버튼을 되살리고 `카메라 응답이 없습니다`.
+- 누르면: `ReactNativeWebView`가 없으면 `#propsError`에 `이 환경에서는 카메라를 쓸 수 없습니다`(PC 브라우저). 있으면 버튼을 비활성(`⏳`)으로 바꾸고 `takePhoto` 메시지를 보낸다. **시간제한은 두지 않는다**(검토 지적 2026-09-17: 구도 잡기·권한 대화상자로 15초를 쉽게 넘긴다) — 앱은 취소·오류를 포함해 언제나 답한다. 답이 안 온 채 속성창을 닫았다 다시 열면 버튼이 되살아난다(`openProps`에서 초기화).
 - `window.mangdoPhotoResult(result)`: `requestId`가 다르면 무시. `ok`면 `appendPhotoNumber`로 칸을 채우고 `updateSummary()`; 아니면 `#propsError`에 `reason`. 버튼을 되살린다.
 - 속성창이 그새 닫혔으면(다른 손상 선택 등) 결과를 버린다 — 잘못된 손상에 번호가 붙지 않게.
 - 찍는 동안 속성창은 열린 채다(카메라가 앱 위에 뜨는 것이라 WebView 상태가 유지된다 — 조사 4번).

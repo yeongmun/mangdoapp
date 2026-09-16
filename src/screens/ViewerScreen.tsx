@@ -82,15 +82,18 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       pendingFlushRef.current?.(saved === true);
     } else if (type === 'takePhoto') {
       if (typeof requestId !== 'string') return;
-      // 겹친 요청은 무시한다 — 뷰어는 응답이 올 때까지 버튼을 비활성(⏳)으로 바꾸므로 실제로는
-      // 거의 오지 않는다.
-      if (photoBusyRef.current) return;
-      photoBusyRef.current = true;
       const reply = (result: { ok: true; filename: string } | { ok: false; reason: string }) => {
         webViewRef.current?.injectJavaScript(
           `window.mangdoPhotoResult && window.mangdoPhotoResult(${JSON.stringify({ requestId, ...result })}); true;`,
         );
       };
+      // 겹친 요청(앞 촬영이 끝나기 전에 속성창을 닫았다 다시 열고 또 누른 경우)은 삼키지 않고
+      // 바로 답한다 — 뷰어가 새 requestId로 기다리고 있어 답이 없으면 버튼이 ⏳로 남는다.
+      if (photoBusyRef.current) {
+        reply({ ok: false, reason: '이미 촬영 중입니다' });
+        return;
+      }
+      photoBusyRef.current = true;
       takePhotoAndSave()
         .then(reply)
         .catch((err: unknown) => {
