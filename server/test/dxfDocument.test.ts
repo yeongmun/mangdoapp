@@ -21,6 +21,8 @@ import {
   recordHandle,
   serializeDxf,
   setHeaderValue,
+  TABLE_COLOR,
+  TABLE_LAYER,
   type DxfPair,
 } from '../src/export/dxfDocument.js';
 
@@ -269,6 +271,14 @@ describe('ensureLayer', () => {
     ensureLayer(doc, createHandleAllocator(doc), PHOTO_LAYER, PHOTO_COLOR);
     expect(layerNames(doc)).toEqual(['0', PHOTO_LAYER]);
     expect(serializeDxf(doc)).toContain('  2\n사진번호\n 70\n     0\n 62\n     2\n  6\nContinuous\n');
+  });
+
+  // 근거: 캐드 확인 2차 피드백(2026-09-16) — 물량표 글자는 손상 도형과 다른 레이어·색(흰/검, 7)으로 낸다.
+  it('손상물량표 레이어도 같은 방식으로 더한다 (흰/검, 색 7)', async () => {
+    const doc = parseDxf(await templateText());
+    ensureLayer(doc, createHandleAllocator(doc), TABLE_LAYER, TABLE_COLOR);
+    expect(layerNames(doc)).toEqual(['0', TABLE_LAYER]);
+    expect(serializeDxf(doc)).toContain('  2\n손상물량표\n 70\n     0\n 62\n     7\n  6\nContinuous\n');
   });
 
   it('두 레이어를 잇달아 더하면 둘 다 남고 핸들이 다르다', async () => {

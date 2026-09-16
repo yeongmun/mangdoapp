@@ -4,7 +4,7 @@
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 7장
 
 import { formatQuantity, quantityOf, statusTextOf, unitOf } from '../../public/viewer/quantities.js';
-import { DAMAGE_COLOR, DAMAGE_LAYER, type DxfPair, type HandleAllocator } from './dxfDocument.js';
+import { TABLE_COLOR, TABLE_LAYER, type DxfPair, type HandleAllocator } from './dxfDocument.js';
 import { lineEntity, textEntity, type EntityBase, type Point } from './dxfEntities.js';
 import { applyTransform, cellCenter, modelTextHeight, type TableGrid } from './tableGrid.js';
 
@@ -49,8 +49,10 @@ export function rowValuesOf(damage: unknown, number: number): TableRow {
   return { number, cells };
 }
 
+// 표에 쓰는 글자·선(값 칸·넘침 표의 머리글·격자선·번호)은 손상 도형과 다른 레이어·색이다
+// (캐드 확인 2차 피드백 2026-09-16) — 손상만 켜고 끄거나 표만 켜고 끌 수 있게 나눈다.
 function baseFor(alloc: HandleAllocator, owner: string): EntityBase {
-  return { handle: alloc.next(), owner, layer: DAMAGE_LAYER, colorIndex: DAMAGE_COLOR };
+  return { handle: alloc.next(), owner, layer: TABLE_LAYER, colorIndex: TABLE_COLOR };
 }
 
 // 넘침 표 k장째(k ≥ 1)가 원본에서 아래로 얼마나 내려가는지(표 로컬 단위, 음수다 — 표는

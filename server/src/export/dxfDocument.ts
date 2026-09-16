@@ -31,6 +31,12 @@ export const DAMAGE_COLOR = 1;
 export const PHOTO_LAYER = '사진번호';
 export const PHOTO_COLOR = 2;
 
+// 물량표 칸에 쓰는 글자(데이터 칸 값·넘침 표의 번호·머리글·옛 넘침 표의 LINE)는 손상 도형과
+// 따로 켜고 끌 수 있게 별도 레이어·색(흰/검, 7)으로 낸다. 손상 도형·라벨은 그대로 DAMAGE_LAYER다.
+// 근거: 캐드 확인 2차 피드백(2026-09-16)
+export const TABLE_LAYER = '손상물량표';
+export const TABLE_COLOR = 7;
+
 export function pair(code: number, value: string): DxfPair {
   return { code, value };
 }

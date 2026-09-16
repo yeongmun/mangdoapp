@@ -28,6 +28,8 @@ interface TextEntity {
   text: string;
   x: number;
   y: number;
+  layer: string;
+  color: number;
 }
 
 // 만들어진 쌍에서 TEXT 엔티티만 뽑아 본다.
@@ -38,18 +40,43 @@ function textsOf(pairs: DxfPair[]): TextEntity[] {
     let text = '';
     let x = Number.NaN;
     let y = Number.NaN;
+    let layer = '';
+    let color = Number.NaN;
     for (let j = i + 1; j < pairs.length && pairs[j].code !== 0; j++) {
       if (pairs[j].code === 1) text = pairs[j].value;
       else if (pairs[j].code === 11) x = Number(pairs[j].value);
       else if (pairs[j].code === 21) y = Number(pairs[j].value);
+      else if (pairs[j].code === 8) layer = pairs[j].value;
+      else if (pairs[j].code === 62) color = Number(pairs[j].value);
     }
-    result.push({ text, x, y });
+    result.push({ text, x, y, layer, color });
   }
   return result;
 }
 
 function lineCount(pairs: DxfPair[]): number {
   return pairs.filter((p) => p.code === 0 && p.value === 'LINE').length;
+}
+
+interface LineLayerInfo {
+  layer: string;
+  color: number;
+}
+
+// LINE 엔티티마다 레이어·색만 뽑아 본다(넘침 표의 격자선 확인용).
+function lineLayersOf(pairs: DxfPair[]): LineLayerInfo[] {
+  const result: LineLayerInfo[] = [];
+  for (let i = 0; i < pairs.length; i++) {
+    if (pairs[i].code !== 0 || pairs[i].value !== 'LINE') continue;
+    let layer = '';
+    let color = Number.NaN;
+    for (let j = i + 1; j < pairs.length && pairs[j].code !== 0; j++) {
+      if (pairs[j].code === 8) layer = pairs[j].value;
+      else if (pairs[j].code === 62) color = Number(pairs[j].value);
+    }
+    result.push({ layer, color });
+  }
+  return result;
 }
 
 describe('rowValuesOf', () => {
@@ -118,6 +145,18 @@ describe('fillTable — 원본 표 안', () => {
     const g = await grid();
     const pairs = fillTable(g, [rowValuesOf(damage('spalling', {}), 1)], new HandleAllocator(0x400), '1F');
     expect(lineCount(pairs)).toBe(0);
+  });
+
+  // 근거: 캐드 확인 2차 피드백(2026-09-16) — 표 칸 글자는 손상 도형과 다른 레이어·색(손상물량표, 7)이다.
+  it('데이터 칸 글자는 손상물량표 레이어·색 7이다 (신규손상이 아니다)', async () => {
+    const g = await grid();
+    const pairs = fillTable(g, [rowValuesOf(damage('spalling', { width: 1.2, length: 1.5, count: 1 }), 1)], new HandleAllocator(0x400), '1F');
+    const texts = textsOf(pairs);
+    expect(texts.length).toBeGreaterThan(0);
+    for (const t of texts) {
+      expect(t.layer).toBe('손상물량표');
+      expect(t.color).toBe(7);
+    }
   });
 
   it('글자 높이는 셀 글자 높이 × 배율이다', async () => {
@@ -203,6 +242,21 @@ describe('fillTable — 넘침 표', () => {
     const height = pairs.slice(index, index + 20).find((p) => p.code === 40)!.value;
     // 15.0(원래 높이) × 배율(2) = 30.0. 셀 높이였다면 10.0 × 2 = 20.0이 나왔을 것이다.
     expect(height).toBe('30.0');
+  });
+
+  // 근거: 캐드 확인 2차 피드백(2026-09-16) — 옛 넘침 표(아래에 한 장 더)의 LINE·TEXT도 손상물량표
+  // 레이어·색 7이다.
+  it('넘침 표의 선·머리글·번호·값 글자가 모두 손상물량표 레이어·색 7이다', async () => {
+    const g = await grid();
+    const pairs = fillTable(g, [rowValuesOf(damage('spalling', { length: 1.5 }), 4)], new HandleAllocator(0x400), '1F');
+    for (const t of textsOf(pairs)) {
+      expect(t.layer).toBe('손상물량표');
+      expect(t.color).toBe(7);
+    }
+    for (const l of lineLayersOf(pairs)) {
+      expect(l.layer).toBe('손상물량표');
+      expect(l.color).toBe(7);
+    }
   });
 
   it('핸들이 겹치지 않는다', async () => {

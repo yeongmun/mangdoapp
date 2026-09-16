@@ -124,10 +124,10 @@ describe('copyRegion · flattenFrameBlock', () => {
 
   // 펼친 쌍 배열에서 (0, 타입) 단위로 갈라 값·좌표를 꺼내 준다.
   function entitiesOf(pairs: ReturnType<typeof flattenFrameBlock>['pairs']) {
-    const out: Array<{ type: string; text: string; x: number; y: number; handle: string; owner: string }> = [];
+    const out: Array<{ type: string; text: string; x: number; y: number; handle: string; owner: string; layer: string; color: number }> = [];
     for (let i = 0; i < pairs.length; i++) {
       if (pairs[i].code !== 0) continue;
-      const entry = { type: pairs[i].value, text: '', x: NaN, y: NaN, handle: '', owner: '' };
+      const entry = { type: pairs[i].value, text: '', x: NaN, y: NaN, handle: '', owner: '', layer: '', color: NaN };
       let j = i + 1;
       for (; j < pairs.length && pairs[j].code !== 0; j++) {
         const p = pairs[j];
@@ -136,6 +136,8 @@ describe('copyRegion · flattenFrameBlock', () => {
         else if (p.code === 1) entry.text = p.value;
         else if (p.code === 10 && Number.isNaN(entry.x)) entry.x = Number(p.value);
         else if (p.code === 20 && Number.isNaN(entry.y)) entry.y = Number(p.value);
+        else if (p.code === 8 && entry.layer === '') entry.layer = p.value;
+        else if (p.code === 62 && Number.isNaN(entry.color)) entry.color = Number(p.value);
       }
       out.push(entry);
       i = j - 1;
@@ -187,6 +189,19 @@ describe('copyRegion · flattenFrameBlock', () => {
     // 데이터 1·2·3행 중앙 y = 2000 + 2*(700−70) = 3260, 3220, 3180
     expect(numbers.map((e) => e.x)).toEqual([51100, 51100, 51100]);
     expect(numbers.map((e) => e.y)).toEqual([3260, 3220, 3180]);
+  });
+
+  // 근거: 캐드 확인 2차 피드백(2026-09-16) — 새로 쓰는 번호도 손상물량표 레이어·색 7이다
+  // (원본 표에 인쇄돼 있던 번호의 레이어·색을 그대로 베끼지 않는다).
+  it('새로 쓰는 번호는 손상물량표 레이어·색 7이다', async () => {
+    const { ctx, frames, grid } = await setup(await templateText());
+    const result = flattenFrameBlock(ctx, frames[0], grid, 1, 49000);
+    const numbers = entitiesOf(result.pairs).filter((e) => /^[0-9]+$/.test(e.text));
+    expect(numbers).toHaveLength(3);
+    for (const n of numbers) {
+      expect(n.layer).toBe('손상물량표');
+      expect(n.color).toBe(7);
+    }
   });
 
   it('머리글 글자(번호·손상위치…)는 그대로 남는다', async () => {

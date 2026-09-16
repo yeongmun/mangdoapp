@@ -3,7 +3,7 @@
 // 장 수와 틀 간격을 센다. 손상은 모른다 — 손상을 붙이는 일은 exportDrawing.ts가 한다.
 // 근거: docs/superpowers/specs/2026-09-16-sheet-overflow-design.md 3~6장
 
-import { type DxfDocument, type DxfPair, type HandleAllocator } from './dxfDocument.js';
+import { TABLE_COLOR, TABLE_LAYER, type DxfDocument, type DxfPair, type HandleAllocator } from './dxfDocument.js';
 import { textEntity, type EntityBase, type Point } from './dxfEntities.js';
 import {
   copyEntityPairs,
@@ -38,8 +38,6 @@ import {
 
 /** 틀이 하나뿐일 때 쓰는 간격 = 틀 너비의 배수(설계 4장) */
 const LONE_FRAME_PITCH_FACTOR = 1.1;
-/** 색이 적혀 있지 않은 엔티티의 기본 색(ByLayer) */
-const BY_LAYER = 256;
 
 /** 번호가 몇 번째 장에 들어가는가. 0장이 원본 틀이다. */
 export function pageOf(damageNumber: number, dataRows: number): number {
@@ -239,20 +237,11 @@ function flattenTable(
   const isFrameTable =
     blockName === grid.blockName && position[0] === grid.position[0] && position[1] === grid.position[1];
 
-  let numberLayer: string | null = null;
-  let numberColor = BY_LAYER;
   for (const range of ctx.blocks.get(blockName) ?? []) {
     const source = ctx.doc.pairs.slice(range.start, range.end);
     if (isFrameTable && (range.type === 'TEXT' || range.type === 'MTEXT')) {
       const entity = rawEntityAt(ctx.doc.pairs, range);
-      if (isPrintedNumber(grid, entity)) {
-        // 새 번호가 원본 번호와 같은 레이어·색으로 나가게 첫 번째 것에서 읽어 둔다.
-        if (numberLayer === null) {
-          numberLayer = textAt(entity, 8) ?? '0';
-          numberColor = numberAt(entity, 62, BY_LAYER);
-        }
-        continue;
-      }
+      if (isPrintedNumber(grid, entity)) continue;
     }
     if (!isCopyable(source)) {
       skipped += 1;
@@ -264,12 +253,12 @@ function flattenTable(
   if (isFrameTable) {
     const shifted = shiftGrid(grid, dx);
     const height = modelTextHeight(grid);
-    const layer = numberLayer ?? '0';
-    // 빈 행이라도 번호는 쓴다 — 원본이 1~N을 미리 인쇄한 것과 같다(설계 5.2).
+    // 새로 쓰는 번호는 원본 인쇄 번호의 레이어·색을 베끼지 않고, 물량표 전용 레이어·색으로
+    // 낸다(캐드 확인 2차 피드백 2026-09-16) — fillTable이 쓰는 값 칸과 같은 레이어다.
     for (let row = 1; row <= grid.dataRowCount; row++) {
       const value = String(page * grid.dataRowCount + row);
       const center = cellCenter(shifted, row, grid.numberColumn);
-      appendAll(pairs, textEntity(baseFor(ctx, layer, numberColor), center, height, value, 'center'));
+      appendAll(pairs, textEntity(baseFor(ctx, TABLE_LAYER, TABLE_COLOR), center, height, value, 'center'));
     }
   }
   return { pairs, skipped };

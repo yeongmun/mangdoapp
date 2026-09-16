@@ -20,6 +20,8 @@ import {
   recordHandle,
   serializeDxf,
   setHeaderValue,
+  TABLE_COLOR,
+  TABLE_LAYER,
   type DxfDocument,
   type DxfPair,
   type HandleAllocator,
@@ -221,6 +223,8 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   // 사진 줄이 있든 없든 만들어 둔다 — 있는지 미리 훑어 조건을 나누면 같은 도면을 두 번 산출했을
   // 때 레이어 목록이 달라진다.
   ensureLayer(doc, alloc, PHOTO_LAYER, PHOTO_COLOR);
+  // 표에 채울 값이 있든 없든 만들어 둔다 — 사진번호 레이어와 같은 이유(레이어 목록을 늘 같게).
+  ensureLayer(doc, alloc, TABLE_LAYER, TABLE_COLOR);
   const owner = recordHandleOrThrow(doc);
 
   /** 틀 하나가 몇 장이 되고 얼마나 오른쪽으로 가는가(설계 7장 2단계) */

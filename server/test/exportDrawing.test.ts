@@ -344,6 +344,13 @@ describe('exportDamagesToDxf', () => {
       const result = exportDamagesToDxf(await template(), [wide('a', 2000)]);
       expect(layerNames(parseDxf(result.dxfText))).toContain('사진번호');
     });
+
+    // 근거: 캐드 확인 2차 피드백(2026-09-16) — 물량표 글자는 손상물량표 레이어로 낸다. 사진번호
+    // 레이어와 같은 이유로, 표가 비어 있어도(값이 없어도) 레이어 목록은 항상 같아야 한다.
+    it('표에 채울 값이 없어도 손상물량표 레이어는 만들어 둔다', async () => {
+      const result = exportDamagesToDxf(await template(), [wide('a', 2000)]);
+      expect(layerNames(parseDxf(result.dxfText))).toContain('손상물량표');
+    });
   });
 
   // 근거: docs/superpowers/specs/2026-09-16-frame-numbering-design.md 5·6장
