@@ -210,4 +210,20 @@ describe('damageLabels', () => {
     ]);
     expect(labels.size).toBe(0);
   });
+
+  // 근거: 2026-09-16-duplicate-damage-design.md 3.4/4장 — 복제본의 dwg 경계상자도 겹침 장애물이다.
+  it('복제본 경계상자를 장애물로 넣어 라벨이 복제본 위로 가지 않는다', () => {
+    const copyPoints: Pt[] = [[-5000, 450], [5000, 450], [5000, 6000], [-5000, 6000]];
+    const measured = { width: 1.2, length: 1.5, count: 2 };
+    const plain = damageLabels([{ id: 'r1', number: 1, damage: rect('spalling', measured) }]).get('r1')!;
+    const blocked = damageLabels([
+      { id: 'r1', number: 1, damage: { ...rect('spalling', measured), copies: [{ world: copyPoints, dwg: copyPoints }] } },
+    ]).get('r1')!;
+
+    // 막는 것이 없으면 도형 바로 위(y ≥ 500)다
+    for (const line of plain.lines) expect(line.position[1]).toBeGreaterThan(400);
+    // 복제본에 막히면 그 상자(y ≥ 450) 아래로 비켜난다
+    for (const line of blocked.lines) expect(line.position[1]).toBeLessThan(450);
+    expect(blocked.circle!.center[1]).toBeLessThan(450);
+  });
 });

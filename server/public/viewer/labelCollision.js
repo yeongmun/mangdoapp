@@ -134,17 +134,25 @@ function windowOf(candidates) {
  * 앞서 잡은 라벨 상자는 뒷번호의 장애물이 된다. 같은 손상 집합이면 넣은 순서와 상관없이 항상
  * 같은 결과가 나온다.
  *
+ * obstacles는 **라벨을 받지 않고 막기만 하는** 상자다(2026-09-16 복제 설계 3.4). 복제본의 경계상자가
+ * 여기로 들어온다 — items에 넣으면 복제본마다 라벨이 하나씩 생겨 버린다. 자기 손상 제외 규칙(4.1)도
+ * 적용하지 않는다: 자기 복제본 위에도 라벨이 놓이면 안 되기 때문이다(id를 null로 둬 어떤 item의
+ * id와도 같지 않게 한다).
+ *
  * @param {Array<{ id: string, number: number|null, bounds: object, block: object }>} items
- * @param {{ gap: number, font: number }} sizes - 손상과 라벨 사이 간격, 글자 높이(화살촉 크기)
+ * @param {{ gap: number, font: number, obstacles?: Array<{ minX: number, minY: number, maxX: number, maxY: number }> }} sizes
  * @returns {Map<string, { anchor: number[], box: object, displaced: boolean, leader: object|null }>}
  */
-export function placeLabels(items, { gap, font }) {
+export function placeLabels(items, { gap, font, obstacles: extraObstacles = [] }) {
   const order = (Array.isArray(items) ? items : [])
     .filter((item) => item && item.bounds && item.block)
     .slice()
     .sort((a, b) => orderKey(a) - orderKey(b) || compareId(String(a.id), String(b.id)));
 
-  const obstacles = order.map((item) => ({ id: String(item.id), box: boxOfBounds(item.bounds) }));
+  const obstacles = [
+    ...order.map((item) => ({ id: String(item.id), box: boxOfBounds(item.bounds) })),
+    ...(Array.isArray(extraObstacles) ? extraObstacles : []).map((bounds) => ({ id: null, box: boxOfBounds(bounds) })),
+  ];
   const placedBoxes = [];
   const result = new Map();
 

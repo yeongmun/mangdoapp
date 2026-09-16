@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DAMAGE_TYPES } from '../public/viewer/damageTypes.js';
+import { boxesOverlap, boxOfBounds } from '../public/viewer/labelCollision.js';
 import { labelBlock } from '../public/viewer/labelLayout.js';
 import { computeNumbers, dimensionTextOf, drawingNameOf, photoTextOf } from '../public/viewer/quantities.js';
 import { damageLabels } from '../src/export/labelPlacement.js';
@@ -477,11 +478,20 @@ describe('computeLabelPlacements', () => {
   // gap·font가 (world 기준이 아니라) 고정된 실제 mm값이라 축척이 있으면 손으로 미리 답을 구하기
   // 어렵다 — 특히 어느 라벨이 밀려나는지(displaced)는 축척에 따라 달라질 수 있어 DXF를 대조군으로
   // 쓰는 쪽이 더 믿을 만하다.
+  //
+  // 손상 하나(c)에 복제본을 하나 달아 둔다 — 화면과 DXF가 같은 copyBoundsOf를 같은 자리에서
+  // 불러야만(Task 2) 회전·반전·축척이 섞여도 두 경로가 같은 라벨 자리를 고른다는 것까지 이 교차
+  // 검증이 잡아낸다.
   function transformedDamages(transform: (p: Pt2) => Pt2) {
-    return [rectDamage('a', 0), rectDamage('b', 1050)].map((damage: any) => ({
-      ...damage,
-      geometry: { ...damage.geometry, dwg: (damage.geometry.world as Pt2[]).map(transform) },
-    }));
+    const withCopy = rectDamage('c', 2100) as Record<string, unknown> & { geometry: { world: Pt2[] } };
+    const copyWorld: Pt2[] = [[2100, 500], [2600, 500], [2600, 700], [2100, 700]];
+    return [rectDamage('a', 0), rectDamage('b', 1050), { ...withCopy, copies: [{ world: copyWorld, dwg: null }] }].map(
+      (damage: any) => ({
+        ...damage,
+        geometry: { ...damage.geometry, dwg: (damage.geometry.world as Pt2[]).map(transform) },
+        copies: (damage.copies ?? []).map((copy: { world: Pt2[] }) => ({ world: copy.world, dwg: copy.world.map(transform) })),
+      }),
+    );
   }
 
   function crossCheckAgainstDxf(transform: (p: Pt2) => Pt2, inverse: (p: number[]) => Pt2) {
@@ -575,6 +585,26 @@ describe('computeLabelPlacements', () => {
 
   it('사진 줄 색은 선택과 상관없이 노란색이다', () => {
     expect(PHOTO_COLOR).toBe('#f5c400');
+  });
+
+  // 근거: 2026-09-16-duplicate-damage-design.md 3.4 — 겹침 방지 장애물에 복제본의 dwg 경계상자를 더한다.
+  it('복제본 경계상자 위에는 라벨을 놓지 않는다', () => {
+    const COPY_BOUNDS = { minX: -5000, minY: 450, maxX: 5000, maxY: 6000 };
+    const base = rectDamage('a', 0) as Record<string, unknown>;
+    const withCopy = { ...base, copies: [{ world: [[-5000, 450], [5000, 450], [5000, 6000], [-5000, 6000]], dwg: [[-5000, 450], [5000, 450], [5000, 6000], [-5000, 6000]] }] };
+
+    const plain = computeLabelPlacements([base], new Map([['a', 1]]), identity)!.get('a')!;
+    expect(plain.displaced).toBe(false); // 막는 것이 없으면 도형 바로 위
+
+    const placed = computeLabelPlacements([withCopy], new Map([['a', 1]]), identity)!.get('a')!;
+    expect(placed.displaced).toBe(true);
+    expect(boxesOverlap(placed.box, boxOfBounds(COPY_BOUNDS))).toBe(false);
+  });
+
+  it('dwg가 없는 복제본은 장애물로 세지 않는다', () => {
+    const base = rectDamage('a', 0) as Record<string, unknown>;
+    const withCopy = { ...base, copies: [{ world: [[-5000, 450], [5000, 450], [5000, 6000], [-5000, 6000]], dwg: null }] };
+    expect(computeLabelPlacements([withCopy], new Map([['a', 1]]), identity)!.get('a')!.displaced).toBe(false);
   });
 
   describe('회전·반전 교차검증 — 화면(computeLabelPlacements)과 DXF(damageLabels)는 같은 dwg 입력에서 같은 자리를 고른다', () => {

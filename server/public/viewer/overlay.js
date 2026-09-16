@@ -2,6 +2,7 @@
 // 실치수(도면 mm) 기준 표시는 docs/superpowers/specs/2026-09-12-damage-types-design.md 5장,
 // 두 줄 라벨은 docs/superpowers/specs/2026-09-13-damage-attributes-design.md §5.2 근거.
 
+import { shapesOf } from './damageDoc.js';
 import { getDamageType } from './damageTypes.js';
 import { boundsOf, rectCenter } from './geometry.js';
 import { placeLabels } from './labelCollision.js';
@@ -312,6 +313,20 @@ export function describeDamageRender(damage, selectedId, number = null) {
  * @typedef {{ anchor: number[], box: { x: number, y: number, width: number, height: number }, displaced: boolean, leader: { from: number[], to: number[], head: number[][] } | null }} LabelPlacement
  */
 
+// 복제본(1번 도형부터)의 도면 좌표 경계상자. 라벨이 복제본 위에 놓이지 않도록 겹침 방지의
+// 장애물로 넣는다(설계 3.4). 화면(computeLabelPlacements)과 DXF(labelPlacement.damageLabels)가
+// 이 함수 하나를 같이 써야 두 곳의 라벨 자리가 갈리지 않는다. dwg가 없는 복제본은 도면에 놓지
+// 못하므로 건너뛴다 — 첫 도형에 적용하는 규칙과 같다.
+/** @type {(damage: any) => Array<{ minX: number, minY: number, maxX: number, maxY: number }>} */
+export function copyBoundsOf(damage) {
+  const list = [];
+  for (const shape of shapesOf(damage).slice(1)) {
+    const bounds = boundsOf(shape.dwg);
+    if (bounds) list.push(bounds);
+  }
+  return list;
+}
+
 // 손상 목록이 바뀔 때 한 번만 부른다(설계 4.5) — 확대·축소해도 결과가 같으므로 매 프레임 다시
 // 계산하지 않는다.
 //
@@ -329,11 +344,13 @@ export function computeLabelPlacements(damages, numbers, dwgToWorld) {
   const circleR = FONT_HEIGHT_MM * CIRCLE_RADIUS_FACTOR;
 
   const items = [];
+  const obstacles = [];
   for (const damage of Array.isArray(damages) ? damages : []) {
     // labelPlacement.ts의 dwgPointsOf/damageLabels와 같은 건너뛰기 규칙: dwg 좌표가 없는 손상은
-    // 도면에 놓지 못하므로 뺀다.
+    // 도면에 놓지 못하므로 뺀다. 복제본의 장애물도 같이 빠진다 — 그 손상은 아예 그려지지 않는다.
     const bounds = boundsOf(damage?.geometry?.dwg);
     if (!bounds) continue;
+    obstacles.push(...copyBoundsOf(damage));
     const id = String(damage?.id);
     const number = numbers.get(id) ?? null;
     const plan = describeDamageRender(damage, null, number);
@@ -344,7 +361,7 @@ export function computeLabelPlacements(damages, numbers, dwgToWorld) {
       block: labelBlock({ name: plan.name, dimension: plan.dimension, photo: plan.photo, number, font: FONT_HEIGHT_MM, circleR }),
     });
   }
-  const placements = placeLabels(items, { gap: LABEL_GAP_MM, font: FONT_HEIGHT_MM });
+  const placements = placeLabels(items, { gap: LABEL_GAP_MM, font: FONT_HEIGHT_MM, obstacles });
 
   const result = new Map();
   for (const [id, placement] of placements) {

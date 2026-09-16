@@ -150,6 +150,29 @@ describe('placeLabels', () => {
     expect(placeLabels(items, { gap: GAP, font: FONT }).get('a')!.displaced).toBe(false);
   });
 
+  it('obstacles는 라벨을 받지 않고 막기만 한다', () => {
+    const items = [{ id: 'a', number: 1, bounds: bounds(0, 0, 200, 200), block: block(100, 100) }];
+    const free = placeLabels(items, { gap: GAP, font: FONT }).get('a')!;
+    expect(free.anchor).toEqual([100, 300]);
+    expect(free.displaced).toBe(false);
+
+    const blocked = placeLabels(items, { gap: GAP, font: FONT, obstacles: [bounds(0, 250, 300, 400)] });
+    expect(blocked.size).toBe(1); // 장애물은 라벨을 받지 않는다
+    expect(blocked.get('a')!.anchor).toEqual([100, 400]);
+    expect(blocked.get('a')!.displaced).toBe(true);
+  });
+
+  it('obstacles는 자기 손상의 라벨도 막는다 (자기 제외 규칙은 items에만 적용된다)', () => {
+    const items = [{ id: 'a', number: 1, bounds: bounds(0, 0, 200, 200), block: block(100, 100) }];
+    const placed = placeLabels(items, { gap: GAP, font: FONT, obstacles: [bounds(0, 250, 300, 400)] }).get('a')!;
+    expect(placed.anchor).toEqual([100, 400]);
+  });
+
+  it('obstacles를 주지 않으면 지금과 같다', () => {
+    const items = [{ id: 'a', number: 1, bounds: bounds(0, 0, 200, 200), block: block(100, 100) }];
+    expect(placeLabels(items, { gap: GAP, font: FONT, obstacles: [] }).get('a')!.anchor).toEqual([100, 300]);
+  });
+
   it('번호가 없는 손상은 뒤로 미룬다 (같으면 id 순서)', () => {
     const items = [
       { id: 'z', number: null, bounds: bounds(0, 0, 1000, 400), block: block(1800, 750) },

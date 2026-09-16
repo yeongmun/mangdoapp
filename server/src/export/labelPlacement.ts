@@ -17,7 +17,7 @@ import {
   labelBlock,
   placeBlock,
 } from '../../public/viewer/labelLayout.js';
-import { CIRCLE_RADIUS_FACTOR, FONT_HEIGHT_MM, LABEL_GAP_MM } from '../../public/viewer/overlay.js';
+import { CIRCLE_RADIUS_FACTOR, copyBoundsOf, FONT_HEIGHT_MM, LABEL_GAP_MM } from '../../public/viewer/overlay.js';
 import { dimensionTextOf, drawingNameOf, photoTextOf } from '../../public/viewer/quantities.js';
 import { dwgPointsOf } from './damageEntities.js';
 import { DAMAGE_COLOR, DAMAGE_LAYER, PHOTO_COLOR, PHOTO_LAYER, type DxfPair, type HandleAllocator } from './dxfDocument.js';
@@ -60,11 +60,15 @@ export interface LabelItem {
 // dwg 좌표가 없는 손상은 도면에 놓지 못하므로 Map에 넣지 않는다.
 export function damageLabels(items: LabelItem[]): Map<string, DamageLabel> {
   const entries = [];
+  const obstacles = [];
   for (const item of items) {
     const points = dwgPointsOf(item.damage);
     if (!points) continue;
     const bounds = boundsOf(points);
     if (!bounds) continue;
+    // 복제본 경계상자는 라벨을 받지 않고 막기만 한다(설계 3.4). 화면의 computeLabelPlacements와
+    // 같은 함수(copyBoundsOf)로 같은 순서에 넣어야 두 곳이 같은 답을 낸다.
+    obstacles.push(...copyBoundsOf(item.damage));
     entries.push({
       id: item.id,
       number: item.number,
@@ -80,7 +84,7 @@ export function damageLabels(items: LabelItem[]): Map<string, DamageLabel> {
     });
   }
 
-  const placements = placeLabels(entries, { gap: LABEL_GAP_MM, font: FONT_HEIGHT_MM });
+  const placements = placeLabels(entries, { gap: LABEL_GAP_MM, font: FONT_HEIGHT_MM, obstacles });
   const labels = new Map<string, DamageLabel>();
   for (const entry of entries) {
     const placement = placements.get(entry.id);
