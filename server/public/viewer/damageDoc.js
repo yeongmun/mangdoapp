@@ -1,8 +1,9 @@
 // 손상 문서(JSON 원본) 생성·검증·편집. 브라우저와 서버가 함께 쓴다. 모든 함수는 입력을 변경하지 않는다.
 
 import { getDamageType } from './damageTypes.js';
+import { polygonArea, polylineLength } from './geometry.js';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const MAX_HISTORY = 50;
 
 export function createEmptyDoc(drawingId, updatedAt) {
@@ -29,6 +30,11 @@ function isNullableCount(value) {
   return value === null || (Number.isInteger(value) && value >= 0);
 }
 
+// 도형의 점 개수 규칙: 사각형은 딱 4점, 선은 2점 이상(null = 개수 제한 없음, isPointList 규약).
+function pointCountFor(kind) {
+  return kind === 'rect' ? 4 : null;
+}
+
 function validateGeometry(damage, type, path, errors) {
   const geometry = damage.geometry;
   if (typeof geometry !== 'object' || geometry === null) {
@@ -41,7 +47,7 @@ function validateGeometry(damage, type, path, errors) {
     errors.push(`${path}.geometry.kind는 ${which}이어야 합니다.`);
     return false;
   }
-  const pointCount = expectedKind === 'rect' ? 4 : null;
+  const pointCount = pointCountFor(expectedKind);
   if (!isPointList(geometry.world, pointCount)) {
     errors.push(
       pointCount === 4
@@ -56,6 +62,37 @@ function validateGeometry(damage, type, path, errors) {
     return false;
   }
   return true;
+}
+
+// 복제본(copies)은 배열이고, 각 항목의 world는 geometry.kind의 점 개수 규칙을 따르며 dwg는
+// null이거나 world와 점 개수가 같다 — geometry와 똑같은 규칙이다(설계 2장). kind는 따로 두지
+// 않는다: 복제본은 언제나 첫 도형과 같은 모양이다.
+function validateCopies(damage, type, path, errors) {
+  const copies = damage.copies;
+  if (!Array.isArray(copies)) {
+    errors.push(`${path}.copies는 배열이어야 합니다.`);
+    return;
+  }
+  const pointCount = pointCountFor(type.kind === 'line' ? 'polyline' : 'rect');
+  copies.forEach((copy, i) => {
+    const where = `${path}.copies[${i}]`;
+    if (typeof copy !== 'object' || copy === null) {
+      errors.push(`${where}가 객체가 아닙니다.`);
+      return;
+    }
+    if (!isPointList(copy.world, pointCount)) {
+      errors.push(
+        pointCount === 4
+          ? `${where}.world는 유효한 점 4개여야 합니다.`
+          : `${where}.world는 유효한 점 2개 이상이어야 합니다.`,
+      );
+      return;
+    }
+    if (copy.dwg === null) return;
+    if (!isPointList(copy.dwg, copy.world.length)) {
+      errors.push(`${where}.dwg는 world와 점 개수가 같아야 합니다.`);
+    }
+  });
 }
 
 function validateMeasured(damage, path, errors) {
@@ -149,6 +186,7 @@ function validateDamage(damage, path, errors) {
   }
 
   const hasDwg = validateGeometry(damage, type, path, errors);
+  validateCopies(damage, type, path, errors);
   validateMeasured(damage, path, errors);
   validateComputed(damage, hasDwg, path, errors);
   validateAttrs(damage, type, path, errors);
@@ -259,14 +297,26 @@ function migrateV3ToV4(doc) {
   };
 }
 
-// 예전 문서를 읽을 때 한 단계씩 이어 붙여 v4로 올린다. 저장은 항상 v4로 한다.
+// v4의 각 손상에 copies = []를 채워 v5로 올린다(설계 2장). 복제본이 없는 손상은 이 값만 더해질
+// 뿐 지금까지와 완전히 같이 동작한다. 입력 doc과 손상 객체는 바꾸지 않는다.
+function migrateV4ToV5(doc) {
+  const damages = Array.isArray(doc.damages) ? doc.damages : [];
+  return {
+    ...doc,
+    schemaVersion: 5,
+    damages: damages.map((damage) => ({ ...damage, copies: [] })),
+  };
+}
+
+// 예전 문서를 읽을 때 한 단계씩 이어 붙여 v5로 올린다. 저장은 항상 v5로 한다.
 // 단계를 나눠 두면 새 버전이 생겨도 각 단계를 따로 검증할 수 있다.
 export function migrateDoc(doc, drawingId) {
   if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return null;
   if (doc.schemaVersion === SCHEMA_VERSION) return doc;
   const v2 = doc.schemaVersion === 1 ? migrateV1ToV2(doc, drawingId) : doc;
   const v3 = v2.schemaVersion === 2 ? migrateV2ToV3(v2) : v2;
-  return v3.schemaVersion === 3 ? migrateV3ToV4(v3) : v3;
+  const v4 = v3.schemaVersion === 3 ? migrateV3ToV4(v3) : v3;
+  return v4.schemaVersion === 4 ? migrateV4ToV5(v4) : v4;
 }
 
 /**
@@ -324,6 +374,105 @@ export function updateDamage(editor, damageId, changes, now) {
   };
   const damages = editor.doc.damages.map((damage, i) => (i === index ? updated : damage));
   return commit(editor, damages, now);
+}
+
+function copiesOf(damage) {
+  return Array.isArray(damage?.copies) ? damage.copies : [];
+}
+
+/**
+ * 손상의 도형 목록. 0번이 geometry(첫 도형), 1번부터 copies다(설계 2장). 복제본의 kind는 따로
+ * 두지 않는다 — 언제나 geometry.kind와 같다.
+ * @type {(damage: any) => Array<{ world: number[][], dwg: number[][] | null }>}
+ */
+export function shapesOf(damage) {
+  const first = {
+    world: Array.isArray(damage?.geometry?.world) ? damage.geometry.world : [],
+    dwg: Array.isArray(damage?.geometry?.dwg) ? damage.geometry.dwg : null,
+  };
+  return [
+    first,
+    ...copiesOf(damage).map((copy) => ({
+      world: Array.isArray(copy?.world) ? copy.world : [],
+      dwg: Array.isArray(copy?.dwg) ? copy.dwg : null,
+    })),
+  ];
+}
+
+/** @type {(damage: any) => number} */
+export function shapeCountOf(damage) {
+  return 1 + copiesOf(damage).length;
+}
+
+// 첫 도형이 바뀌면 computed도 같이 바꾼다. dwg가 없으면 둘 다 null이어야 한다 — validateComputed의
+// 규칙이라, 승격된 복제본에 dwg가 없는데 옛 값을 남겨 두면 저장이 통째로 막힌다.
+function computedFor(kind, dwg) {
+  if (!Array.isArray(dwg)) return { lengthDwg: null, areaDwg: null };
+  return kind === 'rect'
+    ? { lengthDwg: null, areaDwg: polygonArea(dwg) }
+    : { lengthDwg: polylineLength(dwg), areaDwg: null };
+}
+
+/**
+ * 복제본을 하나 더한다. 도형(world·dwg)은 부르는 쪽이 만들어 넘긴다 — 오른쪽으로 옮긴 자리의 dwg는
+ * 뷰어의 좌표 변환기(mapper)가 있어야 구할 수 있고, 이 파일은 서버도 쓰므로 mapper를 모른다.
+ * 개소는 그 시점의 도형 수로 맞춘다(설계 2장 "항상").
+ * @type {(editor: Editor, damageId: string, shape: { world: number[][], dwg: number[][] | null }, now: string) => Editor}
+ */
+export function duplicateShape(editor, damageId, shape, now) {
+  const index = editor.doc.damages.findIndex((damage) => damage.id === damageId);
+  if (index === -1) return editor;
+  const current = editor.doc.damages[index];
+  const copies = [...copiesOf(current), { world: shape.world, dwg: shape.dwg ?? null }];
+  const updated = { ...current, copies, measured: { ...current.measured, count: copies.length + 1 } };
+  return commit(editor, editor.doc.damages.map((damage, i) => (i === index ? updated : damage)), now);
+}
+
+/**
+ * 도형 하나만 지운다(설계 3.3). 첫 도형(0번)을 지우면 copies[0]이 새 geometry가 되고 — 번호 라벨이
+ * 그 도형으로 옮겨간다 — 마지막 남은 도형을 지우면 손상 자체가 사라진다. 지운 뒤 개소를 도형 수로 맞춘다.
+ * @type {(editor: Editor, damageId: string, shapeIndex: number, now: string) => Editor}
+ */
+export function removeShape(editor, damageId, shapeIndex, now) {
+  const index = editor.doc.damages.findIndex((damage) => damage.id === damageId);
+  if (index === -1) return editor;
+  const current = editor.doc.damages[index];
+  if (!Number.isInteger(shapeIndex) || shapeIndex < 0 || shapeIndex >= shapeCountOf(current)) return editor;
+  if (shapeCountOf(current) === 1) return removeDamage(editor, damageId, now);
+
+  const copies = copiesOf(current);
+  let updated;
+  if (shapeIndex === 0) {
+    const [promoted, ...rest] = copies;
+    updated = {
+      ...current,
+      geometry: { ...current.geometry, world: promoted.world, dwg: promoted.dwg ?? null },
+      copies: rest,
+      computed: computedFor(current.geometry.kind, promoted.dwg ?? null),
+    };
+  } else {
+    updated = { ...current, copies: copies.filter((_, i) => i !== shapeIndex - 1) };
+  }
+  updated = { ...updated, measured: { ...current.measured, count: shapeCountOf(updated) } };
+  return commit(editor, editor.doc.damages.map((damage, i) => (i === index ? updated : damage)), now);
+}
+
+/**
+ * 도형 하나(첫 도형이든 복제본이든)의 좌표만 바꾼다. computed는 첫 도형을 바꿨을 때만 다시 센다
+ * (설계 3.3). 개소는 건드리지 않는다 — 도형 수가 변하지 않기 때문이다.
+ * @type {(editor: Editor, damageId: string, shapeIndex: number, shape: { world: number[][], dwg: number[][] | null }, now: string) => Editor}
+ */
+export function updateShape(editor, damageId, shapeIndex, shape, now) {
+  const current = editor.doc.damages.find((damage) => damage.id === damageId);
+  if (!current) return editor;
+  if (!Number.isInteger(shapeIndex) || shapeIndex < 0 || shapeIndex >= shapeCountOf(current)) return editor;
+  const dwg = shape.dwg ?? null;
+  if (shapeIndex === 0) {
+    const changes = { geometry: { world: shape.world, dwg }, computed: computedFor(current.geometry.kind, dwg) };
+    return updateDamage(editor, damageId, changes, now);
+  }
+  const copies = copiesOf(current).map((copy, i) => (i === shapeIndex - 1 ? { world: shape.world, dwg } : copy));
+  return updateDamage(editor, damageId, { copies }, now);
 }
 
 /**

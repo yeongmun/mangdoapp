@@ -4,12 +4,17 @@ import {
   canUndo,
   createEditor,
   createEmptyDoc,
+  duplicateShape,
   MAX_HISTORY,
   migrateDoc,
   removeDamage,
+  removeShape,
   SCHEMA_VERSION,
+  shapeCountOf,
+  shapesOf,
   undo,
   updateDamage,
+  updateShape,
   validateDamageDoc,
 } from '../public/viewer/damageDoc.js';
 
@@ -24,6 +29,7 @@ function lineDamage(id: string, overrides: Record<string, unknown> = {}) {
     type: 'crack',
     createdAt: T0,
     geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[100, 100], [103, 104]] },
+    copies: [],
     measured: { width: 0.3, length: 5, count: 2 },
     computed: { lengthDwg: 5, areaDwg: null },
     attrs: { note: '', statusText: '', photoNumbers: [] },
@@ -41,6 +47,7 @@ function areaDamage(id: string, overrides: Record<string, unknown> = {}) {
       world: [[0, 0], [2, 0], [2, 1], [0, 1]],
       dwg: [[10, 10], [12, 10], [12, 11], [10, 11]],
     },
+    copies: [],
     measured: { width: 1.2, length: 1.5, count: 1 },
     computed: { lengthDwg: null, areaDwg: 2 },
     attrs: { note: '', statusText: '', photoNumbers: [] },
@@ -53,10 +60,10 @@ function docWith(damages: unknown[]) {
 }
 
 describe('createEmptyDoc', () => {
-  it('schemaVersion 4인 빈 문서를 만든다', () => {
-    expect(SCHEMA_VERSION).toBe(4);
+  it('schemaVersion 5인 빈 문서를 만든다', () => {
+    expect(SCHEMA_VERSION).toBe(5);
     expect(createEmptyDoc(DRAWING, T0)).toEqual({
-      schemaVersion: 4,
+      schemaVersion: 5,
       drawingId: DRAWING,
       updatedAt: T0,
       damages: [],
@@ -75,7 +82,7 @@ describe('validateDamageDoc', () => {
     expect(
       validateDamageDoc({ schemaVersion: 2, drawingId: 'd_other', updatedAt: 'nope', damages: 'x' }, DRAWING),
     ).toEqual([
-      'schemaVersion은 4이어야 합니다.',
+      'schemaVersion은 5이어야 합니다.',
       'drawingId가 주소와 다릅니다.',
       'updatedAt이 올바른 날짜가 아닙니다.',
       'damages는 배열이어야 합니다.',
@@ -252,6 +259,34 @@ describe('validateDamageDoc', () => {
       expect(validateDamageDoc(docWith([lineDamage('a', { attrs: { note: '', statusText: '', photoNumbers: [] } })]), DRAWING)).toEqual([]);
     });
   });
+
+  it('복제본은 배열이어야 하고, 없으면 오류다', () => {
+    const { copies, ...withoutCopies } = lineDamage('a') as Record<string, unknown>;
+    expect(validateDamageDoc(docWith([withoutCopies]), DRAWING)).toContain('damages[0].copies는 배열이어야 합니다.');
+    expect(validateDamageDoc(docWith([lineDamage('a', { copies: {} })]), DRAWING)).toContain(
+      'damages[0].copies는 배열이어야 합니다.',
+    );
+  });
+
+  it('복제본의 점 개수 규칙은 geometry와 같다 (면형 4점, 선형 2점 이상)', () => {
+    expect(validateDamageDoc(docWith([areaDamage('a', { copies: [{ world: [[0, 0], [2, 0], [2, 1], [0, 1]], dwg: null }] })]), DRAWING)).toEqual([]);
+    expect(validateDamageDoc(docWith([areaDamage('a', { copies: [{ world: [[0, 0], [2, 0], [2, 1]], dwg: null }] })]), DRAWING)).toContain(
+      'damages[0].copies[0].world는 유효한 점 4개여야 합니다.',
+    );
+    expect(validateDamageDoc(docWith([lineDamage('a', { copies: [{ world: [[0, 0]], dwg: null }] })]), DRAWING)).toContain(
+      'damages[0].copies[0].world는 유효한 점 2개 이상이어야 합니다.',
+    );
+    expect(validateDamageDoc(docWith([lineDamage('a', { copies: ['nope'] })]), DRAWING)).toContain(
+      'damages[0].copies[0]가 객체가 아닙니다.',
+    );
+  });
+
+  it('복제본의 dwg는 null이거나 world와 점 개수가 같아야 한다', () => {
+    expect(validateDamageDoc(docWith([lineDamage('a', { copies: [{ world: [[0, 0], [3, 4]], dwg: [[9, 9], [9, 10]] }] })]), DRAWING)).toEqual([]);
+    expect(validateDamageDoc(docWith([lineDamage('a', { copies: [{ world: [[0, 0], [3, 4]], dwg: [[9, 9]] }] })]), DRAWING)).toContain(
+      'damages[0].copies[0].dwg는 world와 점 개수가 같아야 합니다.',
+    );
+  });
 });
 
 describe('migrateDoc', () => {
@@ -316,7 +351,7 @@ describe('migrateDoc', () => {
 
   it('v2의 폭·길이를 v3 측정값으로 옮기고(photoNumbers는 빈 배열) 그 결과는 검증을 통과한다', () => {
     const migrated = migrateDoc(v2Doc, DRAWING);
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.drawingId).toBe(DRAWING);
     expect(migrated.updatedAt).toBe(T1);
     expect(migrated.damages[0]).toEqual({
@@ -324,6 +359,7 @@ describe('migrateDoc', () => {
       type: 'crack',
       createdAt: T0,
       geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[100, 100], [103, 104]] },
+      copies: [],
       measured: { width: 0.2, length: 1.5, count: null },
       computed: { lengthDwg: 5, areaDwg: null },
       attrs: { note: '재확인', statusText: '', photoNumbers: [] },
@@ -406,15 +442,16 @@ describe('migrateDoc', () => {
     expect(migrated.damages[0].attrs.note).toBe('재확인');
   });
 
-  it('v1 문서는 v2·v3를 거쳐 v4까지 변환된다', () => {
+  it('v1 문서는 v2·v3·v4를 거쳐 v5까지 변환된다', () => {
     const migrated = migrateDoc(v1Doc, DRAWING);
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.updatedAt).toBe(T1);
     expect(migrated.damages[0]).toEqual({
       id: 'old-1',
       type: 'crack',
       createdAt: T0,
       geometry: { kind: 'polyline', world: [[0, 0], [3, 4]], dwg: [[100, 100], [103, 104]] },
+      copies: [],
       measured: { width: null, length: null, count: null },
       computed: { lengthDwg: 5, areaDwg: null },
       attrs: { note: '', statusText: '', photoNumbers: [] },
@@ -424,9 +461,9 @@ describe('migrateDoc', () => {
   });
 
   // 근거: docs/superpowers/specs/2026-09-13-damage-attributes-design.md 9.3
-  it('v3 문서는 각 손상에 photoNumbers = []를 채워 v4로 변환되고, 다른 값은 그대로다', () => {
+  it('v3 문서는 각 손상에 photoNumbers = []를 채워(이후 v5까지) 변환되고, 다른 값은 그대로다', () => {
     const migrated = migrateDoc(v3Doc, DRAWING);
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.drawingId).toBe(DRAWING);
     expect(migrated.updatedAt).toBe(T2);
     expect(migrated.damages[0]).toEqual({
@@ -436,15 +473,32 @@ describe('migrateDoc', () => {
     expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
   });
 
-  it('v3 → v4 변환은 입력 문서와 각 손상 객체를 바꾸지 않는다', () => {
+  it('v3 → v5 변환은 입력 문서와 각 손상 객체를 바꾸지 않는다', () => {
     const snapshot = JSON.parse(JSON.stringify(v3Doc));
     migrateDoc(v3Doc, DRAWING);
     expect(v3Doc).toEqual(snapshot);
   });
 
-  it('이미 v4면 그대로 돌려준다', () => {
+  it('이미 v5면 그대로 돌려준다', () => {
     const doc = docWith([areaDamage('a')]);
     expect(migrateDoc(doc, DRAWING)).toBe(doc);
+  });
+
+  it('v4 문서는 각 손상에 copies = []를 채워 v5로 변환되고, 다른 값은 그대로다', () => {
+    const v4 = { schemaVersion: 4, drawingId: DRAWING, updatedAt: T0, damages: [lineDamage('a')] };
+    const { copies, ...withoutCopies } = lineDamage('a') as Record<string, unknown>;
+    const migrated = migrateDoc({ ...v4, damages: [withoutCopies] }, DRAWING)!;
+    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.damages[0]).toEqual(lineDamage('a'));
+    expect(validateDamageDoc(migrated, DRAWING)).toEqual([]);
+  });
+
+  it('v4 → v5 변환은 입력 문서와 각 손상 객체를 바꾸지 않는다', () => {
+    const { copies, ...withoutCopies } = lineDamage('a') as Record<string, unknown>;
+    const v4 = { schemaVersion: 4, drawingId: DRAWING, updatedAt: T0, damages: [withoutCopies] };
+    migrateDoc(v4, DRAWING);
+    expect(v4.schemaVersion).toBe(4);
+    expect(withoutCopies).not.toHaveProperty('copies');
   });
 
   it('객체가 아니면 null', () => {
@@ -532,5 +586,118 @@ describe('editor', () => {
   it('updateDamage는 없는 id면 같은 editor를 돌려준다', () => {
     const editor = createEditor(createEmptyDoc(DRAWING, T0));
     expect(updateDamage(editor, 'nope', { measured: { count: 1 } }, T1)).toBe(editor);
+  });
+});
+
+describe('도형 단위 편집', () => {
+  const COPY_1 = { world: [[5, 0], [7, 0], [7, 1], [5, 1]], dwg: [[15, 10], [17, 10], [17, 11], [15, 11]] };
+  const COPY_2 = { world: [[9, 0], [11, 0], [11, 1], [9, 1]], dwg: [[19, 10], [21, 10], [21, 11], [19, 11]] };
+
+  it('shapesOf는 첫 도형을 0번으로, 복제본을 1번부터 돌려준다', () => {
+    const damage = areaDamage('a', { copies: [COPY_1] });
+    expect(shapeCountOf(damage)).toBe(2);
+    expect(shapesOf(damage)).toEqual([
+      { world: [[0, 0], [2, 0], [2, 1], [0, 1]], dwg: [[10, 10], [12, 10], [12, 11], [10, 11]] },
+      { world: [[5, 0], [7, 0], [7, 1], [5, 1]], dwg: [[15, 10], [17, 10], [17, 11], [15, 11]] },
+    ]);
+  });
+
+  it('복제본이 없으면 도형은 하나이고 dwg가 없으면 null이다', () => {
+    expect(shapeCountOf(areaDamage('a'))).toBe(1);
+    expect(shapesOf(areaDamage('a', { geometry: { kind: 'rect', world: [[0, 0], [2, 0], [2, 1], [0, 1]], dwg: null } }))).toEqual([
+      { world: [[0, 0], [2, 0], [2, 1], [0, 1]], dwg: null },
+    ]);
+  });
+
+  it('duplicateShape는 복제본을 맨 뒤에 붙이고 개소를 도형 수로 맞춘다', () => {
+    const editor = createEditor(docWith([areaDamage('a')]));
+    const next = duplicateShape(editor, 'a', COPY_1, T1);
+    expect(next.doc.damages[0].copies).toEqual([COPY_1]);
+    expect(next.doc.damages[0].measured.count).toBe(2);
+    expect(next.doc.updatedAt).toBe(T1);
+    // 사용자가 고친 개소도 다음 복제 때 도형 수로 덮인다(설계 2장 "항상").
+    const third = duplicateShape(next, 'a', COPY_2, T2);
+    expect(third.doc.damages[0].measured.count).toBe(3);
+    expect(validateDamageDoc(third.doc, DRAWING)).toEqual([]);
+  });
+
+  it('duplicateShape는 없는 id면 같은 editor를 돌려주고 원본을 바꾸지 않는다', () => {
+    const editor = createEditor(docWith([areaDamage('a')]));
+    expect(duplicateShape(editor, 'nope', COPY_1, T1)).toBe(editor);
+    expect(editor.doc.damages[0].copies).toEqual([]);
+  });
+
+  it('removeShape는 복제본 하나만 지우고 개소를 줄인다', () => {
+    const editor = createEditor(docWith([areaDamage('a', { copies: [COPY_1, COPY_2], measured: { width: 1.2, length: 1.5, count: 3 } })]));
+    const next = removeShape(editor, 'a', 1, T1);
+    expect(next.doc.damages[0].copies).toEqual([COPY_2]);
+    expect(next.doc.damages[0].measured.count).toBe(2);
+  });
+
+  it('removeShape로 첫 도형을 지우면 copies[0]이 새 geometry가 되고 computed를 다시 센다', () => {
+    const editor = createEditor(docWith([areaDamage('a', { copies: [COPY_1], measured: { width: 1.2, length: 1.5, count: 2 } })]));
+    const next = removeShape(editor, 'a', 0, T1);
+    const damage = next.doc.damages[0];
+    expect(damage.geometry).toEqual({ kind: 'rect', world: COPY_1.world, dwg: COPY_1.dwg });
+    expect(damage.copies).toEqual([]);
+    // 승격된 도형의 dwg 넓이 = 2 × 1 = 2
+    expect(damage.computed).toEqual({ lengthDwg: null, areaDwg: 2 });
+    expect(damage.measured.count).toBe(1);
+  });
+
+  it('dwg가 없는 복제본이 승격되면 computed는 모두 null이 되어 검증을 통과한다', () => {
+    const noDwg = { world: [[5, 0], [7, 0], [7, 1], [5, 1]], dwg: null };
+    const editor = createEditor(docWith([areaDamage('a', { copies: [noDwg] })]));
+    const next = removeShape(editor, 'a', 0, T1);
+    expect(next.doc.damages[0].computed).toEqual({ lengthDwg: null, areaDwg: null });
+    expect(validateDamageDoc(next.doc, DRAWING)).toEqual([]);
+  });
+
+  it('removeShape로 마지막 남은 도형을 지우면 손상 자체가 사라진다', () => {
+    const editor = createEditor(docWith([areaDamage('a'), lineDamage('b')]));
+    const next = removeShape(editor, 'a', 0, T1);
+    expect(next.doc.damages.map((d: { id: string }) => d.id)).toEqual(['b']);
+  });
+
+  it('removeShape는 없는 도형 번호면 같은 editor를 돌려준다', () => {
+    const editor = createEditor(docWith([areaDamage('a', { copies: [COPY_1] })]));
+    expect(removeShape(editor, 'a', 2, T1)).toBe(editor);
+    expect(removeShape(editor, 'a', -1, T1)).toBe(editor);
+    expect(removeShape(editor, 'nope', 0, T1)).toBe(editor);
+  });
+
+  it('복제와 복제본 삭제는 한 번에 되돌려진다', () => {
+    const editor = createEditor(docWith([areaDamage('a')]));
+    const afterCopy = duplicateShape(editor, 'a', COPY_1, T1);
+    const afterRemove = removeShape(afterCopy, 'a', 1, T2);
+    expect(afterRemove.doc.damages[0].copies).toEqual([]);
+    const undone = undo(afterRemove, T2);
+    expect(undone.doc.damages[0].copies).toEqual([COPY_1]);
+    expect(undone.doc.damages[0].measured.count).toBe(2);
+    expect(undo(undone, T2).doc.damages[0].copies).toEqual([]);
+  });
+
+  it('updateShape는 첫 도형을 바꿀 때만 computed를 다시 센다', () => {
+    const editor = createEditor(docWith([areaDamage('a', { copies: [COPY_1] })]));
+    // 첫 도형을 가로 4로 넓히면 dwg 넓이 = 4 × 1 = 4
+    const moved = updateShape(editor, 'a', 0, { world: [[0, 0], [4, 0], [4, 1], [0, 1]], dwg: [[10, 10], [14, 10], [14, 11], [10, 11]] }, T1);
+    expect(moved.doc.damages[0].computed).toEqual({ lengthDwg: null, areaDwg: 4 });
+    // 복제본을 옮겨도 computed와 개소는 그대로다
+    const copyMoved = updateShape(moved, 'a', 1, COPY_2, T2);
+    expect(copyMoved.doc.damages[0].copies).toEqual([COPY_2]);
+    expect(copyMoved.doc.damages[0].computed).toEqual({ lengthDwg: null, areaDwg: 4 });
+    expect(copyMoved.doc.damages[0].measured).toEqual({ width: 1.2, length: 1.5, count: 1 });
+  });
+
+  it('updateShape는 선형 손상의 첫 도형에서 길이를 다시 센다', () => {
+    const editor = createEditor(docWith([lineDamage('a')]));
+    // dwg [[0,0],[30,40]] 의 길이 = 50
+    const next = updateShape(editor, 'a', 0, { world: [[0, 0], [3, 4]], dwg: [[0, 0], [30, 40]] }, T1);
+    expect(next.doc.damages[0].computed).toEqual({ lengthDwg: 50, areaDwg: null });
+  });
+
+  it('updateShape는 없는 도형 번호면 같은 editor를 돌려준다', () => {
+    const editor = createEditor(docWith([areaDamage('a')]));
+    expect(updateShape(editor, 'a', 1, COPY_1, T1)).toBe(editor);
   });
 });
