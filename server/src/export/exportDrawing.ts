@@ -278,13 +278,19 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
     return dx;
   }
 
-  /** 이 손상을 어디에 그릴 것인가 */
-  function damageShiftOf(entry: Included): number {
-    if (entry.frameIndex === null) return looseShift(boundsCenter([entry.points])[0]);
+  /**
+   * 이 손상을 어디에 그릴 것인가 — 넘치는 틀은 장마다 그 틀의 손상 전부를 그린다(사용자 결정
+   * 2026-09-16, 설계 5.3 갱신). 자기 번호가 속한 장만이 아니라 offset(k) + p × pitch(k)로
+   * 장 p = 0…pages-1 전부에 한 번씩 그린다 — 원본 장(p = 0)도 예외가 아니다. 표만 장마다 다르다.
+   */
+  function damageShiftsOf(entry: Included): number[] {
+    if (entry.frameIndex === null) return [looseShift(boundsCenter([entry.points])[0])];
     const plan = planByFrame.get(entry.frameIndex);
-    if (!plan) return 0;
-    if (plan.pages <= 1 || plan.dataRows <= 0) return plan.offset;
-    return plan.offset + pageOf(entry.number, plan.dataRows) * plan.pitch;
+    if (!plan) return [0];
+    if (plan.pages <= 1 || plan.dataRows <= 0) return [plan.offset];
+    const dxs: number[] = [];
+    for (let page = 0; page < plan.pages; page++) dxs.push(plan.offset + page * plan.pitch);
+    return dxs;
   }
 
   const pairs: DxfPair[] = [];
@@ -295,10 +301,11 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
     included.map((entry) => ({ id: entry.id, number: entry.number > 0 ? entry.number : null, damage: entry.damage })),
   );
   for (const entry of included) {
-    const dx = damageShiftOf(entry);
-    appendAll(pairs, translatePairs(damageEntities(entry.damage, alloc, owner, circleWarnings), dx, 0));
     const label = labels.get(entry.id);
-    if (label) appendAll(pairs, translatePairs(labelEntities(label, alloc, owner), dx, 0));
+    for (const dx of damageShiftsOf(entry)) {
+      appendAll(pairs, translatePairs(damageEntities(entry.damage, alloc, owner, circleWarnings), dx, 0));
+      if (label) appendAll(pairs, translatePairs(labelEntities(label, alloc, owner), dx, 0));
+    }
   }
   if (circleWarnings.circlesTruncated) warnings.push(EXPORT_WARNINGS.circlesTruncated);
   // 도면에는 그렸지만 번호를 받지 못한 손상. dwg가 없어 아예 그리지 못한 손상(skipped)은

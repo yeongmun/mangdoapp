@@ -519,20 +519,24 @@ describe('exportDamagesToDxf', () => {
       expect(all.filter((t) => t.value === '6')).toHaveLength(1);
     });
 
-    it('4번 손상의 도형·라벨이 복사본 자리로 옮겨 그려진다', async () => {
+    // 사용자 결정(2026-09-16): 복사본에는 그 틀의 손상 전부가 그려진다 — 1번(원래 표에 들어가는
+    // 손상)도 복사본 자리에 다시 그려지고, 4번(복사본 표에 들어가는 손상)도 원본 자리에 그려진다.
+    // 도형이 한 손상마다 장 수만큼(여기서는 2번) 그려지는 셈이다.
+    it('넘치는 틀의 모든 손상이 원본 장·복사본 장 모두에 그려진다', async () => {
       const damages = [1, 2, 3, 4].map(rightDamage);
       const result = exportDamagesToDxf(await twoFrames(), damages);
       const doc = parseDxf(result.dxfText);
-      // LWPOLYLINE의 첫 10 좌표를 모아 본다. 4번(x 51500)만 +49000 = 100500이다.
+      // LWPOLYLINE의 첫 10 좌표를 모아 본다.
       const xs: number[] = [];
       for (let i = 0; i < doc.pairs.length; i++) {
         if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== 'LWPOLYLINE') continue;
         const x = doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value;
         xs.push(Number(x));
       }
-      expect(xs).toContain(51200); // 1번은 제자리(51100 + 1*100)
-      expect(xs).toContain(100500); // 4번은 51500 + 49000
-      expect(xs).not.toContain(51500);
+      expect(xs).toContain(51200); // 1번 원본 자리(51100 + 1*100)
+      expect(xs).toContain(100200); // 1번도 복사본 자리에 그려진다(51200 + 49000)
+      expect(xs).toContain(51500); // 4번도 원본(장 0) 자리에 그려진다(51100 + 4*100)
+      expect(xs).toContain(100500); // 4번 복사본 자리(51500 + 49000)
     });
 
     it('복사본 표에는 그 장의 손상만 들어간다', async () => {
@@ -797,15 +801,16 @@ describe('exportDamagesToDxf', () => {
       //   틀 1 삽입점 50000 → 복사본 148000 → 표 원점 149000, 번호 칸 149100, 데이터 1행 y 3260.
       const four = texts(result.dxfText).filter((t) => t.value === '4' && Math.abs(t.y - 3260) < 1e-6);
       expect(four.map((t) => t.x)).toContain(149100);
-      // 틀 1의 4번 손상(r4, x 51500)은 복사본에만 그려진다: 51500 + 98000 = 149500. 한 번만 밀린
-      // 자리(100500)에는 없다. (51500 자체에는 틀 0의 4번 손상 l4가 2500 + 49000으로 와 있다.)
+      // 틀 1의 4번 손상(r4, x 51500)은 이제 틀 1의 두 장 모두에 그려진다(2026-09-16 결정):
+      // 장 0(offset만, 49000) → 51500 + 49000 = 100500, 장 1(offset + pitch, 98000) → 149500.
+      // (51500 자체에는 틀 0의 4번 손상 l4의 복사본이 2500 + 49000으로 따로 와 있다 — 우연히 같은 x다.)
       const doc = parseDxf(result.dxfText);
       const polyXs = doc.pairs
         .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
         .filter((i) => i >= 0)
         .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
       expect(polyXs.filter((x) => x === 149500)).toHaveLength(1);
-      expect(polyXs).not.toContain(100500);
+      expect(polyXs).toContain(100500);
     });
 
     // Task 3 리뷰 Important #2 — pages ≥ 3(스펙 §8 "71개 → 3장")이 end-to-end로 한 번도 나오지
@@ -832,14 +837,16 @@ describe('exportDamagesToDxf', () => {
       expect(cell('8', 3220)!.x).toBeCloseTo(100100, 6);
       expect(cell('9', 3180)!.x).toBeCloseTo(100100, 6);
 
-      // 7번 손상(leftDamage(7), 도형 x 2100+7*100=2800)은 셋째 장(+2×pitch=98000)에서만 그려진다.
+      // 7번 손상(leftDamage(7), 도형 x 2100+7*100=2800)은 이제 세 장 모두에 그려진다
+      // (2026-09-16 결정): 원본 2800, 둘째 장 2800+49000=51800, 셋째 장 2800+98000=100800.
       const doc = parseDxf(result.dxfText);
       const polyXs = doc.pairs
         .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
         .filter((i) => i >= 0)
         .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
-      expect(polyXs).toContain(100800); // 2800 + 98000
-      expect(polyXs).not.toContain(51800); // 한 번만 밀린 자리(+pitch)에는 없다
+      expect(polyXs).toContain(2800);
+      expect(polyXs).toContain(51800); // +pitch
+      expect(polyXs).toContain(100800); // +2×pitch
 
       // 틀 1은 넘치지 않았지만 틀 0의 두 복사본만큼(2×pitch=98000) 오른쪽으로 밀린다.
       const moved = findFrames(doc);
@@ -876,8 +883,11 @@ describe('exportDamagesToDxf', () => {
         .map((p, i) => (p.code === 0 && p.value === 'LWPOLYLINE' ? i : -1))
         .filter((i) => i >= 0)
         .map((i) => Number(doc.pairs.slice(i, i + 30).find((p) => p.code === 10)!.value));
-      expect(polyXs).toContain(90500); // rightDamage(4)의 51500 + pitch(1) 39000
-      expect(polyXs).not.toContain(100500); // 균일 pitch였다면 왔을 자리 — 안 온다
+      // rightDamage(4)는 이제 틀 1의 두 장 모두에 그려진다(2026-09-16 결정): 원본 자리 51500,
+      // 복사본 자리 51500 + pitch(1) 39000 = 90500.
+      expect(polyXs).toContain(51500);
+      expect(polyXs).toContain(90500);
+      expect(polyXs).not.toContain(100500); // 균일 pitch(49000)였다면 왔을 자리 — 실제 pitch(39000)라 안 온다
     });
 
     it('틀이 없는 도면은 옛 넘침(표를 아래에) 그대로다', async () => {
