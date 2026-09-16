@@ -1,8 +1,20 @@
-import { addDamage, canUndo, createEditor, migrateDoc, removeDamage, undo, updateDamage, validateDamageDoc } from './damageDoc.js';
+import {
+  addDamage,
+  canUndo,
+  createEditor,
+  duplicateShape,
+  migrateDoc,
+  removeShape,
+  shapeCountOf,
+  shapesOf,
+  undo,
+  updateDamage,
+  updateShape,
+  validateDamageDoc,
+} from './damageDoc.js';
 import { DAMAGE_TYPES, DEFAULT_DAMAGE_TYPE_ID, getDamageType } from './damageTypes.js';
-import { polygonArea, polylineLength } from './geometry.js';
 import { createCoordinateMapper } from './coords.js';
-import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, pickDamage } from './crackTool.js';
+import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, offsetShape, pickDamage } from './crackTool.js';
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
 import { formatQuantity, parsePhotoNumbers, quantityOf, statusTextOf, unitOf, widthUnitOf } from './quantities.js';
@@ -168,10 +180,14 @@ async function start() {
     migratedBackup && validateDamageDoc(migratedBackup, drawingId).length === 0 ? migratedBackup : null;
   const initial = chooseInitialDoc(serverDocV3, usableBackup);
   let editor = createEditor(initial.doc);
+  // 선택은 (손상 id, 도형 번호)다. 0이 geometry, 1부터 copies[i-1](설계 3.3).
   let selectedId = null;
+  let selectedShape = 0;
   let fingerDraw = false;
   let coordCheck = false;
   let activeTypeId = DEFAULT_DAMAGE_TYPE_ID;
+  // 유형 셀렉트박스를 조작한 뒤 **처음 그린** 손상에만 속성창을 연다(설계 3.1). 한 번 쓰면 꺼진다.
+  let openPropsOnNextDamage = false;
   const nowIso = () => new Date().toISOString();
 
   for (const type of DAMAGE_TYPES) {
@@ -181,25 +197,33 @@ async function start() {
     $('damageType').append(option);
   }
   $('damageType').value = activeTypeId;
-  $('damageType').addEventListener('change', () => {
+  function armProps() {
     activeTypeId = $('damageType').value;
-  });
+    openPropsOnNextDamage = true;
+  }
+  $('damageType').addEventListener('change', armProps);
+  // 같은 유형을 다시 골라도 change가 나지 않으므로 pointerup도 본다(설계 3.1).
+  $('damageType').addEventListener('pointerup', armProps);
 
   const selectedDamage = () => editor.doc.damages.find((damage) => damage.id === selectedId) ?? null;
 
-  // 선택된 손상의 화면 좌표 도형. crackTool의 getSelectedScreenShape로 넘긴다 — 모서리·회전 핸들
+  // 선택된 **도형**의 화면 좌표. crackTool의 getSelectedScreenShape로 넘긴다 — 모서리·회전 핸들
   // 판정은 kind === 'rect'일 때만 하고, 몸통을 끌어 옮기는 판정(hitSelectedShape)은 선·사각형
-  // 모두에서 한다(설계 §4 "선택한 손상 이동").
+  // 모두에서 한다(설계 §4 "선택한 손상 이동"). 복제본도 첫 도형과 똑같이 끌 수 있다.
   function selectedScreenShape() {
     const damage = selectedDamage();
     if (!damage) return null;
-    return { kind: damage.geometry.kind, points: damage.geometry.world.map((point) => mapper.worldToClient(point)) };
+    const shape = shapesOf(damage)[selectedShape];
+    if (!shape) return null;
+    return { kind: damage.geometry.kind, points: shape.world.map((point) => mapper.worldToClient(point)) };
   }
 
-  // 선택 상태를 바꾸는 유일한 곳. 속성창은 선택이 바뀔 때마다 닫는다(다른 손상의 값이 남아있지 않도록).
-  // 선택 자체가 속성창을 여는 일은 없다 — 여는 것은 사용자가 "속성" 버튼을 눌렀을 때뿐이다.
-  function setSelection(id) {
+  // 선택 상태를 바꾸는 유일한 곳. 속성창은 선택이 바뀔 때마다 닫는다(다른 손상의 값이 남아있지
+  // 않도록). 선택 자체가 속성창을 여는 일은 없다 — 여는 것은 사용자가 "속성"을 눌렀을 때와,
+  // 유형을 고른 뒤 처음 그렸을 때(openPropsOnNextDamage)뿐이다.
+  function setSelection(id, shapeIndex = 0) {
     selectedId = id;
+    selectedShape = shapeIndex;
     $('propsPanel').hidden = true;
   }
 
@@ -211,9 +235,10 @@ async function start() {
 
   function refresh() {
     overlay.setDamages(editor.doc.damages);
-    overlay.setSelected(selectedId);
+    overlay.setSelected(selectedId, selectedShape);
     $('undo').disabled = !canUndo(editor);
     $('delete').disabled = selectedId === null;
+    $('duplicate').disabled = selectedId === null;
     $('props').disabled = selectedId === null;
     // 망도틀 밖에 그린 손상은 번호를 받지 못한다 — 개수를 저장 배지 옆에 알린다(설계 5장).
     const outside = overlay.outsideFrameCount();
@@ -243,9 +268,21 @@ async function start() {
       showCoordinates(point);
       return true;
     }
-    setSelection(pickDamage(editor.doc.damages, point, mapper));
+    const picked = pickDamage(editor.doc.damages, point, mapper);
+    setSelection(picked ? picked.id : null, picked ? picked.shapeIndex : 0);
     refresh();
     return selectedId !== null;
+  }
+
+  // 새 손상을 문서에 넣는다. 유형을 고른 뒤 처음 그린 손상이면 선택하고 속성창까지 연다(설계 3.1).
+  // 깃발은 한 번 쓰면 꺼지므로 두 번째부터는 예전처럼 선택 없이 끝난다.
+  function addNewDamage(damage) {
+    const openNow = openPropsOnNextDamage;
+    openPropsOnNextDamage = false;
+    setSelection(openNow ? damage.id : null, 0);
+    apply(addDamage(editor, damage, nowIso()));
+    // apply → refresh가 overlay.setDamages로 번호를 다시 계산한 뒤라야 요약줄의 번호가 맞는다.
+    if (openNow) openProps();
   }
 
   createCrackInput({
@@ -270,8 +307,7 @@ async function start() {
         handleTap(lastPoint);
         return;
       }
-      setSelection(null);
-      apply(addDamage(editor, damage, nowIso()));
+      addNewDamage(damage);
     },
     onRect: (start, end) => {
       overlay.setDraft(null);
@@ -284,17 +320,17 @@ async function start() {
         handleTap(end);
         return;
       }
-      setSelection(null);
-      apply(addDamage(editor, damage, nowIso()));
+      addNewDamage(damage);
     },
     // screenPoints: 화면 좌표 점들. 크기 조절·회전은 항상 사각형(네 점)이고, 이동은 선택된 손상의
     // geometry.kind를 그대로 따른다(선이면 여러 점, 사각형이면 네 점) — 점 개수를 가정하지 않는다.
     onTransform: (screenPoints, status) => {
       const damage = selectedDamage();
       if (status === 'preview') {
-        // activeId를 같이 넘겨, 움직이는 draft 밑에 손 떼기 전 원래 도형·핸들이 겹쳐 보이지 않게 한다.
+        // activeId·activeShape를 같이 넘겨, 움직이는 draft 밑에 손 떼기 전 원래 도형·핸들이
+        // 겹쳐 보이지 않게 한다. 같은 손상의 다른 도형은 그대로 보인다.
         const kind = damage ? damage.geometry.kind : 'rect';
-        overlay.setDraft({ kind, points: screenPoints, activeId: selectedId });
+        overlay.setDraft({ kind, points: screenPoints, activeId: selectedId, activeShape: selectedShape });
         return;
       }
       overlay.setDraft(null);
@@ -305,14 +341,10 @@ async function start() {
       if (world.some((point) => point === null || !isFinitePoint(point))) return;
       const dwgPoints = world.map((point) => mapper.worldToDwg(point));
       const dwg = dwgPoints.every((point) => point !== null && isFinitePoint(point)) ? dwgPoints : null;
-      // computed는 선택된 손상의 geometry.kind에 따라 lengthDwg 또는 areaDwg만 채운다.
-      // measured(사용자가 입력한 물량)는 여기서 건드리지 않는다 — updateDamage는 changes에 없는
-      // 키를 그대로 둔다(damageDoc.test.ts의 "changes에 measured가 없으면..." 테스트로 고정해 둠).
-      const computed =
-        damage.geometry.kind === 'polyline'
-          ? { lengthDwg: dwg ? polylineLength(dwg) : null, areaDwg: null }
-          : { lengthDwg: null, areaDwg: dwg ? polygonArea(dwg) : null };
-      apply(updateDamage(editor, damage.id, { geometry: { world, dwg }, computed }, nowIso()));
+      // measured(사용자가 입력한 물량)는 건드리지 않는다 — 도형 수가 변하지 않으므로 개소도 그대로다.
+      // computed는 damageDoc.updateShape가 첫 도형(shapeIndex 0)일 때만 다시 센다 — 여기서 하면
+      // 복제본을 옮겨도 첫 도형 기준 값이 덮여 버린다.
+      apply(updateShape(editor, damage.id, selectedShape, { world, dwg }, nowIso()));
     },
   });
 
@@ -466,11 +498,31 @@ async function start() {
     setSelection(null);
     apply(undo(editor, nowIso()));
   });
+  // 선택된 도형을 오른쪽으로 옮긴 자리에 복제한다(설계 3.2). 새 복제본을 선택해 두므로 사용자는
+  // 바로 끌어서 제자리로 옮길 수 있다. 개소는 duplicateShape가 도형 수로 맞춘다.
+  $('duplicate').addEventListener('click', () => {
+    const damage = selectedDamage();
+    if (!damage) return;
+    const shape = shapesOf(damage)[selectedShape];
+    if (!shape) return;
+    const copy = offsetShape(shape.world, mapper);
+    // 크기가 0인 도형은 옮길 자리를 정할 수 없다 — 아무 일도 하지 않는다.
+    if (!copy) return;
+    // 복제본은 맨 뒤에 붙으므로 새 도형 번호는 지금 도형 수와 같다.
+    setSelection(damage.id, shapeCountOf(damage));
+    apply(duplicateShape(editor, damage.id, copy, nowIso()));
+  });
   $('delete').addEventListener('click', () => {
     if (selectedId === null) return;
+    const damage = selectedDamage();
     const id = selectedId;
-    setSelection(null);
-    apply(removeDamage(editor, id, nowIso()));
+    const shapeIndex = selectedShape;
+    // 선택된 도형만 지운다. 마지막 남은 도형이면 손상 자체가 사라지므로 선택도 지운다. 그 외에는
+    // 첫 도형을 지운 경우 복제본이 승격되고, 복제본을 지운 경우 첫 도형이 그대로 남으므로 두
+    // 경우 모두 첫 도형(0번)을 선택해 둔다 — 단순하고 예측 가능한 규칙이다(컨트롤러 지시).
+    const wasLast = !damage || shapeCountOf(damage) === 1;
+    setSelection(wasLast ? null : id, 0);
+    apply(removeShape(editor, id, shapeIndex, nowIso()));
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void syncer.flushNow();
