@@ -41,11 +41,23 @@ const FIELD_KEYWORDS: ReadonlyArray<{ field: RowField; test: RegExp }> = [
   { field: 'note', test: /비고/ },
 ];
 
-/** 머리글 매치가 이 수보다 적으면 머리글을 못 읽은 것으로 보고 옛 고정 순서로 되돌아간다. */
-const MIN_MATCHED_HEADERS = 3;
+/**
+ * 값이 들어가는 열(손상현황·가로·세로·개소·면적·단위) 가운데 머리글로 찾은 것이 이 수보다 적으면
+ * 머리글을 못 읽은 것으로 보고 옛 고정 순서로 되돌아간다. 번호·손상위치는 값이 없는 열이라 세지
+ * 않는다 — 구버전 템플릿은 그 둘과 손상현황만 읽혀 셋을 넘겼는데 나머지 열이 전부 비었다.
+ */
+const MIN_MATCHED_VALUE_HEADERS = 3;
+const VALUE_FIELDS: readonly RowField[] = ['status', 'width', 'length', 'count', 'quantity', 'unit'];
+
+// 표 제목·묶음 머리글은 열 이름이 아니다. "손상물량표"가 가로/폭 열 위에 걸쳐 있으면 "물량"이
+// 면적/연장으로 잘못 잡히고(2026-09-16 캐드 확인 2차 — 구버전 템플릿에서 실제로 났던 문제),
+// "손상규모"는 개소·면적 위에 걸친 묶음 이름이라 먼저 지운다.
+const GROUP_TITLES = ['손상물량표', '손상규모'];
 
 function normalizeHeader(text: string): string {
-  return text.replace(/\s/g, '').toLowerCase();
+  let normalized = text.replace(/\s/g, '').toLowerCase();
+  for (const title of GROUP_TITLES) normalized = normalized.split(title).join('');
+  return normalized;
 }
 
 export interface ColumnMap {
@@ -74,13 +86,14 @@ export function columnMapOf(headers: readonly string[]): ColumnMap {
 }
 
 /**
- * fillTable이 실제로 쓸 열 지도. 머리글로 찾은 매치가 `MIN_MATCHED_HEADERS`보다 적으면
+ * fillTable이 실제로 쓸 열 지도. 값 열의 머리글 매치가 `MIN_MATCHED_VALUE_HEADERS`보다 적으면
  * (머리글을 못 읽는 표) `usedFallback: true`와 함께 옛 고정 순서(`TABLE_COLUMN`)로 되돌아간다 —
  * 호출부(exportDrawing.ts)가 이 플래그로 `headersUnknown` 경고를 낸다.
  */
 export function resolvedColumnMap(headers: readonly string[]): { map: Partial<Record<RowField, number>>; usedFallback: boolean } {
-  const { map, matchedCount } = columnMapOf(headers);
-  if (matchedCount >= MIN_MATCHED_HEADERS) return { map, usedFallback: false };
+  const { map } = columnMapOf(headers);
+  const matchedValueFields = VALUE_FIELDS.filter((field) => field in map).length;
+  if (matchedValueFields >= MIN_MATCHED_VALUE_HEADERS) return { map, usedFallback: false };
   return { map: TABLE_COLUMN, usedFallback: true };
 }
 

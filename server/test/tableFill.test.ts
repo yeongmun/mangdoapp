@@ -135,6 +135,28 @@ describe('columnMapOf / resolvedColumnMap', () => {
     expect(usedFallback).toBe(true);
   });
 
+  // 2026-09-16 캐드 확인 2차: 구버전 템플릿의 표 블록에는 둘째 줄 머리글(가로/폭 등)이 없고
+  // 제목 "손상물량표"가 가로/폭 열 위에, 묶음 이름 "손상규모"가 개소 열 위에 걸쳐 있다.
+  it('구버전 템플릿 머리글(값 열은 손상현황뿐)이면 옛 고정 순서로 되돌아간다 — "손상물량표"의 물량이 면적으로 잡히지 않는다', () => {
+    const legacy = ['번호', '손상위치', '손상현황', '손상물량표', '', '손상규모', '', ''];
+    const { map: matched } = columnMapOf(legacy);
+    expect(matched).toEqual({ number: 0, location: 1, status: 2 });
+    const { map, usedFallback } = resolvedColumnMap(legacy);
+    expect(usedFallback).toBe(true);
+    expect(map).toEqual(TABLE_COLUMN);
+  });
+
+  it('제목이 열 머리글에 겹쳐도("손상물량표 가로/폭") 가로/폭으로 읽고, "손상규모 개소"는 개소로 읽는다', () => {
+    const headers = ['번호', '손상위치', '손상현황', '손상물량표 가로/폭', '세로/길이', '손상규모 개소', '면적/연장', '단위'];
+    expect(columnMapOf(headers).map).toEqual({ number: 0, location: 1, status: 2, width: 3, length: 4, count: 5, quantity: 6, unit: 7 });
+  });
+
+  it('번호·손상위치는 값 열이 아니라 매치 수에 들지 않는다 — 값 열 2개면 되돌아간다', () => {
+    const { usedFallback } = resolvedColumnMap(['번호', '손상위치', '손상현황', '가로', '', '', '', '']);
+    expect(usedFallback).toBe(true);
+    expect(resolvedColumnMap(['번호', '손상위치', '손상현황', '가로', '세로', '', '', '']).usedFallback).toBe(false);
+  });
+
   it('매치가 3개 이상이면 머리글 그대로 쓴다(고정 순서로 되돌아가지 않는다)', () => {
     const headers = ['번호', '손상현황', '비고', '개소', '가로', '세로', '면적', '단위'];
     const { map, usedFallback } = resolvedColumnMap(headers);
