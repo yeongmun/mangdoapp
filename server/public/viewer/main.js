@@ -186,8 +186,6 @@ async function start() {
   let fingerDraw = false;
   let coordCheck = false;
   let activeTypeId = DEFAULT_DAMAGE_TYPE_ID;
-  // 유형 셀렉트박스를 조작한 뒤 **처음 그린** 손상에만 속성창을 연다(설계 3.1). 한 번 쓰면 꺼진다.
-  let openPropsOnNextDamage = false;
   const nowIso = () => new Date().toISOString();
 
   for (const type of DAMAGE_TYPES) {
@@ -197,13 +195,9 @@ async function start() {
     $('damageType').append(option);
   }
   $('damageType').value = activeTypeId;
-  function armProps() {
+  $('damageType').addEventListener('change', () => {
     activeTypeId = $('damageType').value;
-    openPropsOnNextDamage = true;
-  }
-  $('damageType').addEventListener('change', armProps);
-  // 같은 유형을 다시 골라도 change가 나지 않으므로 pointerup도 본다(설계 3.1).
-  $('damageType').addEventListener('pointerup', armProps);
+  });
 
   const selectedDamage = () => editor.doc.damages.find((damage) => damage.id === selectedId) ?? null;
 
@@ -220,7 +214,7 @@ async function start() {
 
   // 선택 상태를 바꾸는 유일한 곳. 속성창은 선택이 바뀔 때마다 닫는다(다른 손상의 값이 남아있지
   // 않도록). 선택 자체가 속성창을 여는 일은 없다 — 여는 것은 사용자가 "속성"을 눌렀을 때와,
-  // 유형을 고른 뒤 처음 그렸을 때(openPropsOnNextDamage)뿐이다.
+  // 새 손상을 그렸을 때(addNewDamage)뿐이다.
   function setSelection(id, shapeIndex = 0) {
     selectedId = id;
     selectedShape = shapeIndex;
@@ -274,15 +268,13 @@ async function start() {
     return selectedId !== null;
   }
 
-  // 새 손상을 문서에 넣는다. 유형을 고른 뒤 처음 그린 손상이면 선택하고 속성창까지 연다(설계 3.1).
-  // 깃발은 한 번 쓰면 꺼지므로 두 번째부터는 예전처럼 선택 없이 끝난다.
+  // 새 손상을 문서에 넣고 바로 선택해 속성창을 연다(설계 3.1, 2026-09-17 사용자 정정: 처음 한 번이
+  // 아니라 그릴 때마다). 복제·이동·탭은 속성창을 열지 않는다.
   function addNewDamage(damage) {
-    const openNow = openPropsOnNextDamage;
-    openPropsOnNextDamage = false;
-    setSelection(openNow ? damage.id : null, 0);
+    setSelection(damage.id, 0);
     apply(addDamage(editor, damage, nowIso()));
     // apply → refresh가 overlay.setDamages로 번호를 다시 계산한 뒤라야 요약줄의 번호가 맞는다.
-    if (openNow) openProps();
+    openProps();
   }
 
   createCrackInput({
