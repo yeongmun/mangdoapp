@@ -16,13 +16,21 @@ async function template(): Promise<string> {
 
 type Pt = [number, number];
 
-function damage(id: string, type: string, worldX: number, dwg: Pt[] | null, measured: Record<string, number | null> = {}) {
+function damage(
+  id: string,
+  type: string,
+  worldX: number,
+  dwg: Pt[] | null,
+  measured: Record<string, number | null> = {},
+  copies: Array<{ world: Pt[]; dwg: Pt[] | null }> = [],
+) {
   const world: Pt[] = [[worldX, 0], [worldX + 10, 0], [worldX + 10, 10], [worldX, 10]];
   return {
     id,
     type,
     createdAt: '2026-09-15T00:00:00.000Z',
     geometry: { kind: 'rect', world, dwg },
+    copies,
     measured: { width: null, length: null, count: null, ...measured },
     computed: { lengthDwg: null, areaDwg: null },
     attrs: { note: '', statusText: '', photoNumbers: [] },
@@ -37,6 +45,24 @@ const RECT_B: Pt[] = [[3200, 3200], [4200, 3200], [4200, 3300], [3200, 3300]]; /
 function entityCount(text: string, type: string): number {
   const doc = parseDxf(text);
   return doc.pairs.filter((p) => p.code === 0 && p.value === type).length;
+}
+
+// TEXT 엔티티마다 값(코드 1)을 모아 준다. 좌표·레이어까지 필요한 describe들은 각자 더 자세한
+// texts()를 로컬로 두고 이 top-level 정의를 가린다(shadow) — 서로 영향 없다.
+function texts(text: string): Array<{ value: string }> {
+  const doc = parseDxf(text);
+  const out: Array<{ value: string }> = [];
+  for (let i = 0; i < doc.pairs.length; i++) {
+    if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== 'TEXT') continue;
+    let j = i + 1;
+    let value = '';
+    for (; j < doc.pairs.length && doc.pairs[j].code !== 0; j++) {
+      if (doc.pairs[j].code === 1) value = doc.pairs[j].value;
+    }
+    out.push({ value });
+    i = j - 1;
+  }
+  return out;
 }
 
 describe('exportDamagesToDxf', () => {
@@ -88,6 +114,37 @@ describe('exportDamagesToDxf', () => {
     expect(entityCount(result.dxfText, 'TEXT')).toBe(9);
     expect(result.skipped).toBe(0);
     expect(result.warnings).toEqual([]);
+  });
+
+  it('복제본이 있으면 도형·해치를 도형마다 그리고 라벨은 한 번만 그린다', async () => {
+    const COPY_1: Pt[] = [[3200, 3200], [4200, 3200], [4200, 3300], [3200, 3300]];
+    const COPY_2: Pt[] = [[4300, 3200], [5300, 3200], [5300, 3300], [4300, 3300]];
+    const result = exportDamagesToDxf(await template(), [
+      damage('a', 'spalling', 0, RECT_A, { width: 1.2, length: 1.5, count: 3 }, [
+        { world: COPY_1, dwg: COPY_1 },
+        { world: COPY_2, dwg: COPY_2 },
+      ]),
+    ]);
+    // 도형 3벌
+    expect(entityCount(result.dxfText, 'LWPOLYLINE')).toBe(3);
+    expect(entityCount(result.dxfText, 'HATCH')).toBe(3);
+    // 라벨은 첫 도형에 한 번 — 번호 원 1개, 글자는 라벨 3줄 + 표 6칸
+    expect(entityCount(result.dxfText, 'CIRCLE')).toBe(1);
+    expect(entityCount(result.dxfText, 'TEXT')).toBe(9);
+    // 물량표는 한 행이고 개소는 measured.count 그대로다
+    expect(texts(result.dxfText).filter((t) => t.value === '3')).toHaveLength(1);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('dwg가 없는 복제본은 건너뛰고 나머지는 그린다', async () => {
+    const COPY_1: Pt[] = [[3200, 3200], [4200, 3200], [4200, 3300], [3200, 3300]];
+    const result = exportDamagesToDxf(await template(), [
+      damage('a', 'spalling', 0, RECT_A, { width: 1.2, length: 1.5, count: 2 }, [
+        { world: COPY_1, dwg: null },
+      ]),
+    ]);
+    expect(entityCount(result.dxfText, 'LWPOLYLINE')).toBe(1);
+    expect(result.skipped).toBe(0); // 첫 도형이 있으므로 손상 자체는 빠지지 않는다
   });
 
   it('번호는 world 좌표로 왼쪽부터 매기고 dwg로 다시 매기지 않는다', async () => {
@@ -613,6 +670,20 @@ describe('exportDamagesToDxf', () => {
       const result = exportDamagesToDxf(await twoFrames(), [1, 2, 3].map(rightDamage));
       expect(result.warnings).toEqual([]);
       expect(texts(result.dxfText).some((t) => t.value === '4')).toBe(false);
+    });
+
+    it('넘침 장 복사에서 복제본도 장마다 같이 그려진다', async () => {
+      const text = await twoFrames();
+      const plain = exportDamagesToDxf(text, [1, 2, 3, 4].map(rightDamage));
+      const copyPoints: Pt[] = [[52000, 3200], [52050, 3200], [52050, 3300], [52000, 3300]];
+      const withCopy = exportDamagesToDxf(text, [
+        { ...rightDamage(1), copies: [{ world: copyPoints, dwg: copyPoints }] },
+        rightDamage(2),
+        rightDamage(3),
+        rightDamage(4),
+      ]);
+      // 틀이 2장이 되므로 도형 하나를 더하면 2벌이 늘어난다(장마다 그 틀의 손상 전부를 그린다).
+      expect(entityCount(withCopy.dxfText, 'LWPOLYLINE') - entityCount(plain.dxfText, 'LWPOLYLINE')).toBe(2);
     });
 
     it('경고 문구에 틀 번호와 장 수가 들어간다', () => {

@@ -4,7 +4,7 @@
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 4~8·10장
 
 import { computeNumbers, countOutsideFrames, frameIndexOf } from '../../public/viewer/quantities.js';
-import { damageEntities, dwgPointsOf, type DamageEntitiesWarnings } from './damageEntities.js';
+import { damageEntities, dwgPointsOf, dwgShapesOf, type DamageEntitiesWarnings } from './damageEntities.js';
 import {
   createHandleAllocator,
   DAMAGE_COLOR,
@@ -314,8 +314,15 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   );
   for (const entry of included) {
     const label = labels.get(entry.id);
+    // 손상 하나가 도형을 여럿 가질 수 있다(설계 4장). 도형마다 그리고 라벨은 첫 도형에 한 번만
+    // 그린다. 넘침 장 복사는 손상 단위 이동량이므로 도형 반복을 dx 안쪽에 둔다 — 복제본도 장마다
+    // 같이 옮겨진다.
+    const shapes = dwgShapesOf(entry.damage);
     for (const dx of damageShiftsOf(entry)) {
-      appendAll(pairs, translatePairs(damageEntities(entry.damage, alloc, owner, circleWarnings), dx, 0));
+      for (const points of shapes) {
+        if (!points) continue;
+        appendAll(pairs, translatePairs(damageEntities(entry.damage, alloc, owner, circleWarnings, points), dx, 0));
+      }
       if (label) appendAll(pairs, translatePairs(labelEntities(label, alloc, owner), dx, 0));
     }
   }

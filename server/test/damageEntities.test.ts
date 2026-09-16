@@ -4,6 +4,7 @@ import {
   damageEntities,
   decorationCircles,
   dwgPointsOf,
+  dwgShapesOf,
   rebarSymbolSegments,
 } from '../src/export/damageEntities.js';
 
@@ -65,6 +66,24 @@ describe('dwgPointsOf', () => {
     expect(dwgPointsOf({ geometry: { kind: 'polyline', dwg: [[1, 2], [Number.NaN, 4]] } })).toBeNull();
     expect(dwgPointsOf({ geometry: { kind: 'polyline', dwg: 'nope' } })).toBeNull();
     expect(dwgPointsOf(null)).toBeNull();
+  });
+});
+
+describe('dwgShapesOf', () => {
+  const COPY: Pt[] = [[20, 0], [30, 0], [30, 5], [20, 5]];
+
+  it('첫 도형과 복제본을 도형 번호 순서대로 돌려준다', () => {
+    expect(dwgShapesOf({ ...damage('spalling', 'rect', RECT), copies: [{ world: COPY, dwg: COPY }] })).toEqual([RECT, COPY]);
+  });
+
+  it('좌표가 없는 도형은 번호 자리를 지키며 null이다', () => {
+    expect(dwgShapesOf({ ...damage('spalling', 'rect', null), copies: [{ world: COPY, dwg: COPY }] })).toEqual([null, COPY]);
+  });
+
+  it('복제본이 없으면 첫 도형 하나뿐이다', () => {
+    expect(dwgShapesOf({ ...damage('spalling', 'rect', RECT), copies: [] })).toEqual([RECT]);
+    // copies가 아예 없는 옛 객체도 첫 도형 하나로 본다
+    expect(dwgShapesOf(damage('spalling', 'rect', RECT))).toEqual([RECT]);
   });
 });
 
@@ -255,5 +274,20 @@ describe('damageEntities', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('triangle');
     warn.mockRestore();
+  });
+
+  describe('damageEntities(shapePoints)', () => {
+    it('점 목록을 주면 그 자리에 그린다', () => {
+      const moved = damageEntities(damage('spalling', 'rect', RECT), new HandleAllocator(0x100), owner, undefined, [
+        [20, 0], [30, 0], [30, 5], [20, 5],
+      ]);
+      // LWPOLYLINE 첫 꼭짓점(코드 10)이 옮긴 자리다
+      expect(moved.find((p) => p.code === 10)!.value).toBe('20.0');
+    });
+
+    it('점 목록을 주지 않으면 지금처럼 첫 도형을 쓴다', () => {
+      const first = damageEntities(damage('spalling', 'rect', RECT), new HandleAllocator(0x100), owner);
+      expect(first.find((p) => p.code === 10)!.value).toBe(`${RECT[0][0]}.0`);
+    });
   });
 });

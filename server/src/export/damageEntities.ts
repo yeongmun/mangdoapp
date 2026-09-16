@@ -5,6 +5,7 @@
 //       docs/superpowers/specs/2026-09-12-damage-types-design.md 4.1절·8장
 
 import { getDamageType } from '../../public/viewer/damageTypes.js';
+import { shapesOf } from '../../public/viewer/damageDoc.js';
 import { DAMAGE_COLOR, DAMAGE_LAYER, type DxfPair, type HandleAllocator } from './dxfDocument.js';
 import { circleEntity, hatchEntity, lineEntity, lwPolylineEntity, type EntityBase, type Point } from './dxfEntities.js';
 import { hatchPatternFor } from './hatchPatterns.js';
@@ -28,8 +29,8 @@ interface CirclesDecoration {
 }
 type Decoration = RebarDecoration | CirclesDecoration;
 
-export function dwgPointsOf(damage: unknown): Point[] | null {
-  const raw = (damage as { geometry?: { dwg?: unknown } } | null)?.geometry?.dwg;
+// 점 배열 하나를 검사해 Point[]로 바꾼다. 한 점이라도 숫자가 아니면 그 도형은 그리지 않는다.
+function pointsFrom(raw: unknown): Point[] | null {
   if (!Array.isArray(raw) || raw.length < 2) return null;
   const points: Point[] = [];
   for (const entry of raw) {
@@ -37,6 +38,19 @@ export function dwgPointsOf(damage: unknown): Point[] | null {
     points.push([entry[0] as number, entry[1] as number]);
   }
   return points;
+}
+
+/** 첫 도형(geometry.dwg)의 점. 틀 배정·라벨 자리처럼 "손상 하나의 대표 좌표"가 필요한 곳이 쓴다. */
+export function dwgPointsOf(damage: unknown): Point[] | null {
+  return pointsFrom((damage as { geometry?: { dwg?: unknown } } | null)?.geometry?.dwg);
+}
+
+/**
+ * 손상의 모든 도형(첫 도형 + 복제본)의 도면 좌표. **도형 번호를 그대로 유지한다** — 좌표가 없는
+ * 도형을 걸러 내면 번호가 밀려 복제본이 첫 도형 자리로 올라온다(라벨·장애물 계산이 어긋난다).
+ */
+export function dwgShapesOf(damage: unknown): Array<Point[] | null> {
+  return shapesOf(damage).map((shape) => pointsFrom(shape.dwg));
 }
 
 function baseFor(alloc: HandleAllocator, owner: string): EntityBase {
@@ -160,8 +174,10 @@ export function damageEntities(
   alloc: HandleAllocator,
   owner: string,
   warnings?: DamageEntitiesWarnings,
+  shapePoints?: Point[] | null,
 ): DxfPair[] {
-  const points = dwgPointsOf(damage);
+  // 도형이 여럿인 손상은 도형마다 한 번씩 부른다(설계 4장). 안 주면 첫 도형이다.
+  const points = shapePoints ?? dwgPointsOf(damage);
   if (!points) return [];
 
   const type = getDamageType((damage as { type?: unknown }).type);
