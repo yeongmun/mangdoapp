@@ -447,6 +447,21 @@ async function start() {
   let photoObjectUrls = [];
   // 지금 사진 줄이 보여주는 손상. 늦게 도착한 목록 응답과 전송 알림을 가려내는 데 쓴다.
   let photoStripDamageId = null;
+  // refreshPhotoStrip을 부를 때마다 하나씩 늘어나는 세대 번호(리뷰 Important #1). damageId 가드만으로는
+  // "같은 손상에 대해 겹쳐 불린 두 번째 호출"을 구분하지 못한다 — 예를 들어 대기열이 같은 손상의 사진을
+  // 연달아 올려 mangdoPhotoUploaded가 겹쳐 오면 photoStripDamageId는 두 호출 내내 같다. 호출마다 세대를
+  // 올려 자기 번호를 기억해 두면, 먼저 시작된 호출이 나중 호출보다 늦게 깨어나도 "내가 가장 최근 호출이
+  // 아니다"를 알 수 있다.
+  let photoStripGeneration = 0;
+
+  // 이 refreshPhotoStrip 호출(damageId·generation으로 식별)이 더 이상 최신이 아닌지. 손상이 바뀌거나
+  // (damageId 가드 — closePhotoStrip을 단독으로 부르는 propsClose·propsSave·setSelection은 generation을
+  // 올리지 않으므로 이 가드가 여전히 필요하다) 같은 손상에 대한 더 최근 refreshPhotoStrip이 시작됐으면
+  // (generation 가드) true다. 손상이 바뀌는 경우는 새 refreshPhotoStrip 호출이 generation도 함께 올리므로
+  // 두 가드가 같이 걸린다.
+  function isStalePhotoStrip(damageId, generation) {
+    return photoStripDamageId !== damageId || generation !== photoStripGeneration;
+  }
 
   function revokePhotoUrls() {
     for (const url of photoObjectUrls) URL.revokeObjectURL(url);
@@ -482,6 +497,7 @@ async function start() {
     const strip = $('photoStrip');
     closePhotoStrip();
     photoStripDamageId = damageId;
+    const generation = ++photoStripGeneration;
     let list = [];
     try {
       list = await api(`/drawings/${drawingId}/damages/${damageId}/photos`);
@@ -490,8 +506,8 @@ async function start() {
       console.error('[photos]', damageId, err);
       return;
     }
-    // 기다리는 동안 다른 손상을 열었거나 창을 닫았으면 버린다.
-    if (photoStripDamageId !== damageId) return;
+    // 기다리는 동안 더 최신 호출이 생겼으면(손상 전환이든, 같은 손상에 대한 겹친 호출이든) 버린다.
+    if (isStalePhotoStrip(damageId, generation)) return;
     const items = photoStripItems(parsePhotoNumbers($('photoInput').value), list);
     if (items.length === 0) return;
     for (const item of items) {
@@ -509,9 +525,18 @@ async function start() {
       strip.append(img);
       loadPhotoBlobUrl(item.url).then(
         (objectUrl) => {
+          // 이 blob을 기다리는 동안 더 최신 호출이 생겼으면 이미 지워졌거나 다른 손상의 <img>에
+          // 붙이지 않는다 — 방금 받은 사진도 쓰지 않고 바로 거둔다(리뷰 Important #1: 안 거두면
+          // 다음 close까지 blob 주소가 누수된다).
+          if (isStalePhotoStrip(damageId, generation)) {
+            URL.revokeObjectURL(objectUrl);
+            photoObjectUrls = photoObjectUrls.filter((url) => url !== objectUrl);
+            return;
+          }
           img.src = objectUrl;
         },
         (err) => {
+          if (isStalePhotoStrip(damageId, generation)) return;
           console.error('[photos]', item.number, err);
           img.replaceWith(chip(`${item.number} (읽기 실패)`));
         },
