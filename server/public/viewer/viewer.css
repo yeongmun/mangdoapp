@@ -110,6 +110,48 @@ body {
    칸이 늘어도 규칙을 고칠 필요가 없도록 자손 전체에 적용한다. */
 #propsPanel[hidden], #propsPanel [hidden] { display: none; }
 
+/* 사진 줄: 썸네일을 가로로 나열하고 넘치면 옆으로 넘긴다(설계 5장, 높이 56px). */
+#photoStrip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin: 0 0 8px;
+  padding-bottom: 2px;
+}
+.photoThumb {
+  height: 56px;
+  width: auto;
+  border-radius: 4px;
+  background: #eceef1;
+  flex: none;
+}
+.photoChip {
+  flex: none;
+  align-self: center;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #eceef1;
+  color: #8a8f98;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 사진 크게 보기: 화면 전체를 덮고 어디든 누르면 닫힌다. z-index는 속성창(12)보다 위. */
+#photoView {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 12px;
+}
+#photoView img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
 #coordPanel,
 #warning,
 #saveError {
@@ -164,6 +206,7 @@ body {
 }
 
 #toolbar[hidden],
+#photoView[hidden],
 #coordPanel[hidden],
 #warning[hidden],
 #saveError[hidden],

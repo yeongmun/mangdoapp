@@ -27,6 +27,7 @@ import {
   unitOf,
   widthUnitOf,
 } from './quantities.js';
+import { blocksDrawing, photoStripItems } from './photoStrip.js';
 
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
@@ -228,6 +229,7 @@ async function start() {
     selectedId = id;
     selectedShape = shapeIndex;
     $('propsPanel').hidden = true;
+    closePhotoStrip();
   }
 
   // 속성 패널이 열려 있는지. 그리기 입력(crackTool)이 패널이 열린 동안 제스처를 시작하지 않도록
@@ -290,7 +292,8 @@ async function start() {
     viewer,
     container: $('viewer'),
     isFingerDrawEnabled: () => fingerDraw,
-    isPropsOpen,
+    // 사진 오버레이가 열린 동안도 그리기·탭을 막는다(설계 5장). 판정은 순수 함수가 갖는다.
+    isPropsOpen: () => blocksDrawing(isPropsOpen(), isPhotoViewOpen()),
     getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
     getSelectedScreenShape: selectedScreenShape,
     onDraft: (draft) => overlay.setDraft(draft),
@@ -378,6 +381,8 @@ async function start() {
     // 메시지가 계속 보인다.
     $('propsError').hidden = true;
     updateSummary();
+    // 사진 줄은 서버에 물어봐야 하므로 기다리지 않고 채운다 — 속성창은 바로 열린다.
+    void refreshPhotoStrip(damage.id);
     $('propsPanel').hidden = false;
   }
 
@@ -435,9 +440,108 @@ async function start() {
     $('propsError').hidden = false;
   }
 
+  // 사진 썸네일 ────────────────────────────────────────────────────────────
+  // 사진 API도 x-access-key 헤더를 요구하는데 <img src>에는 헤더를 붙일 수 없다. 그래서 fetch로
+  // 받아 blob: 주소를 만들어 쓰고, 다시 그릴 때·닫을 때 거둔다(안 거두면 사진만큼 메모리가 쌓인다).
+  // 썸네일은 원본을 CSS로 줄여 보인다 — 서버 축소본은 후속이다(설계 9장).
+  let photoObjectUrls = [];
+  // 지금 사진 줄이 보여주는 손상. 늦게 도착한 목록 응답과 전송 알림을 가려내는 데 쓴다.
+  let photoStripDamageId = null;
+
+  function revokePhotoUrls() {
+    for (const url of photoObjectUrls) URL.revokeObjectURL(url);
+    photoObjectUrls = [];
+  }
+
+  async function loadPhotoBlobUrl(url) {
+    const res = await fetch(url, { headers: { 'x-access-key': accessKey } });
+    if (!res.ok) throw new Error(`사진을 불러오지 못했습니다 (${res.status})`);
+    const objectUrl = URL.createObjectURL(await res.blob());
+    photoObjectUrls.push(objectUrl);
+    return objectUrl;
+  }
+
+  function closePhotoStrip() {
+    photoStripDamageId = null;
+    // 오버레이가 보여주는 blob 주소는 사진 줄이 만든 것이다. 거두기 전에 먼저 닫는다 —
+    // 안 그러면 사진이 사라진 빈 검은 화면이 남는다.
+    closePhotoView();
+    revokePhotoUrls();
+    $('photoStrip').replaceChildren();
+    $('photoStrip').hidden = true;
+  }
+
+  function chip(text) {
+    const span = document.createElement('span');
+    span.className = 'photoChip';
+    span.textContent = text;
+    return span;
+  }
+
+  async function refreshPhotoStrip(damageId) {
+    const strip = $('photoStrip');
+    closePhotoStrip();
+    photoStripDamageId = damageId;
+    let list = [];
+    try {
+      list = await api(`/drawings/${drawingId}/damages/${damageId}/photos`);
+    } catch (err) {
+      // 목록을 못 읽어도 속성창은 그대로 쓴다 — 사진번호 글자는 이미 칸에 있다.
+      console.error('[photos]', damageId, err);
+      return;
+    }
+    // 기다리는 동안 다른 손상을 열었거나 창을 닫았으면 버린다.
+    if (photoStripDamageId !== damageId) return;
+    const items = photoStripItems(parsePhotoNumbers($('photoInput').value), list);
+    if (items.length === 0) return;
+    for (const item of items) {
+      if (item.kind === 'missing') {
+        strip.append(chip(`${item.number} (서버에 없음)`));
+        continue;
+      }
+      const img = document.createElement('img');
+      img.className = 'photoThumb';
+      img.alt = `사진 ${item.number}`;
+      img.addEventListener('click', () => {
+        // 썸네일에 이미 원본이 들어 있다(CSS로 줄여 보일 뿐) — 다시 받지 않는다.
+        if (img.src) openPhotoView(img.src, item.number);
+      });
+      strip.append(img);
+      loadPhotoBlobUrl(item.url).then(
+        (objectUrl) => {
+          img.src = objectUrl;
+        },
+        (err) => {
+          console.error('[photos]', item.number, err);
+          img.replaceWith(chip(`${item.number} (읽기 실패)`));
+        },
+      );
+    }
+    strip.hidden = false;
+  }
+
+  function openPhotoView(objectUrl, number) {
+    $('photoViewImage').src = objectUrl;
+    $('photoViewImage').alt = `사진 ${number}`;
+    $('photoView').hidden = false;
+  }
+
+  function closePhotoView() {
+    $('photoView').hidden = true;
+    // blob: 주소는 사진 줄이 갖고 있으므로 여기서 거두지 않는다 — src만 뗀다.
+    $('photoViewImage').removeAttribute('src');
+  }
+
+  function isPhotoViewOpen() {
+    return !$('photoView').hidden;
+  }
+
+  $('photoView').addEventListener('click', closePhotoView);
+
   $('props').addEventListener('click', openProps);
   $('propsClose').addEventListener('click', () => {
     $('propsPanel').hidden = true;
+    closePhotoStrip();
   });
   for (const id of ['widthInput', 'lengthInput', 'countInput', 'statusInput']) {
     $(id).addEventListener('input', updateSummary);
@@ -479,6 +583,7 @@ async function start() {
     );
     $('propsError').hidden = true;
     $('propsPanel').hidden = true;
+    closePhotoStrip();
   });
 
   // 📷 버튼(2026-09-17 카메라 버튼 설계 6장). 앱에 takePhoto를 보내고 window.mangdoPhotoResult로
@@ -499,11 +604,14 @@ async function start() {
       showPropsError('이 환경에서는 카메라를 쓸 수 없습니다');
       return;
     }
+    const damage = selectedDamage();
+    if (!damage) return;
     const requestId = crypto.randomUUID();
     photoRequestId = requestId;
     $('photoCamera').disabled = true;
     $('photoCamera').textContent = '⏳';
-    postToApp({ type: 'takePhoto', requestId });
+    // 앱이 사진을 어느 손상 폴더에 넣을지는 뷰어만 안다(2026-09-18 설계 4장).
+    postToApp({ type: 'takePhoto', requestId, drawingId, damageId: damage.id });
   });
 
   // 앱(ViewerScreen.handleMessage)이 촬영 결과를 injectJavaScript로 회신할 때 부른다.
@@ -517,9 +625,27 @@ async function start() {
     if (result.ok) {
       $('photoInput').value = appendPhotoNumber($('photoInput').value, photoNumberFromFilename(result.filename));
       updateSummary();
+      // 방금 붙인 번호는 아직 서버에 없다 — 칩으로 보인다. 전송이 끝나면 mangdoPhotoUploaded가
+      // 다시 읽어 썸네일로 바뀐다.
+      const shown = selectedDamage();
+      if (shown) void refreshPhotoStrip(shown.id);
     } else {
       showPropsError(result.reason);
     }
+  };
+
+  // 앱이 서버 전송을 마쳤을 때(설계 4.2). 지금 사진 줄이 보여주는 손상이면 목록을 다시 읽는다.
+  // requestId는 보기용이다 — 대기열에 남아 있던 옛 항목은 null로 온다.
+  window.mangdoPhotoUploaded = (result) => {
+    if (!result || result.damageId !== photoStripDamageId) return;
+    void refreshPhotoStrip(result.damageId);
+  };
+
+  window.mangdoPhotoUploadFailed = (result) => {
+    if (!result || !isPropsOpen() || result.damageId !== photoStripDamageId) return;
+    // 다시 시도하는 경우(설계 5장)는 정해진 문구, 더 시도하지 않는 경우(willRetry:false — Task 5의
+    // drop 판정)는 사유를 그대로 보여준다.
+    showPropsError(result.willRetry ? '사진은 앨범에 저장됐고 서버 전송은 다시 시도합니다' : result.reason);
   };
 
   $('fingerDraw').addEventListener('click', () => {

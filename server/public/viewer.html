@@ -33,6 +33,7 @@
       <label>비고 <input id="noteInput" type="text" /></label>
       <label id="statusRow">손상현황 <input id="statusInput" type="text" /></label>
       <label>사진번호 <input id="photoInput" type="text" /> <button id="photoCamera" type="button" title="사진 찍기">📷</button> <span>쉼표로 구분</span></label>
+      <div id="photoStrip" hidden></div>
       <p id="computedHint"></p>
       <p id="propsError" hidden></p>
       <div class="row">
@@ -41,6 +42,7 @@
       </div>
     </div>
 
+    <div id="photoView" hidden><img id="photoViewImage" alt="" /></div>
     <div id="coordPanel" hidden></div>
     <div id="warning" hidden></div>
     <div id="saveError" hidden></div>
