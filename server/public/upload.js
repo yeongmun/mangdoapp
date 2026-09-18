@@ -116,6 +116,15 @@ function renderRows(drawings) {
     }
     tr.append(exportTd);
 
+    // 사진 zip은 DWG로 올린 도면에서도 된다 — 사진은 도면 파일 형식과 상관이 없다.
+    const photoTd = document.createElement('td');
+    const photoButton = document.createElement('button');
+    photoButton.type = 'button';
+    photoButton.textContent = '사진 zip';
+    photoButton.addEventListener('click', () => downloadPhotos(drawing, photoButton));
+    photoTd.append(photoButton);
+    tr.append(photoTd);
+
     const actionTd = document.createElement('td');
     if (drawing.status === 'failed') {
       const button = document.createElement('button');
@@ -163,6 +172,21 @@ async function exportDxf(drawing, button) {
     if (result.skipped > 0) notes.push(`도면 좌표를 구하지 못한 손상 ${result.skipped}개는 빠졌습니다.`);
     if (result.warning) notes.push(result.warning);
     showMessage(`내려받았습니다: ${result.name}${notes.length > 0 ? ` — ${notes.join(' / ')}` : ''}`);
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// 사진이 없으면 서버가 400과 '저장된 사진이 없습니다'를 주고, download가 그 문구로 던진다 —
+// 여기서는 그대로 보여준다(다른 오류도 같다).
+async function downloadPhotos(drawing, button) {
+  button.disabled = true;
+  showMessage('사진을 모으는 중…');
+  try {
+    const result = await download(`/drawings/${drawing.id}/photos.zip`, `${drawing.name}_사진.zip`);
+    showMessage(`내려받았습니다: ${result.name}`);
   } catch (err) {
     showMessage(err.message, true);
   } finally {
