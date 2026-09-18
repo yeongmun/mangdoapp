@@ -7,8 +7,12 @@ import { File, Paths } from 'expo-file-system';
 // createAssetAsync는 최신 index가 아니라 legacy에만 있다(Asset.create()로 대체 예정이지만,
 // filename을 바로 돌려주는 건 legacy뿐 — 조사 2장).
 import * as MediaLibrary from 'expo-media-library/legacy';
+import { keepCopy } from './photoUpload';
 
-export type PhotoResult = { ok: true; filename: string } | { ok: false; reason: string };
+export type PhotoResult =
+  // uploadUri: 서버로 보낼 문서 폴더 사본. 만들지 못하면 null이고 이때는 서버 전송을 건너뛴다.
+  | { ok: true; filename: string; uploadUri: string | null }
+  | { ok: false; reason: string };
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -58,7 +62,11 @@ export async function takePhotoAndSave(): Promise<PhotoResult> {
     // 5. 앨범에 저장. asset.filename이 있으면 그것을(iOS는 IMG_로 다시 지어짐 — 조사 2장), 없으면
     // 우리가 지은 이름을 돌려준다. 앨범을 따로 만들지 않는다 — 기본 카메라 앨범/DCIM.
     const savedAsset = await MediaLibrary.createAssetAsync(uri);
-    return { ok: true, filename: savedAsset.filename || ourName };
+    const filename = savedAsset.filename || ourName;
+    // 6. 서버로 보낼 사본을 문서 폴더에 하나 더 둔다(2026-09-18 설계 4.3). 앨범 파일은 권한
+    // 때문에, 캐시 사본은 시스템이 지울 수 있어 나중에 다시 읽기 어렵다. 실패해도 촬영 자체는
+    // 성공이다 — uploadUri만 null로 돌려주고 호출부가 전송을 건너뛴다.
+    return { ok: true, filename, uploadUri: await keepCopy(uri, filename) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, reason: `사진을 저장하지 못했습니다: ${message}` };

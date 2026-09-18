@@ -1,0 +1,215 @@
+// 찍은 사진을 서버로 보낸다. 실패하면 앱 문서 폴더의 대기열(photo-queue.json)에 넣고 나중에 다시
+// 보낸다. **언제 무엇을 보낼지**는 순수 모듈 src/photoQueue.ts가 정하고(테스트 있음), 이 파일은
+// 파일·네트워크만 다룬다. 근거: docs/superpowers/specs/2026-09-18-photo-upload-design.md 4장
+import { Directory, File, Paths } from 'expo-file-system';
+import { ACCESS_KEY, API_URL } from './config';
+import { applyResult, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQueueItem } from './photoQueue';
+
+/** 뷰어 화면에 머무는 동안 이 간격으로 다시 시도한다(설계 4.4). */
+export const PHOTO_FLUSH_INTERVAL_MS = 60_000;
+
+const QUEUE_FILE_NAME = 'photo-queue.json';
+const QUEUE_TMP_FILE_NAME = 'photo-queue.json.tmp';
+const KEEP_DIR_NAME = 'photo-queue';
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.heic': 'image/heic',
+  '.heif': 'image/heic',
+};
+
+export type UploadNotice =
+  | { id: string; ok: true; damageId: string; number: string }
+  // willRetry: 나중에 다시 보낼 항목인지. 뷰어 문구가 '다시 시도합니다'와 '서버가 받지
+  // 않았습니다'로 갈린다(설계 4.2·4.5).
+  | { id: string; ok: false; damageId: string; reason: string; willRetry: boolean };
+
+function extensionOf(filename: string): string {
+  const match = /\.[A-Za-z0-9]+$/.exec(filename);
+  return match ? match[0].toLowerCase() : '.jpg';
+}
+
+function mimeOf(filename: string): string {
+  return MIME_BY_EXTENSION[extensionOf(filename)] ?? 'image/jpeg';
+}
+
+function queueFile(): File {
+  return new File(Paths.document, QUEUE_FILE_NAME);
+}
+
+// 읽기·쓰기는 모두 실패를 삼킨다. 사진 몇 장보다 앱이 뜨는 것이 중요하다.
+function readQueue(): PhotoQueueItem[] {
+  try {
+    const file = queueFile();
+    if (!file.exists) return [];
+    return parseQueue(JSON.parse(file.textSync()) as unknown);
+  } catch {
+    return [];
+  }
+}
+
+// 통제관 규칙 R3: 대기열 파일 쓰기는 원자적이어야 한다. photo-queue.json.tmp에 새 내용을 다
+// 쓴 뒤에야 photo-queue.json 자리로 옮긴다 — 쓰는 도중에 앱이 죽거나 기기가 꺼져도 기존
+// photo-queue.json은 온전하게 남는다(빈 파일이나 반쯤 쓰인 JSON이 남지 않는다).
+// File.moveSync(dest, { overwrite: true })는 안드로이드에서 File.moveTo(..., overwrite)로
+// 구현되어 있어(코틀린 java.nio Path.moveTo) 대상이 있어도 그대로 옮겨 쓴다 — 그래서 별도의
+// "지우고 옮기기" 폴백은 쓰지 않는다. 그래도 만에 하나 그 자리 옮기기가 실패하면(예: 구버전
+// 파일시스템) 대상을 먼저 지우고 다시 옮기는 것으로 한 번 더 시도한다.
+function writeQueue(queue: PhotoQueueItem[]): boolean {
+  const tmp = new File(Paths.document, QUEUE_TMP_FILE_NAME);
+  try {
+    tmp.write(JSON.stringify(queue));
+  } catch (err) {
+    console.error('[photoUpload] 대기열 임시 파일을 쓰지 못했습니다', err);
+    return false;
+  }
+  try {
+    tmp.moveSync(queueFile(), { overwrite: true });
+    return true;
+  } catch (err) {
+    // 자리 옮기기(overwrite)가 안 되는 드문 경우의 폴백: 대상을 먼저 지우고 다시 옮긴다.
+    // 두 단계 사이의 아주 짧은 순간에는 photo-queue.json이 없을 수 있다(R3 명시).
+    try {
+      const target = queueFile();
+      if (target.exists) target.delete();
+      tmp.moveSync(target, {});
+      return true;
+    } catch (fallbackErr) {
+      console.error('[photoUpload] 대기열을 저장하지 못했습니다', err, fallbackErr);
+      return false;
+    }
+  }
+}
+
+function newItemId(): string {
+  // crypto.randomUUID은 RN에 없을 수 있다. 대기열 안에서만 구분되면 되므로 시각 + 임의 글자로 짓는다.
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function removeFile(uri: string): void {
+  try {
+    const file = new File(uri);
+    if (file.exists) file.delete();
+  } catch {
+    // 지우지 못해도 대기열에서는 빠졌다. 문서 폴더에 사본 하나가 남을 뿐이다.
+  }
+}
+
+// 앨범 파일은 권한 때문에 나중에 다시 읽기 어렵고, 캐시 사본은 시스템이 언제든 지운다.
+// 그래서 문서 폴더(Paths.document)에 사본을 하나 더 둔다 — 전송이 끝나면 지운다(설계 4.3).
+export async function keepCopy(sourceUri: string, filename: string): Promise<string | null> {
+  try {
+    const folder = new Directory(Paths.document, KEEP_DIR_NAME);
+    folder.create({ intermediates: true, idempotent: true });
+    const destination = new File(folder, `${newItemId()}${extensionOf(filename)}`);
+    await new File(sourceUri).copy(destination, { overwrite: true });
+    return destination.uri;
+  } catch (err) {
+    console.error('[photoUpload] 보관 사본을 만들지 못했습니다', err);
+    return null;
+  }
+}
+
+// 대기열에 넣는다. 저장까지 실패하면(디스크 꽉 참 등) 방금 만든 보관 사본을 지우고 null을
+// 돌려준다 — 사진은 앨범에 남아 있으니 호출부(ViewerScreen)는 willRetry:false로 알린다
+// (통제관 규칙 R3).
+export function enqueuePhoto(input: {
+  drawingId: string;
+  damageId: string;
+  filename: string;
+  uploadUri: string;
+}): PhotoQueueItem | null {
+  const item: PhotoQueueItem = {
+    id: newItemId(),
+    drawingId: input.drawingId,
+    damageId: input.damageId,
+    uri: input.uploadUri,
+    filename: input.filename,
+    addedAt: Date.now(),
+    tries: 0,
+    lastTriedAt: 0,
+  };
+  if (!writeQueue([...readQueue(), item])) {
+    removeFile(input.uploadUri);
+    return null;
+  }
+  return item;
+}
+
+type Attempt =
+  | { outcome: 'ok'; number: string }
+  | { outcome: 'retry'; reason: string }
+  | { outcome: 'drop'; reason: string };
+
+async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
+  const form = new FormData();
+  // filename 필드는 file 파트보다 **앞에** 와야 서버(multer)의 req.body에 담긴다. 앨범 파일
+  // 이름을 그대로 보내야 서버가 뽑는 사진번호가 뷰어가 칸에 붙인 번호와 같다.
+  form.append('filename', item.filename);
+  // RN의 FormData는 파일을 { uri, name, type } 객체로 받는다(웹 Blob이 아니다). 타입 정의에는
+  // 없는 모양이라 캐스트가 필요하다.
+  form.append('file', { uri: item.uri, name: item.filename, type: mimeOf(item.filename) } as unknown as Blob);
+
+  let res: Response;
+  try {
+    // Content-Type은 넣지 않는다 — RN이 multipart 경계 문자열을 스스로 붙인다.
+    res = await fetch(`${API_URL}/api/drawings/${item.drawingId}/damages/${item.damageId}/photos`, {
+      method: 'POST',
+      headers: { 'x-access-key': ACCESS_KEY },
+      body: form,
+    });
+  } catch {
+    return { outcome: 'retry', reason: '서버에 연결할 수 없습니다' };
+  }
+
+  const body = (await res.json().catch(() => ({}))) as { number?: string; error?: string };
+  if (res.status === 201) return { outcome: 'ok', number: typeof body.number === 'string' ? body.number : '' };
+  const reason = body.error ?? `서버가 거절했습니다 (${res.status})`;
+  // 400(형식·번호)·404(도면이 없어짐)·413(너무 큼)은 다시 보내도 같은 답이 온다 → 뺀다(설계 4.5).
+  // 401(접근키 오류)·5xx·그 밖은 접근키를 고치거나 서버가 살아나면 되므로 남긴다.
+  if (res.status === 400 || res.status === 404 || res.status === 413) return { outcome: 'drop', reason };
+  return { outcome: 'retry', reason };
+}
+
+let flushing = false;
+
+// 보낼 수 있는 항목을 하나씩 끝까지 보낸다. 겹쳐 불려도(화면 진입 + 60초 타이머 + 촬영 직후)
+// 한 번만 돈다. 매번 파일에서 다시 읽는다 — 보내는 동안 새로 찍은 사진을 잃지 않는다.
+export async function flushPhotoQueue(notify: (notice: UploadNotice) => void): Promise<void> {
+  if (flushing) return;
+  flushing = true;
+  try {
+    for (;;) {
+      const item = nextRetry(readQueue(), Date.now());
+      if (!item) return;
+      const attempt = await uploadOne(item);
+      writeQueue(applyResult(readQueue(), item.id, attempt.outcome, Date.now()));
+      if (attempt.outcome !== 'retry') removeFile(item.uri);
+      if (attempt.outcome === 'ok') {
+        notify({ id: item.id, ok: true, damageId: item.damageId, number: attempt.number });
+      } else {
+        notify({
+          id: item.id,
+          ok: false,
+          damageId: item.damageId,
+          reason: attempt.reason,
+          willRetry: attempt.outcome === 'retry',
+        });
+      }
+    }
+  } finally {
+    flushing = false;
+  }
+}
+
+/** 목록 화면 배지의 숫자. */
+export function pendingPhotoCount(): number {
+  return pendingCount(readQueue());
+}
+
+/** 배지를 눌렀을 때. 10번 실패해 멈춘 항목까지 되돌린다 — 이어서 flushPhotoQueue를 부른다. */
+export function retryPendingPhotos(): void {
+  writeQueue(retryAll(readQueue()));
+}

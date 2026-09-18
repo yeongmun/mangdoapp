@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, Vie
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { viewerUrl, type Drawing } from '../api';
 import { takePhotoAndSave } from '../photo';
+import { flushPhotoQueue, enqueuePhoto, PHOTO_FLUSH_INTERVAL_MS, type UploadNotice } from '../photoUpload';
 
 interface Props {
   drawing: Drawing;
@@ -27,6 +28,37 @@ export function ViewerScreen({ drawing, onBack }: Props) {
   // 카메라 요청이 겹치지 않게 막는다(설계 5장) — 버튼이 뷰어에서 비활성(⏳)이라 실제로는 거의
   // 오지 않지만, 혹시 겹쳐 와도 두 번째 요청은 조용히 무시한다.
   const photoBusyRef = useRef(false);
+  // 방금 찍어 올리는 중인 항목. 전송 결과를 뷰어에 알릴 때 그 촬영의 requestId를 함께 보내기
+  // 위해서다(대기열에 남아 있던 옛 항목은 requestId가 없으므로 null로 보낸다).
+  const photoRequestRef = useRef<{ itemId: string; requestId: string } | null>(null);
+
+  // 뷰어 페이지의 window 함수를 부른다. 끝의 true는 iOS에서 injectJavaScript 결과가 직렬화되지
+  // 않아 생기는 경고를 막는다(FLUSH_SCRIPT와 같은 이유).
+  const inject = useCallback((fn: string, payload: unknown) => {
+    webViewRef.current?.injectJavaScript(`window.${fn} && window.${fn}(${JSON.stringify(payload)}); true;`);
+  }, []);
+
+  const notifyUpload = useCallback(
+    (notice: UploadNotice) => {
+      const pending = photoRequestRef.current;
+      const requestId = pending && pending.itemId === notice.id ? pending.requestId : null;
+      if (notice.ok) {
+        inject('mangdoPhotoUploaded', { requestId, damageId: notice.damageId, number: notice.number });
+      } else {
+        inject('mangdoPhotoUploadFailed', {
+          requestId,
+          damageId: notice.damageId,
+          reason: notice.reason,
+          willRetry: notice.willRetry,
+        });
+      }
+    },
+    [inject],
+  );
+
+  const flushPhotos = useCallback(() => {
+    void flushPhotoQueue(notifyUpload);
+  }, [notifyUpload]);
 
   const clearPendingFlush = useCallback(() => {
     if (flushTimeoutRef.current !== null) {
@@ -82,30 +114,69 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       pendingFlushRef.current?.(saved === true);
     } else if (type === 'takePhoto') {
       if (typeof requestId !== 'string') return;
-      const reply = (result: { ok: true; filename: string } | { ok: false; reason: string }) => {
-        webViewRef.current?.injectJavaScript(
-          `window.mangdoPhotoResult && window.mangdoPhotoResult(${JSON.stringify({ requestId, ...result })}); true;`,
-        );
-      };
+      // 뷰어는 drawingId도 함께 보내지만(설계 4장) 저장에는 **앱이 연 도면의 id**를 쓴다 —
+      // 이 화면이 그 도면을 열었다는 사실이 더 확실하다. 손상 id는 뷰어만 안다.
+      const { damageId } = message as { damageId?: unknown };
+      const replyOk = (filename: string) =>
+        inject('mangdoPhotoResult', { requestId, ok: true, filename, uploaded: false });
+      const replyFail = (reason: string) => inject('mangdoPhotoResult', { requestId, ok: false, reason });
+
       // 겹친 요청(앞 촬영이 끝나기 전에 속성창을 닫았다 다시 열고 또 누른 경우)은 삼키지 않고
       // 바로 답한다 — 뷰어가 새 requestId로 기다리고 있어 답이 없으면 버튼이 ⏳로 남는다.
       if (photoBusyRef.current) {
-        reply({ ok: false, reason: '이미 촬영 중입니다' });
+        replyFail('이미 촬영 중입니다');
         return;
       }
       photoBusyRef.current = true;
       takePhotoAndSave()
-        .then(reply)
+        .then((result) => {
+          if (!result.ok) {
+            replyFail(result.reason);
+            return;
+          }
+          // 1. 먼저 답한다 — 사용자는 전송을 기다리지 않는다(설계 4.1). 뷰어가 번호를 칸에 붙인다.
+          replyOk(result.filename);
+          if (typeof damageId !== 'string' || result.uploadUri === null) {
+            // 손상 id가 없거나(PC 브라우저에서 띄운 옛 뷰어) 사본을 못 만들었으면 앨범 저장까지가 끝이다.
+            inject('mangdoPhotoUploadFailed', {
+              requestId,
+              damageId: typeof damageId === 'string' ? damageId : '',
+              reason: '서버로 보낼 사본을 만들지 못했습니다',
+              willRetry: false,
+            });
+            return;
+          }
+          // 2. 대기열에 넣고 바로 한 번 보낸다. 실패하면 대기열에 남아 60초마다 다시 시도한다.
+          const item = enqueuePhoto({
+            drawingId: drawing.id,
+            damageId,
+            filename: result.filename,
+            uploadUri: result.uploadUri,
+          });
+          if (item === null) {
+            // 대기열 저장 자체가 실패했다(통제관 규칙 R3) — 사진은 앨범에 남아 있지만 서버로는
+            // 보내지 못한다. 다시 시도해도 같은 원인(디스크 등)일 가능성이 높다.
+            inject('mangdoPhotoUploadFailed', {
+              requestId,
+              damageId,
+              reason: '사진 전송 목록에 기록하지 못했습니다',
+              willRetry: false,
+            });
+            return;
+          }
+          photoRequestRef.current = { itemId: item.id, requestId };
+          flushPhotos();
+        })
         .catch((err: unknown) => {
           // takePhotoAndSave는 내부에서 모든 실패를 이미 잡아 { ok:false } 로 돌려주지만, 만약
           // 그 밖의 예외가 새어 나와도 여기서 던지지 않고 같은 형식으로 회신한다.
-          reply({ ok: false, reason: `사진을 저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` });
+          replyFail(`사진을 저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`);
         })
         .finally(() => {
           photoBusyRef.current = false;
         });
     }
-  }, []);
+  }, [drawing.id, flushPhotos, inject]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -116,6 +187,13 @@ export function ViewerScreen({ drawing, onBack }: Props) {
   }, [requestLeave]);
 
   useEffect(() => clearPendingFlush, [clearPendingFlush]);
+
+  // 화면이 열릴 때 한 번, 그 뒤 60초마다 보내지 못한 사진을 다시 보낸다(설계 4.4).
+  useEffect(() => {
+    flushPhotos();
+    const timer = setInterval(flushPhotos, PHOTO_FLUSH_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [flushPhotos]);
 
   return (
     <View style={styles.container}>

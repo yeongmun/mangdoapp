@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { fetchDrawings, type Drawing } from '../api';
 import { configProblem } from '../config';
+import { flushPhotoQueue, pendingPhotoCount, retryPendingPhotos } from '../photoUpload';
 
 const STATUS: Record<Drawing['status'], { label: string; color: string }> = {
   pending: { label: '대기', color: '#8a8f98' },
@@ -20,14 +21,24 @@ export function DrawingListScreen({ onOpen }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingPhotos, setPendingPhotos] = useState(0);
 
   const load = useCallback(async () => {
+    setPendingPhotos(pendingPhotoCount());
     try {
       setDrawings(await fetchDrawings());
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
+  }, []);
+
+  // 배지를 눌렀을 때: 10번 실패해 멈춘 항목까지 되돌린 뒤 바로 한 번 다시 보낸다.
+  const retryPhotos = useCallback(async () => {
+    retryPendingPhotos();
+    setPendingPhotos(pendingPhotoCount());
+    await flushPhotoQueue(() => undefined);
+    setPendingPhotos(pendingPhotoCount());
   }, []);
 
   useEffect(() => {
@@ -63,6 +74,11 @@ export function DrawingListScreen({ onOpen }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>도면 목록</Text>
+      {pendingPhotos > 0 && (
+        <Pressable onPress={retryPhotos}>
+          <Text style={styles.photoBanner}>보내지 못한 사진 {pendingPhotos}장 — 눌러서 다시 시도</Text>
+        </Pressable>
+      )}
       {error && <Text style={styles.errorBanner}>{error}</Text>}
       <FlatList
         data={drawings}
@@ -103,6 +119,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '700', color: '#1a1a1a', marginBottom: 16 },
   problem: { fontSize: 16, color: '#d32f2f', textAlign: 'center', lineHeight: 24 },
   errorBanner: { color: '#fff', backgroundColor: '#d32f2f', padding: 12, borderRadius: 8, marginBottom: 12 },
+  photoBanner: { color: '#fff', backgroundColor: '#ef6c00', padding: 12, borderRadius: 8, marginBottom: 12 },
   empty: { textAlign: 'center', color: '#8a8f98', marginTop: 48, lineHeight: 22 },
   row: {
     flexDirection: 'row',
