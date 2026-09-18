@@ -28,9 +28,12 @@ export function ViewerScreen({ drawing, onBack }: Props) {
   // 카메라 요청이 겹치지 않게 막는다(설계 5장) — 버튼이 뷰어에서 비활성(⏳)이라 실제로는 거의
   // 오지 않지만, 혹시 겹쳐 와도 두 번째 요청은 조용히 무시한다.
   const photoBusyRef = useRef(false);
-  // 방금 찍어 올리는 중인 항목. 전송 결과를 뷰어에 알릴 때 그 촬영의 requestId를 함께 보내기
-  // 위해서다(대기열에 남아 있던 옛 항목은 requestId가 없으므로 null로 보낸다).
-  const photoRequestRef = useRef<{ itemId: string; requestId: string } | null>(null);
+  // 찍어 올리는 중인 항목들의 대기열 id → requestId. 전송 결과를 뷰어에 알릴 때 그 촬영의
+  // requestId를 함께 보내기 위해서다(대기열에 남아 있던 옛 항목은 매핑이 없으므로 null로
+  // 보낸다). Map인 이유: photoBusyRef가 풀리자마자 다음 촬영이 대기열에 들어가면, 앞 항목의
+  // 전송이 아직 끝나기 전에 새 항목이 추가될 수 있다 — 단일 참조였다면 앞 항목의 결과가 뒤
+  // 항목의 requestId로 잘못 붙거나 null로 떨어진다(리뷰 Fix round 1, Minor).
+  const photoRequestsRef = useRef<Map<string, string>>(new Map());
 
   // 뷰어 페이지의 window 함수를 부른다. 끝의 true는 iOS에서 injectJavaScript 결과가 직렬화되지
   // 않아 생기는 경고를 막는다(FLUSH_SCRIPT와 같은 이유).
@@ -40,8 +43,9 @@ export function ViewerScreen({ drawing, onBack }: Props) {
 
   const notifyUpload = useCallback(
     (notice: UploadNotice) => {
-      const pending = photoRequestRef.current;
-      const requestId = pending && pending.itemId === notice.id ? pending.requestId : null;
+      const requests = photoRequestsRef.current;
+      const requestId = requests.get(notice.id) ?? null;
+      requests.delete(notice.id); // 다 쓴 매핑은 지운다 — 화면에 머무는 동안 계속 쌓이지 않게.
       if (notice.ok) {
         inject('mangdoPhotoUploaded', { requestId, damageId: notice.damageId, number: notice.number });
       } else {
@@ -164,7 +168,7 @@ export function ViewerScreen({ drawing, onBack }: Props) {
             });
             return;
           }
-          photoRequestRef.current = { itemId: item.id, requestId };
+          photoRequestsRef.current.set(item.id, requestId);
           flushPhotos();
         })
         .catch((err: unknown) => {

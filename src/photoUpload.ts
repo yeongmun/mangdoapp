@@ -8,6 +8,11 @@ import { applyResult, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQ
 /** 뷰어 화면에 머무는 동안 이 간격으로 다시 시도한다(설계 4.4). */
 export const PHOTO_FLUSH_INTERVAL_MS = 60_000;
 
+// 리뷰 Fix round 1 — Important: 연결은 됐지만 서버·중간 장비가 응답을 주지 않는 "죽은 연결"에서
+// RN의 fetch가 무한정 대기할 수 있다. 그러면 flushPhotoQueue의 단일 실행 잠금(flushing)이 영원히
+// 풀리지 않아 마운트·60초 타이머·촬영 직후·배지 탭이 모두 조용히 무시된다. 30초에서 스스로 끊는다.
+export const PHOTO_UPLOAD_TIMEOUT_MS = 30_000;
+
 const QUEUE_FILE_NAME = 'photo-queue.json';
 const QUEUE_TMP_FILE_NAME = 'photo-queue.json.tmp';
 const KEEP_DIR_NAME = 'photo-queue';
@@ -152,6 +157,10 @@ async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
   // 없는 모양이라 캐스트가 필요하다.
   form.append('file', { uri: item.uri, name: item.filename, type: mimeOf(item.filename) } as unknown as Blob);
 
+  // 죽은 연결(응답이 영영 안 옴)에서 fetch가 멈추지 않도록 스스로 끊는다 — 타임아웃도 네트워크
+  // 오류와 같이 일시적 실패(retry)로 다룬다(서버가 늦게라도 살아나면 다음 시도는 성공할 수 있다).
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PHOTO_UPLOAD_TIMEOUT_MS);
   let res: Response;
   try {
     // Content-Type은 넣지 않는다 — RN이 multipart 경계 문자열을 스스로 붙인다.
@@ -159,9 +168,13 @@ async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
       method: 'POST',
       headers: { 'x-access-key': ACCESS_KEY },
       body: form,
+      signal: controller.signal,
     });
   } catch {
+    if (controller.signal.aborted) return { outcome: 'retry', reason: '업로드 시간이 초과됐습니다' };
     return { outcome: 'retry', reason: '서버에 연결할 수 없습니다' };
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const body = (await res.json().catch(() => ({}))) as { number?: string; error?: string };
@@ -184,7 +197,16 @@ export async function flushPhotoQueue(notify: (notice: UploadNotice) => void): P
     for (;;) {
       const item = nextRetry(readQueue(), Date.now());
       if (!item) return;
-      const attempt = await uploadOne(item);
+      // 방어적 이중 조치: uploadOne이 던지더라도(현재는 fetch·json 파싱 실패를 모두 안에서
+      // 잡아 던지지 않지만, 앞으로 바뀔 수 있다) 이 루프의 바깥 try/finally가 flushing을 풀어
+      // 주지만, 여기서도 잡아 'retry'로 넘겨 이 항목만 다음 차례로 미루고 나머지 항목·다음
+      // 호출은 계속 처리되게 한다(리뷰 Fix round 1).
+      let attempt: Attempt;
+      try {
+        attempt = await uploadOne(item);
+      } catch (err) {
+        attempt = { outcome: 'retry', reason: `업로드 중 예상치 못한 오류: ${err instanceof Error ? err.message : String(err)}` };
+      }
       writeQueue(applyResult(readQueue(), item.id, attempt.outcome, Date.now()));
       if (attempt.outcome !== 'retry') removeFile(item.uri);
       if (attempt.outcome === 'ok') {
