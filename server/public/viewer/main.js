@@ -668,9 +668,13 @@ async function start() {
 
   window.mangdoPhotoUploadFailed = (result) => {
     if (!result || !isPropsOpen() || result.damageId !== photoStripDamageId) return;
-    // 다시 시도하는 경우(설계 5장)는 정해진 문구, 더 시도하지 않는 경우(willRetry:false — Task 5의
-    // drop 판정)는 사유를 그대로 보여준다.
-    showPropsError(result.willRetry ? '사진은 앨범에 저장됐고 서버 전송은 다시 시도합니다' : result.reason);
+    // 다시 시도하는 경우(설계 5장)는 정해진 문구, 더 시도하지 않는 경우(willRetry:false — 서버가 거절해
+    // 대기열에서 뺀 경우)는 "앨범엔 남았다"를 앞에 붙이고 서버 사유를 잇는다(README 문제 해결 표와 같은 문구).
+    showPropsError(
+      result.willRetry
+        ? '사진은 앨범에 저장됐고 서버 전송은 다시 시도합니다'
+        : `사진은 앨범에 저장됐지만 서버가 받지 않았습니다: ${result.reason}`,
+    );
   };
 
   $('fingerDraw').addEventListener('click', () => {

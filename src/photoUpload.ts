@@ -208,7 +208,15 @@ export async function flushPhotoQueue(notify: (notice: UploadNotice) => void): P
       } catch (err) {
         attempt = { outcome: 'retry', reason: `업로드 중 예상치 못한 오류: ${err instanceof Error ? err.message : String(err)}` };
       }
-      writeQueue(applyResult(readQueue(), item.id, attempt.outcome, Date.now()));
+      // 대기열 파일을 못 쓰면(저장 공간 꽉 참 등) tries가 안 올라가 nextRetry가 같은 항목을 계속
+      // 돌려준다 — 같은 사진을 끝없이 다시 올리고 flushing이 영영 안 풀린다(최종 검토 Important 1).
+      // 이번 회차는 여기서 멈추고, 다음 계기(60초 타이머 등)에 다시 시도한다. 성공한 업로드는
+      // 서버에 이미 있으므로 다음 회차에 다시 올리더라도 같은 번호로 덮어쓸 뿐이다.
+      const saved = writeQueue(applyResult(readQueue(), item.id, attempt.outcome, Date.now()));
+      if (!saved) {
+        notify({ id: item.id, ok: false, damageId: item.damageId, reason: '전송 대기열을 저장하지 못했습니다', willRetry: true });
+        return;
+      }
       if (attempt.outcome !== 'retry') removeFile(item.uri);
       if (attempt.outcome === 'ok') {
         notify({ id: item.id, ok: true, damageId: item.damageId, number: attempt.number });
