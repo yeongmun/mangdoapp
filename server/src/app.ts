@@ -1,6 +1,8 @@
-import express, { type ErrorRequestHandler } from 'express';
+import { extname } from 'node:path';
+import express, { type ErrorRequestHandler, type Request, type RequestHandler, type Response } from 'express';
 import multer from 'multer';
 import { validateDamageDoc } from '../public/viewer/damageDoc.js';
+import { photoNumberFromFilename } from '../public/viewer/quantities.js';
 import type { ApsService } from './aps.js';
 import { requireAccessKey } from './auth.js';
 import type { DamageDoc, DamagesStore } from './damagesStore.js';
@@ -9,8 +11,19 @@ import { parseDxf } from './export/dxfDocument.js';
 import { ExportError, exportDamagesToDxf } from './export/exportDrawing.js';
 import { findFrames, type FrameBounds } from './export/frames.js';
 import type { OriginalsStore } from './originalsStore.js';
+import {
+  isDamageId,
+  isPhotoNumber,
+  PHOTO_EXTENSIONS,
+  PHOTO_MIME_TYPES,
+  type PhotosStore,
+} from './photosStore.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+// 사진 한 장의 상한. DXF(100MB)와 따로 둔다 — 3~5MB 사진이 20MB를 넘는 일은 없고,
+// 잘못된 파일을 올리다 디스크가 차는 것을 막는다(스펙 2장).
+export const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
 
 export interface AppDeps {
   accessKey: string;
@@ -18,9 +31,11 @@ export interface AppDeps {
   drawings: DrawingsStore;
   damages: DamagesStore;
   originals: OriginalsStore;
+  photos: PhotosStore;
   publicDir: string;
   now?: () => number;
   maxUploadBytes?: number;
+  maxPhotoBytes?: number;
 }
 
 function messageOf(err: unknown): string {
@@ -29,6 +44,31 @@ function messageOf(err: unknown): string {
 
 async function findDrawing(deps: AppDeps, id: string): Promise<DrawingRecord | null> {
   return isDrawingId(id) ? deps.drawings.get(id) : null;
+}
+
+// 사진 주소는 검증된 값 셋(도면 id, UUID, 영문·숫자·-·_)으로만 만들어지므로 그대로 이어 붙인다.
+function photoUrl(drawingId: string, damageId: string, number: string): string {
+  return `/api/drawings/${drawingId}/damages/${damageId}/photos/${number}`;
+}
+
+// 사진 라우트 셋이 모두 쓰는 앞부분: 도면이 있는지, 손상 id가 UUID인지. 막히면 응답을 보내고
+// null을 돌려준다 — UUID 검사는 경로 조작 방지가 목적이라 라우트마다 빠뜨리면 안 된다(스펙 3장).
+async function findDamageTarget(
+  deps: AppDeps,
+  req: Request,
+  res: Response,
+): Promise<{ drawing: DrawingRecord; damageId: string } | null> {
+  const drawing = await findDrawing(deps, String(req.params.id));
+  if (!drawing) {
+    res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+    return null;
+  }
+  const damageId = String(req.params.damageId);
+  if (!isDamageId(damageId)) {
+    res.status(400).json({ error: '손상 id 형식이 올바르지 않습니다.' });
+    return null;
+  }
+  return { drawing, damageId };
 }
 
 async function refreshStatus(deps: AppDeps, record: DrawingRecord): Promise<DrawingRecord> {
@@ -104,6 +144,31 @@ export function createApp(deps: AppDeps) {
     storage: multer.memoryStorage(),
     limits: { fileSize: deps.maxUploadBytes ?? MAX_UPLOAD_BYTES },
   });
+  const photoUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: deps.maxPhotoBytes ?? MAX_PHOTO_BYTES },
+  });
+
+  // 공용 apiErrorHandler는 DXF 기준 문구('파일이 100MB를 넘습니다')를 쓰므로 사진의 multer
+  // 오류는 여기서 먼저 받아 사진 문구로 답한다. 문구는 늘 실제 상한(20MB)을 말한다 —
+  // 테스트가 상한을 낮춰도 사용자에게 보여줄 값은 하나뿐이다.
+  const photoUploadField: RequestHandler = (req, res, next) => {
+    photoUpload.single('file')(req, res, (err: unknown) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ error: `사진이 ${MAX_PHOTO_BYTES / 1024 / 1024}MB를 넘습니다.` });
+        } else {
+          res.status(400).json({ error: `업로드 형식 오류: ${err.code}` });
+        }
+        return;
+      }
+      if (err) {
+        next(err);
+        return;
+      }
+      next();
+    });
+  };
 
   const app = express();
   app.use(express.static(deps.publicDir));
@@ -230,6 +295,73 @@ export function createApp(deps: AppDeps) {
     const doc = req.body as DamageDoc;
     await deps.damages.save(doc);
     res.json({ updatedAt: doc.updatedAt });
+  });
+
+  // 찍은 사진을 그 손상 폴더에 저장한다. 사진번호는 **파일 이름에서** 뽑는다(스펙 2장) —
+  // 뷰어가 칸에 붙인 번호와 같아야 하므로 뷰어와 같은 photoNumberFromFilename을 쓴다.
+  // 앱이 filename 필드를 함께 보내면 그것을 먼저 쓴다: multer의 originalname은 비ASCII에서
+  // 깨질 수 있다(DXF 업로드의 name 필드와 같은 이유). 이 필드는 file 파트보다 **앞에** 와야
+  // req.body에 담긴다.
+  api.post('/drawings/:id/damages/:damageId/photos', photoUploadField, async (req, res) => {
+    const target = await findDamageTarget(deps, req, res);
+    if (!target) return;
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: '사진 파일이 없습니다.' });
+      return;
+    }
+    const extension = PHOTO_EXTENSIONS[file.mimetype];
+    if (extension === undefined) {
+      res.status(400).json({ error: 'JPEG·PNG·HEIC 사진만 올릴 수 있습니다.' });
+      return;
+    }
+    const bodyName = typeof req.body?.filename === 'string' ? req.body.filename.trim() : '';
+    const number = photoNumberFromFilename(bodyName || file.originalname);
+    if (number === '') {
+      res.status(400).json({ error: '사진 파일 이름에서 사진번호를 찾을 수 없습니다.' });
+      return;
+    }
+    if (!isPhotoNumber(number)) {
+      res.status(400).json({ error: `사진번호에 쓸 수 없는 글자가 있습니다: ${number}` });
+      return;
+    }
+    await deps.photos.save(target.drawing.id, target.damageId, number, extension, file.buffer);
+    res.status(201).json({ number, url: photoUrl(target.drawing.id, target.damageId, number) });
+  });
+
+  api.get('/drawings/:id/damages/:damageId/photos', async (req, res) => {
+    const target = await findDamageTarget(deps, req, res);
+    if (!target) return;
+    const entries = await deps.photos.list(target.drawing.id, target.damageId);
+    res.json(
+      entries.map((entry) => ({
+        number: entry.number,
+        url: photoUrl(target.drawing.id, target.damageId, entry.number),
+        size: entry.size,
+        savedAt: entry.savedAt,
+      })),
+    );
+  });
+
+  // 파일 그대로. 서버는 내용을 바꾸지 않는다(HEIC도 그대로 — 스펙 2장). 한 장이 20MB 이하라
+  // 스트리밍 대신 통째로 읽어 보낸다(업로드도 이미 메모리에 통째로 받는다).
+  api.get('/drawings/:id/damages/:damageId/photos/:number', async (req, res) => {
+    const target = await findDamageTarget(deps, req, res);
+    if (!target) return;
+    const number = req.params.number;
+    if (!isPhotoNumber(number)) {
+      res.status(400).json({ error: '사진번호 형식이 올바르지 않습니다.' });
+      return;
+    }
+    const entry = await deps.photos.find(target.drawing.id, target.damageId, number);
+    if (!entry) {
+      res.status(404).json({ error: '사진을 찾을 수 없습니다.' });
+      return;
+    }
+    const data = await deps.photos.readData(target.drawing.id, entry);
+    res.setHeader('Content-Type', PHOTO_MIME_TYPES[extname(entry.file).toLowerCase()] ?? 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(data);
   });
 
   api.get('/drawings/:id/export.dxf', async (req, res) => {

@@ -8,6 +8,7 @@ import { loadConfig } from './config.js';
 import { DamagesStore } from './damagesStore.js';
 import { DrawingsStore } from './drawingsStore.js';
 import { OriginalsStore } from './originalsStore.js';
+import { PhotosStore } from './photosStore.js';
 
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
 dotenv.config({ path: join(serverRoot, '.env'), quiet: true });
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
     drawings: new DrawingsStore(join(config.dataDir, 'drawings.json')),
     damages: new DamagesStore(join(config.dataDir, 'damages')),
     originals: new OriginalsStore(join(config.dataDir, 'drawings')),
+    photos: new PhotosStore(join(config.dataDir, 'photos')),
     publicDir: join(serverRoot, 'public'),
   });
 
