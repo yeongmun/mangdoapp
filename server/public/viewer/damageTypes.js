@@ -21,8 +21,11 @@ function hatch(pattern, scale) {
 
 // 선·원 기호의 실물 치수(mm). docs/exam.dxf 범례 실측값이며 도면이 바뀌어도 같다.
 // 근거: docs/superpowers/specs/2026-09-12-damage-types-design.md 4.1절
+// crossGapMm: ✕ 중심 사이 거리(범례 1009). 기호는 사각형이 커도 이보다 길어지지 않는다.
+// boxMarginMm: 그릴 때 사각형을 기호보다 사방 이만큼 크게 고정한다(2026-09-18 사용자 결정 —
+// 크기는 그린 대로 두지 않고 범례 크기로 맞춘다).
 function rebarSymbol() {
-  return { kind: 'rebar', lineGapMm: 57.4, crossSizeMm: 212 };
+  return { kind: 'rebar', lineGapMm: 57.4, crossSizeMm: 212, crossGapMm: 1009, boxMarginMm: 60 };
 }
 
 function crackCircles() {

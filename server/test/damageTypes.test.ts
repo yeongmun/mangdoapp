@@ -100,6 +100,8 @@ describe('DAMAGE_TYPES', () => {
       kind: 'rebar',
       lineGapMm: 57.4,
       crossSizeMm: 212,
+      crossGapMm: 1009,
+      boxMarginMm: 60,
     });
     expect(getDamageType('crack_efflorescence')?.decoration).toEqual({
       kind: 'circles',

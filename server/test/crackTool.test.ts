@@ -66,6 +66,42 @@ describe('finalizeStroke', () => {
   });
 });
 
+describe('finalizeRect — 철근노출은 범례 크기로 고정', () => {
+  // 시험용 mapper: world 1 = 10px, worldToDwg는 평행이동이라 world 1 = 1mm → 1px = 0.1mm.
+  const rebarOptions = { ...options, typeId: 'rebar_exposure' };
+
+  it('가로로 드래그하면 중심을 지키고 가로 1341 × 세로 332(mm)로 맞춘다', () => {
+    // 긴 변 = 1009 + 212 + 60×2 = 1341, 짧은 변 = 212 + 60×2 = 332. 드래그 (0,0)-(20,10)의 중심은 (10,5)px
+    // = world (1, -0.5). 반폭 670.5, 반높이 166.
+    const damage = finalizeRect([0, 0], [20, 10], mapper, rebarOptions)!;
+    expect(damage.geometry.world).toEqual([
+      [1 - 670.5, -0.5 + 166],
+      [1 + 670.5, -0.5 + 166],
+      [1 + 670.5, -0.5 - 166],
+      [1 - 670.5, -0.5 - 166],
+    ]);
+    expect(damage.geometry.dwg![0]).toEqual([1000 + 1 - 670.5, 2000 - 0.5 + 166]);
+  });
+
+  it('세로로 드래그하면 긴 변이 세로다', () => {
+    const damage = finalizeRect([0, 0], [10, 20], mapper, rebarOptions)!;
+    const xs = damage.geometry.world.map((p: Pt) => p[0]);
+    const ys = damage.geometry.world.map((p: Pt) => p[1]);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(332, 6);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(1341, 6);
+  });
+
+  it('도면 좌표 변환이 없는 도면은 그린 크기 그대로다', () => {
+    const noDwg = { ...mapper, worldToDwg: () => null };
+    const damage = finalizeRect([0, 0], [20, 10], noDwg, rebarOptions)!;
+    expect(damage.geometry.world).toEqual([[0, 0], [2, 0], [2, -1], [0, -1]]);
+  });
+
+  it('다른 면형 유형은 그린 크기 그대로다', () => {
+    expect(finalizeRect([0, 0], [20, 10], mapper, areaOptions)!.geometry.world).toEqual([[0, 0], [2, 0], [2, -1], [0, -1]]);
+  });
+});
+
 describe('finalizeRect', () => {
   it('드래그한 두 점으로 네 꼭짓점 사각형을 만든다', () => {
     expect(finalizeRect([0, 0], [20, 10], mapper, areaOptions)).toEqual({

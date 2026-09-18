@@ -87,6 +87,32 @@ describe('dwgShapesOf', () => {
   });
 });
 
+describe('rebarSymbolSegments — 범례 길이 상한(crossGapMm)', () => {
+  it('사각형이 커도 선 길이는 ✕ 중심 간격 1009를 넘지 않고 가운데에 놓인다', () => {
+    const [first, second, ...crosses] = rebarSymbolSegments(RECT, 57.4, 212, 1009);
+    // 선은 ✕ 대각선과 만나는 u = ±(504.5 − 28.7) = ±475.8까지, 중심 x = 1500
+    expect(first[0][0]).toBeCloseTo(1500 - 475.8, 6);
+    expect(first[1][0]).toBeCloseTo(1500 + 475.8, 6);
+    expect(second[0][0]).toBeCloseTo(1500 - 475.8, 6);
+    // ✕ 중심은 x = 1500 ± 504.5
+    const centers = [0, 2].map((i) => (crosses[i][0][0] + crosses[i][1][0]) / 2);
+    expect(centers[0]).toBeCloseTo(995.5, 6);
+    expect(centers[1]).toBeCloseTo(2004.5, 6);
+  });
+
+  it('사각형이 범례보다 작으면 지금처럼 사각형에 맞춰 줄어든다', () => {
+    const small: Pt[] = [[0, 0], [800, 0], [800, 400], [0, 400]];
+    const [first] = rebarSymbolSegments(small, 57.4, 212, 1009);
+    // 긴 변 800 − 212 = 588 < 1009 → half = 294, 선 끝 = 294 − 28.7 = 265.3
+    expect(first[1][0]).toBeCloseTo(400 + 265.3, 6);
+  });
+
+  it('crossGapMm을 주지 않으면 예전과 같다', () => {
+    const withCap = rebarSymbolSegments(RECT, 57.4, 212);
+    expect(withCap[0][1][0]).toBeCloseTo(1500 + 1365.3, 6);
+  });
+});
+
 describe('rebarSymbolSegments', () => {
   it('나란한 선 2개와 ✕ 4개, 모두 6개를 만든다', () => {
     expect(rebarSymbolSegments(RECT, 57.4, 212)).toHaveLength(6);

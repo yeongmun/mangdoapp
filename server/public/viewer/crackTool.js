@@ -80,6 +80,42 @@ export function finalizeStroke(clientPoints, mapper, options) {
   return damage;
 }
 
+// 화면 1px이 도면 몇 mm인지(px/mm). 도면 좌표 변환을 못 구한 도면이면 null.
+function pxPerMmOf(mapper) {
+  const dwg0 = mapper.worldToDwg([0, 0]);
+  const dwg1 = mapper.worldToDwg([1, 0]);
+  if (!isFinitePoint(dwg0) || !isFinitePoint(dwg1)) return null;
+  const mmPerWorld = Math.hypot(dwg1[0] - dwg0[0], dwg1[1] - dwg0[1]);
+  const c0 = mapper.worldToClient([0, 0]);
+  const c1 = mapper.worldToClient([1, 0]);
+  const pxPerWorld = Math.hypot(c1[0] - c0[0], c1[1] - c0[1]);
+  const pxPerMm = pxPerWorld / mmPerWorld;
+  return Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : null;
+}
+
+// 철근노출처럼 기호 크기가 정해진 유형은 그린 사각형의 **중심과 방향만** 쓰고 크기는 범례 치수로
+// 고정한다(2026-09-18 사용자 결정: 기호보다 조금 큰 사각형). 긴 변 = ✕ 중심 간격 + ✕ 크기 + 여백×2,
+// 짧은 변 = ✕ 크기 + 여백×2. 드래그가 가로로 길면 가로 방향, 세로로 길면 세로 방향으로 놓는다.
+// 도면 좌표 변환이 없는 도면(mm를 모름)은 그린 대로 둔다. 화면 좌표에서 만들어 rectFromDrag와
+// 같은 꼭짓점 순서를 유지한다.
+export function fixedSymbolRect(clientRect, type, mapper) {
+  const decoration = type?.decoration;
+  if (!decoration || decoration.kind !== 'rebar' || !(decoration.crossGapMm > 0)) return null;
+  const pxPerMm = pxPerMmOf(mapper);
+  if (pxPerMm === null) return null;
+  const margin = decoration.boxMarginMm ?? 0;
+  const longPx = (decoration.crossGapMm + decoration.crossSizeMm + margin * 2) * pxPerMm;
+  const shortPx = (decoration.crossSizeMm + margin * 2) * pxPerMm;
+  const xs = clientRect.map((p) => p[0]);
+  const ys = clientRect.map((p) => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const horizontal = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+  const halfW = (horizontal ? longPx : shortPx) / 2;
+  const halfH = (horizontal ? shortPx : longPx) / 2;
+  return rectFromDrag([cx - halfW, cy - halfH], [cx + halfW, cy + halfH]);
+}
+
 export function finalizeRect(startClient, endClient, mapper, options) {
   const type = getDamageType(options.typeId);
   if (!type || type.kind !== 'area') return null;
@@ -90,7 +126,8 @@ export function finalizeRect(startClient, endClient, mapper, options) {
   }
 
   const clientRect = rectFromDrag(startClient, endClient);
-  const world = clientRect.map(([x, y]) => mapper.clientToWorld(x, y));
+  const snapped = fixedSymbolRect(clientRect, type, mapper);
+  const world = (snapped ?? clientRect).map(([x, y]) => mapper.clientToWorld(x, y));
   if (!world.every((point) => point !== null && isFinitePoint(point))) return null;
 
   const dwg = toDwg(world, mapper);

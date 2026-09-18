@@ -20,6 +20,8 @@ interface RebarDecoration {
   kind: 'rebar';
   lineGapMm: number;
   crossSizeMm: number;
+  crossGapMm?: number;
+  boxMarginMm?: number;
 }
 interface CirclesDecoration {
   kind: 'circles';
@@ -66,7 +68,9 @@ function unit(dx: number, dy: number): Point {
 // 선 간격(lineGapMm)은 고정값이다. ✕ 크기(crossSizeMm)도 고정값이지만 사각형 짧은 변보다 크면 짧은 변에
 // 맞춰 줄인다 — 그러지 않으면 ✕가 사각형 밖으로 튀어나온다(2026-09-16 캐드 확인 8번). 선은 ✕ 중심이
 // 아니라 ✕의 대각선과 만나는 곳에서 끝난다 — 중심까지 그으면 선이 ✕를 뚫고 나가 보인다.
-export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeMm: number): Array<[Point, Point]> {
+// crossGapMm(✕ 중심 사이 거리, 범례 1009)을 주면 기호는 사각형이 커도 그 길이를 넘지 않는다 — 사각형은
+// 기호를 감싸는 틀일 뿐이고 기호는 범례 크기다(2026-09-18). 작은 사각형에서는 지금처럼 줄어든다.
+export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeMm: number, crossGapMm?: number): Array<[Point, Point]> {
   if (rect.length < 4) return [];
   const center: Point = [
     (rect[0][0] + rect[1][0] + rect[2][0] + rect[3][0]) / 4,
@@ -82,7 +86,8 @@ export function rebarSymbolSegments(rect: Point[], lineGapMm: number, crossSizeM
     : unit(rect[3][0] - rect[0][0], rect[3][1] - rect[0][1]);
   const across: Point = [-along[1], along[0]];
 
-  const lineLength = longLength - crossSizeMm;
+  const fitted = longLength - crossSizeMm;
+  const lineLength = crossGapMm !== undefined && crossGapMm > 0 ? Math.min(fitted, crossGapMm) : fitted;
   if (!(lineLength > 0)) return [];
   // 짧은 변이 선 간격보다 좁으면 두 선이 사각형 밖으로 나가고 ✕는 점이 된다 — 기호 없이 사각형만 남긴다.
   if (shortLength < lineGapMm) return [];
@@ -193,7 +198,7 @@ export function damageEntities(
 
   const decoration = type?.decoration as Decoration | null | undefined;
   if (decoration && decoration.kind === 'rebar' && closed) {
-    for (const [from, to] of rebarSymbolSegments(points, decoration.lineGapMm, decoration.crossSizeMm)) {
+    for (const [from, to] of rebarSymbolSegments(points, decoration.lineGapMm, decoration.crossSizeMm, decoration.crossGapMm)) {
       pairs.push(...lineEntity(baseFor(alloc, owner), from, to));
     }
   } else if (decoration && decoration.kind === 'circles') {
