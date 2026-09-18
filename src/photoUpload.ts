@@ -171,9 +171,12 @@ async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
       body: form,
       signal: controller.signal,
     });
-  } catch {
+  } catch (err) {
+    // 실기기에서 원인을 볼 수 있게 Metro 콘솔에 남기고 사유에도 오류 문구를 붙인다(2026-09-18 현장 진단).
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn('[photo-upload] fetch 실패', { url: `${API_URL}/api/drawings/${item.drawingId}/damages/${item.damageId}/photos`, uri: item.uri, filename: item.filename, detail });
     if (controller.signal.aborted) return { outcome: 'retry', reason: '업로드 시간이 초과됐습니다' };
-    return { outcome: 'retry', reason: '서버에 연결할 수 없습니다' };
+    return { outcome: 'retry', reason: `서버에 연결할 수 없습니다 (${detail})` };
   } finally {
     clearTimeout(timeoutId);
   }
