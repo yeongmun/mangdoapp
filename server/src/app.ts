@@ -162,6 +162,9 @@ export function createApp(deps: AppDeps) {
     limits: { fileSize: deps.maxPhotoBytes ?? MAX_PHOTO_BYTES },
   });
 
+  // 이 미들웨어는 라우트 본문(도면 404·손상 id 400)보다 먼저 돈다 — 너무 큰 파일은 도면이
+  // 없어도 413이 먼저 나간다. multer가 폼을 읽는 단계라 순서를 바꿀 수 없고, 어차피 거부되는
+  // 요청이라 그대로 둔다.
   // 공용 apiErrorHandler는 DXF 기준 문구('파일이 100MB를 넘습니다')를 쓰므로 사진의 multer
   // 오류는 여기서 먼저 받아 사진 문구로 답한다. 문구는 늘 실제 상한(20MB)을 말한다 —
   // 테스트가 상한을 낮춰도 사용자에게 보여줄 값은 하나뿐이다.
@@ -313,8 +316,8 @@ export function createApp(deps: AppDeps) {
   // 찍은 사진을 그 손상 폴더에 저장한다. 사진번호는 **파일 이름에서** 뽑는다(스펙 2장) —
   // 뷰어가 칸에 붙인 번호와 같아야 하므로 뷰어와 같은 photoNumberFromFilename을 쓴다.
   // 앱이 filename 필드를 함께 보내면 그것을 먼저 쓴다: multer의 originalname은 비ASCII에서
-  // 깨질 수 있다(DXF 업로드의 name 필드와 같은 이유). 이 필드는 file 파트보다 **앞에** 와야
-  // req.body에 담긴다.
+  // 깨질 수 있다(DXF 업로드의 name 필드와 같은 이유). multer는 폼 전체를 읽은 뒤에 넘어오므로
+  // 파트 순서는 상관없다(검토에서 실측). 앱이 filename을 앞에 두는 것은 관례일 뿐이다.
   api.post('/drawings/:id/damages/:damageId/photos', photoUploadField, async (req, res) => {
     const target = await findDamageTarget(deps, req, res);
     if (!target) return;
