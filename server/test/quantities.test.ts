@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getDamageType } from '../public/viewer/damageTypes.js';
 import {
   appendPhotoNumber,
+  comparePhotoNumbers,
   computeNumbers,
   countOutsideFrames,
   CRACK_WIDTH_BREAKS,
@@ -600,5 +601,23 @@ describe('photoTextOf', () => {
   it('attrs나 photoNumbers가 없어도 던지지 않고 빈 문자열', () => {
     expect(photoTextOf({ id: 'a', type: 'crack' })).toBe('');
     expect(photoTextOf({ id: 'a', type: 'crack', attrs: {} })).toBe('');
+  });
+});
+
+describe('comparePhotoNumbers', () => {
+  it('숫자 번호는 값 순서로 놓는다 (글자 순서가 아니다)', () => {
+    expect(['101530', '9', '88'].sort(comparePhotoNumbers)).toEqual(['9', '88', '101530']);
+  });
+
+  it('값이 같으면 글자 순서로 가른다 (앞자리 0이 앞)', () => {
+    expect(['21', '0021'].sort(comparePhotoNumbers)).toEqual(['0021', '21']);
+  });
+
+  it('숫자가 아닌 번호는 숫자 뒤에, 자기들끼리는 글자 순서로', () => {
+    expect(['P-013', '101530', 'DSC_0001'].sort(comparePhotoNumbers)).toEqual(['101530', 'DSC_0001', 'P-013']);
+  });
+
+  it('같은 값은 0', () => {
+    expect(comparePhotoNumbers('12', '12')).toBe(0);
   });
 });

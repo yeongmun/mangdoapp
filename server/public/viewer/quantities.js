@@ -298,3 +298,26 @@ export function photoTextOf(damage) {
   if (!Array.isArray(photoNumbers) || photoNumbers.length === 0) return '';
   return photoNumbers.map((value) => `#${value}`).join(', ');
 }
+
+// 사진번호 정렬 규칙. 서버 목록·zip과 뷰어 썸네일이 같은 순서를 내야 하므로 한 곳에 둔다
+// (2026-09-18 사진 보관 설계 3·5장). 숫자만으로 된 번호끼리는 값으로 비교한다 — 글자 코드로
+// 비교하면 '101530'이 '9'보다 앞이라 사람이 보는 순서와 어긋난다. 값이 같으면('0021'과 '21')
+// 글자 순서로 가르고, 숫자가 아닌 번호('P-013')는 숫자 뒤에 놓는다.
+/**
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+export function comparePhotoNumbers(a, b) {
+  const left = String(a);
+  const right = String(b);
+  const leftIsDigits = /^\d+$/.test(left);
+  const rightIsDigits = /^\d+$/.test(right);
+  if (leftIsDigits !== rightIsDigits) return leftIsDigits ? -1 : 1;
+  if (leftIsDigits && rightIsDigits) {
+    const diff = Number(left) - Number(right);
+    if (diff !== 0) return diff < 0 ? -1 : 1;
+  }
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
