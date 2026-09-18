@@ -12,6 +12,8 @@ import { writeFileAtomic } from './jsonFile.js';
 // 않는다 — 이 검사의 목적은 '..'·'/'·'\' 같은 경로 조각을 막는 것이다(스펙 3장).
 const DAMAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PHOTO_NUMBER_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+/** 썸네일 파일 이름 꼬리. 서버가 만드는 320px JPEG(photoThumb.ts). */
+export const THUMB_SUFFIX = '.thumb.jpg';
 
 // 받는 MIME과 디스크에 쓰는 확장자. 스펙 2장의 세 가지뿐이고 내용은 바꾸지 않는다.
 // 스펙 2장이 파일을 `<사진번호>.jpg`로 적은 것은 JPEG일 때의 예시로 읽는다 — 파일 응답의
@@ -71,7 +73,32 @@ export class PhotosStore {
         await rm(join(folder, `${old.number}${old.extension}`), { force: true });
       }
     }
+    // 옛 썸네일도 지운다 — 새 본 사진의 썸네일 생성이 실패하면 옛 사진의 썸네일이 새 사진 행세를 한다.
+    await rm(join(folder, `${number}${THUMB_SUFFIX}`), { force: true });
     await writeFileAtomic(join(folder, `${number}${extension}`), data);
+  }
+
+  // 본 사진 옆에 `<번호>.thumb.jpg`로 둔다. 이름에 '.'이 들어가 parsePhotoFile이 걸러내므로
+  // 목록·zip에는 섞이지 않는다. 본 사진이 없는 번호에는 두지 않는다(고아 파일 방지).
+  async saveThumb(drawingId: string, damageId: string, number: string, data: Buffer): Promise<void> {
+    const entry = await this.find(drawingId, damageId, number);
+    if (!entry) throw new Error(`본 사진이 없는 번호: ${number}`);
+    await writeFileAtomic(this.thumbPathOf(drawingId, entry), data);
+  }
+
+  /** 썸네일 바이트. 아직 없으면 null — 호출부가 본 사진에서 만들어 saveThumb로 채운다. */
+  async readThumb(drawingId: string, entry: PhotoEntry): Promise<Buffer | null> {
+    try {
+      return await readFile(this.thumbPathOf(drawingId, entry));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
+  }
+
+  thumbPathOf(drawingId: string, entry: PhotoEntry): string {
+    if (parsePhotoFile(entry.file) === null) throw new Error(`잘못된 사진 파일 이름: ${entry.file}`);
+    return join(this.folderFor(drawingId, entry.damageId), `${entry.number}${THUMB_SUFFIX}`);
   }
 
   async list(drawingId: string, damageId: string): Promise<PhotoEntry[]> {

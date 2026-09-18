@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -703,6 +704,7 @@ describe('POST /api/drawings/:id/damages/:damageId/photos', () => {
     expect(res.body).toEqual({
       number: '101530',
       url: `/api/drawings/${drawing.id}/damages/${D1}/photos/101530`,
+      thumbUrl: `/api/drawings/${drawing.id}/damages/${D1}/photos/101530/thumb`,
     });
     expect((await photos.list(drawing.id, D1)).map((e) => e.file)).toEqual(['101530.jpg']);
   });
@@ -850,6 +852,7 @@ describe('GET /api/drawings/:id/damages/:damageId/photos', () => {
     expect(res.body[0]).toMatchObject({
       number: '9',
       url: `/api/drawings/${drawing.id}/damages/${D1}/photos/9`,
+      thumbUrl: `/api/drawings/${drawing.id}/damages/${D1}/photos/9/thumb`,
       size: 2,
     });
     expect(Number.isFinite(Date.parse(res.body[0].savedAt))).toBe(true);
@@ -984,5 +987,94 @@ describe('GET /api/drawings/:id/photos.zip', () => {
       404,
     );
     expect((await request(app).get(`/api/drawings/${drawing.id}/photos.zip`)).status).toBe(401);
+  });
+});
+
+describe('사진 썸네일 (…/photos/:number/thumb)', () => {
+  async function jpeg(width: number, height: number): Promise<Buffer> {
+    return sharp({ create: { width, height, channels: 3, background: { r: 10, g: 120, b: 200 } } })
+      .jpeg()
+      .toBuffer();
+  }
+
+  it('올릴 때 320px 썸네일을 옆에 만들고 GET …/thumb가 image/jpeg로 준다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    const post = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .field('filename', 'IMG_0031.jpg')
+      .attach('file', await jpeg(1600, 1200), { filename: 'IMG_0031.jpg', contentType: 'image/jpeg' });
+    expect(post.status).toBe(201);
+    const entry = (await photos.find(drawing.id, D1, '0031'))!;
+    expect(await photos.readThumb(drawing.id, entry)).not.toBeNull();
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/0031/thumb`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/jpeg');
+    expect(res.headers['cache-control']).toBe('private, max-age=3600');
+    const meta = await sharp(Buffer.from(res.body)).metadata();
+    expect([meta.width, meta.height]).toEqual([320, 240]);
+  });
+
+  it('썸네일을 못 만들어도(사진이 아닌 바이트) 업로드는 201이고 thumb는 404', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const post = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('jpeg-bytes'), { filename: 'IMG_0032.jpg', contentType: 'image/jpeg' });
+    expect(post.status).toBe(201);
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/0032/thumb`)
+      .set('x-access-key', KEY);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('썸네일을 만들 수 없습니다.');
+  });
+
+  it('썸네일 파일이 없으면(옛 사진) 본 사진에서 만들어 저장한 뒤 준다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '77', '.jpg', await jpeg(800, 1000));
+    const entry = (await photos.find(drawing.id, D1, '77'))!;
+    expect(await photos.readThumb(drawing.id, entry)).toBeNull();
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/77/thumb`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+    expect(res.status).toBe(200);
+    const meta = await sharp(Buffer.from(res.body)).metadata();
+    expect([meta.width, meta.height]).toEqual([256, 320]);
+    expect(await photos.readThumb(drawing.id, entry)).not.toBeNull();
+  });
+
+  it('없는 번호는 404, 형식이 틀린 번호는 400, 접근키 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const base = `/api/drawings/${drawing.id}/damages/${D1}/photos`;
+    expect((await request(app).get(`${base}/999/thumb`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).get(`${base}/a.b/thumb`).set('x-access-key', KEY)).status).toBe(400);
+    expect((await request(app).get(`${base}/999/thumb`)).status).toBe(401);
+  });
+
+  it('사진 zip에는 썸네일이 들어가지 않는다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', await jpeg(400, 300), { filename: 'IMG_0040.jpg', contentType: 'image/jpeg' });
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/photos.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+    expect(res.status).toBe(200);
+    const names = Buffer.from(res.body).toString('latin1');
+    expect(names).toContain('0040.jpg');
+    expect(names).not.toContain('thumb');
   });
 });

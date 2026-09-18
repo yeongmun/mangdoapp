@@ -2,15 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { blocksDrawing, photoStripItems } from '../public/viewer/photoStrip.js';
 
 function photo(number: string) {
-  return { number, url: `/api/x/photos/${number}`, size: 10, savedAt: '2026-09-18T01:00:00.000Z' };
+  return {
+    number,
+    url: `/api/x/photos/${number}`,
+    thumbUrl: `/api/x/photos/${number}/thumb`,
+    size: 10,
+    savedAt: '2026-09-18T01:00:00.000Z',
+  };
 }
 
 describe('photoStripItems', () => {
   it('서버에 있는 사진은 번호 순서대로 그림, 칸에만 있는 번호는 칩', () => {
     const items = photoStripItems(['101530', '101600', '999'], [photo('101600'), photo('101530')]);
     expect(items).toEqual([
-      { kind: 'image', number: '101530', url: '/api/x/photos/101530' },
-      { kind: 'image', number: '101600', url: '/api/x/photos/101600' },
+      { kind: 'image', number: '101530', url: '/api/x/photos/101530', thumbUrl: '/api/x/photos/101530/thumb' },
+      { kind: 'image', number: '101600', url: '/api/x/photos/101600', thumbUrl: '/api/x/photos/101600/thumb' },
       { kind: 'missing', number: '999' },
     ]);
   });
@@ -21,7 +27,14 @@ describe('photoStripItems', () => {
 
   it('칸에 없는 파일도 보여준다 (칸에서 번호를 지운 사진)', () => {
     expect(photoStripItems([], [photo('777')])).toEqual([
-      { kind: 'image', number: '777', url: '/api/x/photos/777' },
+      { kind: 'image', number: '777', url: '/api/x/photos/777', thumbUrl: '/api/x/photos/777/thumb' },
+    ]);
+  });
+
+  it('thumbUrl이 없는 옛 서버 응답은 본 사진 주소를 썸네일로 쓴다', () => {
+    const old = { number: '5', url: '/api/x/photos/5', size: 1, savedAt: '2026-09-18T01:00:00.000Z' };
+    expect(photoStripItems([], [old])).toEqual([
+      { kind: 'image', number: '5', url: '/api/x/photos/5', thumbUrl: '/api/x/photos/5' },
     ]);
   });
 

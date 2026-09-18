@@ -105,11 +105,13 @@ function removeFile(uri: string): void {
 
 // 앨범 파일은 권한 때문에 나중에 다시 읽기 어렵고, 캐시 사본은 시스템이 언제든 지운다.
 // 그래서 문서 폴더(Paths.document)에 사본을 하나 더 둔다 — 전송이 끝나면 지운다(설계 4.3).
-export async function keepCopy(sourceUri: string, filename: string): Promise<string | null> {
+// 확장자는 **보낼 파일**(sourceUri)의 것이다 — 앨범 파일명(IMG_0021.HEIC)이 아니라 줄여서 다시
+// 저장한 JPEG(2026-09-18 설계 2장)의 것이어야 서버로 보내는 MIME이 내용과 맞는다.
+export async function keepCopy(sourceUri: string): Promise<string | null> {
   try {
     const folder = new Directory(Paths.document, KEEP_DIR_NAME);
     folder.create({ intermediates: true, idempotent: true });
-    const destination = new File(folder, `${newItemId()}${extensionOf(filename)}`);
+    const destination = new File(folder, `${newItemId()}${extensionOf(sourceUri)}`);
     await new File(sourceUri).copy(destination, { overwrite: true });
     return destination.uri;
   } catch (err) {
@@ -170,7 +172,8 @@ async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
       httpMethod: 'POST',
       uploadType: UploadType.MULTIPART,
       fieldName: 'file',
-      mimeType: mimeOf(item.filename),
+      // 보관 사본의 확장자가 곧 내용이다(줄여서 JPEG로 다시 저장한 파일). 앨범 파일명은 HEIC일 수 있다.
+      mimeType: mimeOf(item.uri),
       parameters: { filename: item.filename },
       headers: { 'x-access-key': ACCESS_KEY },
       // 앱이 잠깐 뒤로 가도 이어지는 background 세션은 60초 타임아웃·재시도 대기열과 어긋난다.

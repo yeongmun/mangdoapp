@@ -12,6 +12,7 @@ import { parseDxf } from './export/dxfDocument.js';
 import { ExportError, exportDamagesToDxf } from './export/exportDrawing.js';
 import { findFrames, type FrameBounds } from './export/frames.js';
 import type { OriginalsStore } from './originalsStore.js';
+import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
 import {
   isDamageId,
@@ -51,6 +52,29 @@ async function findDrawing(deps: AppDeps, id: string): Promise<DrawingRecord | n
 // 사진 주소는 검증된 값 셋(도면 id, UUID, 영문·숫자·-·_)으로만 만들어지므로 그대로 이어 붙인다.
 function photoUrl(drawingId: string, damageId: string, number: string): string {
   return `/api/drawings/${drawingId}/damages/${damageId}/photos/${number}`;
+}
+
+function thumbUrl(drawingId: string, damageId: string, number: string): string {
+  return `${photoUrl(drawingId, damageId, number)}/thumb`;
+}
+
+// 본 사진 바이트로 썸네일을 만들어 저장한다. 실패는 로그만 남기고 null — 썸네일은 덤이라
+// 업로드·조회를 막지 않는다(뷰어는 본 사진으로 대신한다).
+async function ensureThumb(
+  deps: AppDeps,
+  drawingId: string,
+  damageId: string,
+  number: string,
+  data: Buffer,
+): Promise<Buffer | null> {
+  try {
+    const thumb = await makeThumbnail(data);
+    await deps.photos.saveThumb(drawingId, damageId, number, thumb);
+    return thumb;
+  } catch (err) {
+    console.error('[photos] 썸네일을 만들지 못했습니다', drawingId, damageId, number, messageOf(err));
+    return null;
+  }
 }
 
 // 사진 라우트 셋이 모두 쓰는 앞부분: 도면이 있는지, 손상 id가 UUID인지. 막히면 응답을 보내고
@@ -342,7 +366,15 @@ export function createApp(deps: AppDeps) {
       return;
     }
     await deps.photos.save(target.drawing.id, target.damageId, number, extension, file.buffer);
-    res.status(201).json({ number, url: photoUrl(target.drawing.id, target.damageId, number) });
+    // 썸네일은 덤이다 — 못 만들어도(깨진 파일·sharp가 못 읽는 형식) 본 사진 저장은 성공이다.
+    // 뷰어는 썸네일 주소가 404면 본 사진을 대신 받는다(main.js). 없는 썸네일은 GET …/thumb가
+    // 다시 한 번 만들어 본다.
+    await ensureThumb(deps, target.drawing.id, target.damageId, number, file.buffer);
+    res.status(201).json({
+      number,
+      url: photoUrl(target.drawing.id, target.damageId, number),
+      thumbUrl: thumbUrl(target.drawing.id, target.damageId, number),
+    });
   });
 
   api.get('/drawings/:id/damages/:damageId/photos', async (req, res) => {
@@ -353,10 +385,40 @@ export function createApp(deps: AppDeps) {
       entries.map((entry) => ({
         number: entry.number,
         url: photoUrl(target.drawing.id, target.damageId, entry.number),
+        thumbUrl: thumbUrl(target.drawing.id, target.damageId, entry.number),
         size: entry.size,
         savedAt: entry.savedAt,
       })),
     );
+  });
+
+  // 320px 썸네일(photoThumb.ts). 올릴 때 만들어 둔 파일을 주고, 없으면(옛 사진·그때 실패) 본 사진에서
+  // 지금 만들어 저장한 뒤 준다. 그래도 못 만들면 404 — 뷰어가 본 사진으로 대신한다.
+  api.get('/drawings/:id/damages/:damageId/photos/:number/thumb', async (req, res) => {
+    const target = await findDamageTarget(deps, req, res);
+    if (!target) return;
+    const number = req.params.number;
+    if (!isPhotoNumber(number)) {
+      res.status(400).json({ error: '사진번호 형식이 올바르지 않습니다.' });
+      return;
+    }
+    const entry = await deps.photos.find(target.drawing.id, target.damageId, number);
+    if (!entry) {
+      res.status(404).json({ error: '사진을 찾을 수 없습니다.' });
+      return;
+    }
+    let thumb = await deps.photos.readThumb(target.drawing.id, entry);
+    if (!thumb) {
+      const made = await ensureThumb(deps, target.drawing.id, target.damageId, number, await deps.photos.readData(target.drawing.id, entry));
+      if (!made) {
+        res.status(404).json({ error: '썸네일을 만들 수 없습니다.' });
+        return;
+      }
+      thumb = made;
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(thumb);
   });
 
   // 파일 그대로. 서버는 내용을 바꾸지 않는다(HEIC도 그대로 — 스펙 2장). 한 장이 20MB 이하라

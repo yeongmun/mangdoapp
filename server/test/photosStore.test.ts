@@ -116,3 +116,39 @@ describe('PhotosStore', () => {
     await expect(photos.save(DRAWING, D1, '1', '.exe', Buffer.from('a'))).rejects.toThrow('잘못된 확장자');
   });
 });
+
+describe('PhotosStore 썸네일', () => {
+  it('saveThumb는 <번호>.thumb.jpg로 두고 readThumb가 돌려준다', async () => {
+    await photos.save(DRAWING, D1, '101530', '.jpg', Buffer.from('abc'));
+    await photos.saveThumb(DRAWING, D1, '101530', Buffer.from('tiny'));
+    expect((await readdir(join(dir, 'photos', DRAWING, D1))).sort()).toEqual(['101530.jpg', '101530.thumb.jpg']);
+    const entry = (await photos.find(DRAWING, D1, '101530'))!;
+    expect((await photos.readThumb(DRAWING, entry))!.toString()).toBe('tiny');
+    expect(photos.thumbPathOf(DRAWING, entry)).toBe(join(dir, 'photos', DRAWING, D1, '101530.thumb.jpg'));
+  });
+
+  it('썸네일 파일은 목록·listDrawing에 섞이지 않는다', async () => {
+    await photos.save(DRAWING, D1, '101530', '.jpg', Buffer.from('abc'));
+    await photos.saveThumb(DRAWING, D1, '101530', Buffer.from('tiny'));
+    expect((await photos.list(DRAWING, D1)).map((e) => e.file)).toEqual(['101530.jpg']);
+    expect((await photos.listDrawing(DRAWING)).map((e) => e.file)).toEqual(['101530.jpg']);
+  });
+
+  it('썸네일이 아직 없으면 readThumb는 null', async () => {
+    await photos.save(DRAWING, D1, '101530', '.jpg', Buffer.from('abc'));
+    const entry = (await photos.find(DRAWING, D1, '101530'))!;
+    expect(await photos.readThumb(DRAWING, entry)).toBeNull();
+  });
+
+  it('같은 번호를 다시 올리면 옛 썸네일을 지운다 (새 사진의 썸네일 생성이 실패해도 옛 것이 남지 않게)', async () => {
+    await photos.save(DRAWING, D1, '101530', '.jpg', Buffer.from('abc'));
+    await photos.saveThumb(DRAWING, D1, '101530', Buffer.from('tiny'));
+    await photos.save(DRAWING, D1, '101530', '.jpg', Buffer.from('new'));
+    expect(await readdir(join(dir, 'photos', DRAWING, D1))).toEqual(['101530.jpg']);
+  });
+
+  it('본 사진이 없는 번호에는 썸네일을 두지 않는다', async () => {
+    await expect(photos.saveThumb(DRAWING, D1, '7', Buffer.from('x'))).rejects.toThrow('본 사진이 없는 번호');
+    await expect(photos.saveThumb(DRAWING, D1, '../x', Buffer.from('x'))).rejects.toThrow('잘못된 사진번호');
+  });
+});

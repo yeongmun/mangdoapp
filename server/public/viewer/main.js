@@ -443,7 +443,7 @@ async function start() {
   // 사진 썸네일 ────────────────────────────────────────────────────────────
   // 사진 API도 x-access-key 헤더를 요구하는데 <img src>에는 헤더를 붙일 수 없다. 그래서 fetch로
   // 받아 blob: 주소를 만들어 쓰고, 다시 그릴 때·닫을 때 거둔다(안 거두면 사진만큼 메모리가 쌓인다).
-  // 썸네일은 원본을 CSS로 줄여 보인다 — 서버 축소본은 후속이다(설계 9장).
+  // 사진 줄은 서버가 만든 320px 썸네일(thumbUrl)만 받고, 누르면 본 사진(1600px)을 따로 받는다(2026-09-18).
   let photoObjectUrls = [];
   // 지금 사진 줄이 보여주는 손상. 늦게 도착한 목록 응답과 전송 알림을 가려내는 데 쓴다.
   let photoStripDamageId = null;
@@ -519,11 +519,31 @@ async function start() {
       img.className = 'photoThumb';
       img.alt = `사진 ${item.number}`;
       img.addEventListener('click', () => {
-        // 썸네일에 이미 원본이 들어 있다(CSS로 줄여 보일 뿐) — 다시 받지 않는다.
-        if (img.src) openPhotoView(img.src, item.number);
+        // 줄에는 320px 썸네일만 들어 있다. 누르면 그것을 먼저 크게 띄우고, 본 사진(1600px)을 받아
+        // 도착하면 바꿔 끼운다 — 그 사이 다른 사진을 눌렀거나 닫았으면 버린다.
+        if (!img.src) return;
+        openPhotoView(img.src, item.number);
+        if (item.url === item.thumbUrl) return;
+        loadPhotoBlobUrl(item.url).then(
+          (objectUrl) => {
+            if (isStalePhotoStrip(damageId, generation) || !isPhotoViewShowing(item.number)) {
+              URL.revokeObjectURL(objectUrl);
+              photoObjectUrls = photoObjectUrls.filter((url) => url !== objectUrl);
+              return;
+            }
+            $('photoViewImage').src = objectUrl;
+          },
+          (err) => console.error('[photos]', item.number, err),
+        );
       });
       strip.append(img);
-      loadPhotoBlobUrl(item.url).then(
+      // 썸네일 주소가 404면(서버가 못 만든 사진) 본 사진으로 대신한다.
+      loadPhotoBlobUrl(item.thumbUrl)
+        .catch((err) => {
+          if (item.thumbUrl === item.url) throw err;
+          return loadPhotoBlobUrl(item.url);
+        })
+        .then(
         (objectUrl) => {
           // 이 blob을 기다리는 동안 더 최신 호출이 생겼으면 이미 지워졌거나 다른 손상의 <img>에
           // 붙이지 않는다 — 방금 받은 사진도 쓰지 않고 바로 거둔다(리뷰 Important #1: 안 거두면
@@ -545,13 +565,22 @@ async function start() {
     strip.hidden = false;
   }
 
+  // 오버레이가 지금 보여주는 사진번호. 본 사진이 늦게 도착했을 때 아직 그 사진을 보고 있는지 가린다.
+  let photoViewNumber = null;
+
   function openPhotoView(objectUrl, number) {
+    photoViewNumber = number;
     $('photoViewImage').src = objectUrl;
     $('photoViewImage').alt = `사진 ${number}`;
     $('photoView').hidden = false;
   }
 
+  function isPhotoViewShowing(number) {
+    return isPhotoViewOpen() && photoViewNumber === number;
+  }
+
   function closePhotoView() {
+    photoViewNumber = null;
     $('photoView').hidden = true;
     // blob: 주소는 사진 줄이 갖고 있으므로 여기서 거두지 않는다 — src만 뗀다.
     $('photoViewImage').removeAttribute('src');

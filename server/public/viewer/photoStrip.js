@@ -4,9 +4,10 @@
 import { comparePhotoNumbers } from './quantities.js';
 
 /**
- * @typedef {{ number: string, url: string, size: number, savedAt: string }} PhotoListItem
- * 서버 목록(GET …/photos)의 한 줄.
- * @typedef {{ kind: 'image', number: string, url: string } | { kind: 'missing', number: string }} PhotoStripItem
+ * @typedef {{ number: string, url: string, thumbUrl?: string, size: number, savedAt: string }} PhotoListItem
+ * 서버 목록(GET …/photos)의 한 줄. thumbUrl은 서버가 만든 320px 썸네일(2026-09-18 추가) — 옛 서버
+ * 응답에는 없을 수 있어 그때는 본 사진 주소를 대신 쓴다.
+ * @typedef {{ kind: 'image', number: string, url: string, thumbUrl: string } | { kind: 'missing', number: string }} PhotoStripItem
  */
 
 /**
@@ -25,7 +26,12 @@ export function photoStripItems(photoNumbers, list) {
   const items = photos
     .slice()
     .sort((a, b) => comparePhotoNumbers(a.number, b.number))
-    .map((photo) => ({ kind: 'image', number: photo.number, url: photo.url }));
+    .map((photo) => ({
+      kind: 'image',
+      number: photo.number,
+      url: photo.url,
+      thumbUrl: typeof photo.thumbUrl === 'string' && photo.thumbUrl !== '' ? photo.thumbUrl : photo.url,
+    }));
   const onServer = new Set(photos.map((photo) => photo.number));
   for (const number of numbers) {
     if (!onServer.has(number)) items.push({ kind: 'missing', number });
