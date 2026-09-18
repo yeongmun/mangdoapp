@@ -10,8 +10,9 @@ export const PHOTO_FLUSH_INTERVAL_MS = 60_000;
 
 // 리뷰 Fix round 1 — Important: 연결은 됐지만 서버·중간 장비가 응답을 주지 않는 "죽은 연결"에서
 // RN의 fetch가 무한정 대기할 수 있다. 그러면 flushPhotoQueue의 단일 실행 잠금(flushing)이 영원히
-// 풀리지 않아 마운트·60초 타이머·촬영 직후·배지 탭이 모두 조용히 무시된다. 30초에서 스스로 끊는다.
-export const PHOTO_UPLOAD_TIMEOUT_MS = 30_000;
+// 풀리지 않아 마운트·60초 타이머·촬영 직후·배지 탭이 모두 조용히 무시된다. 60초에서 스스로 끊는다
+// (현장 LTE가 느리면 5MB 사진에 40초쯤 걸릴 수 있어 30초는 빠듯하다 — 재검토 지적).
+export const PHOTO_UPLOAD_TIMEOUT_MS = 60_000;
 
 const QUEUE_FILE_NAME = 'photo-queue.json';
 const QUEUE_TMP_FILE_NAME = 'photo-queue.json.tmp';
