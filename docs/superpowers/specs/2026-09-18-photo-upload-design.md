@@ -39,7 +39,7 @@
 `takePhoto` 메시지에 `drawingId`·`damageId`가 실려 온다(뷰어가 선택된 손상을 안다).
 
 1. 지금처럼 찍고 앨범에 저장한다(2026-09-17 설계 5장). 여기까지 성공하면 뷰어에 먼저 답한다: `{ requestId, ok: true, filename, uploaded: false }` → 뷰어는 번호를 칸에 붙인다(사용자는 기다리지 않는다).
-2. 이어서 서버에 올린다(`fetch` multipart, `x-access-key`). 성공하면 `window.mangdoPhotoUploaded({ requestId, damageId, number })`로 알린다 → 뷰어는 썸네일을 새로 읽는다. 실패하면 **대기열**에 넣고 `window.mangdoPhotoUploadFailed({ requestId, damageId, reason })` → 뷰어는 `사진은 앨범에 저장됐고 서버 전송은 다시 시도합니다`를 보여준다.
+2. 이어서 서버에 올린다(`expo-file-system`의 `File.upload` 네이티브 multipart, `x-access-key`; `filename` 파라미터를 file 파트보다 앞에 보낸다 — Expo SDK 57의 `fetch`는 `{ uri, name, type }` 파일 파트를 거절해 2026-09-18 현장 진단 후 바꿈). 성공하면 `window.mangdoPhotoUploaded({ requestId, damageId, number })`로 알린다 → 뷰어는 썸네일을 새로 읽는다. 실패하면 **대기열**에 넣고 `window.mangdoPhotoUploadFailed({ requestId, damageId, reason })` → 뷰어는 `사진은 앨범에 저장됐고 서버 전송은 다시 시도합니다`를 보여준다.
 3. 대기열(`src/photoUpload.ts`): 앱 문서 폴더의 `photo-queue.json`에 `[{ drawingId, damageId, uri(캐시 사본), filename, addedAt, tries }]`. 캐시 사본은 앨범 저장과 별개로 앱이 지운 뒤에도 남도록 `Paths.document` 아래에 복사해 둔다(앨범 파일은 권한 문제로 다시 읽기 어렵다).
 4. 재시도 시점: 뷰어 화면이 열릴 때(`ViewerScreen` mount), 새 사진을 올린 직후, 그리고 화면에 있는 동안 60초마다. 성공하면 항목과 캐시 사본을 지운다. 10번 실패한 항목은 그대로 두고 더 시도하지 않는다(목록 화면 상단에 `보내지 못한 사진 N장` 배지 — 누르면 다시 시도).
 5. 서버가 400(형식·번호)을 주면 재시도해도 소용없으니 대기열에서 빼고 뷰어에 사유를 보낸다.

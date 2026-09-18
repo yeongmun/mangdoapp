@@ -1,7 +1,7 @@
 // 찍은 사진을 서버로 보낸다. 실패하면 앱 문서 폴더의 대기열(photo-queue.json)에 넣고 나중에 다시
 // 보낸다. **언제 무엇을 보낼지**는 순수 모듈 src/photoQueue.ts가 정하고(테스트 있음), 이 파일은
 // 파일·네트워크만 다룬다. 근거: docs/superpowers/specs/2026-09-18-photo-upload-design.md 4장
-import { Directory, File, Paths } from 'expo-file-system';
+import { Directory, File, Paths, UploadType, type UploadResult } from 'expo-file-system';
 import { ACCESS_KEY, API_URL } from './config';
 import { applyResult, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQueueItem } from './photoQueue';
 
@@ -150,38 +150,49 @@ type Attempt =
   | { outcome: 'drop'; reason: string };
 
 async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
-  const form = new FormData();
-  // filename 필드는 file 파트보다 **앞에** 와야 서버(multer)의 req.body에 담긴다. 앨범 파일
-  // 이름을 그대로 보내야 서버가 뽑는 사진번호가 뷰어가 칸에 붙인 번호와 같다.
-  form.append('filename', item.filename);
-  // RN의 FormData는 파일을 { uri, name, type } 객체로 받는다(웹 Blob이 아니다). 타입 정의에는
-  // 없는 모양이라 캐스트가 필요하다.
-  form.append('file', { uri: item.uri, name: item.filename, type: mimeOf(item.filename) } as unknown as Blob);
+  // 2026-09-18 현장 진단: Expo SDK 57의 fetch는 FormData에 넣은 { uri, name, type } 파일 파트를
+  // 거절한다("Unsupported FormDataPart implementation") — 웹 Blob만 받는다. 그래서 fetch 대신
+  // expo-file-system의 네이티브 multipart 업로드를 쓴다. 파일을 JS로 읽지 않고 디스크에서 바로
+  // 흘려보내며(5MB 사진도 메모리 부담 없음), iOS·Android 모두 parameters를 file 파트보다 **앞에**
+  // 쓰므로 서버(multer)의 req.body.filename에 앨범 파일 이름이 담긴다 — 서버가 뽑는 사진번호가
+  // 뷰어가 칸에 붙인 번호와 같아진다. 파트의 filename은 대기열 사본 이름(<id>.jpg)이라 서버는
+  // 반드시 filename 필드를 먼저 본다(app.ts).
+  const url = `${API_URL}/api/drawings/${item.drawingId}/damages/${item.damageId}/photos`;
 
-  // 죽은 연결(응답이 영영 안 옴)에서 fetch가 멈추지 않도록 스스로 끊는다 — 타임아웃도 네트워크
+  // 죽은 연결(응답이 영영 안 옴)에서 업로드가 멈추지 않도록 스스로 끊는다 — 타임아웃도 네트워크
   // 오류와 같이 일시적 실패(retry)로 다룬다(서버가 늦게라도 살아나면 다음 시도는 성공할 수 있다).
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PHOTO_UPLOAD_TIMEOUT_MS);
-  let res: Response;
+  let res: UploadResult;
   try {
-    // Content-Type은 넣지 않는다 — RN이 multipart 경계 문자열을 스스로 붙인다.
-    res = await fetch(`${API_URL}/api/drawings/${item.drawingId}/damages/${item.damageId}/photos`, {
-      method: 'POST',
+    // Content-Type(multipart 경계 문자열)은 네이티브가 스스로 붙인다.
+    res = await new File(item.uri).upload(url, {
+      httpMethod: 'POST',
+      uploadType: UploadType.MULTIPART,
+      fieldName: 'file',
+      mimeType: mimeOf(item.filename),
+      parameters: { filename: item.filename },
       headers: { 'x-access-key': ACCESS_KEY },
-      body: form,
+      // 앱이 잠깐 뒤로 가도 이어지는 background 세션은 60초 타임아웃·재시도 대기열과 어긋난다.
+      sessionType: 'foreground',
       signal: controller.signal,
     });
   } catch (err) {
     // 실기기에서 원인을 볼 수 있게 Metro 콘솔에 남기고 사유에도 오류 문구를 붙인다(2026-09-18 현장 진단).
     const detail = err instanceof Error ? err.message : String(err);
-    console.warn('[photo-upload] fetch 실패', { url: `${API_URL}/api/drawings/${item.drawingId}/damages/${item.damageId}/photos`, uri: item.uri, filename: item.filename, detail });
+    console.warn('[photo-upload] 업로드 실패', { url, uri: item.uri, filename: item.filename, detail });
     if (controller.signal.aborted) return { outcome: 'retry', reason: '업로드 시간이 초과됐습니다' };
     return { outcome: 'retry', reason: `서버에 연결할 수 없습니다 (${detail})` };
   } finally {
     clearTimeout(timeoutId);
   }
 
-  const body = (await res.json().catch(() => ({}))) as { number?: string; error?: string };
+  let body: { number?: string; error?: string } = {};
+  try {
+    body = JSON.parse(res.body) as { number?: string; error?: string };
+  } catch {
+    // 본문이 JSON이 아니면(프록시 오류 페이지 등) 상태 코드만으로 판단한다.
+  }
   if (res.status === 201) return { outcome: 'ok', number: typeof body.number === 'string' ? body.number : '' };
   const reason = body.error ?? `서버가 거절했습니다 (${res.status})`;
   // 400(형식·번호)·404(도면이 없어짐)·413(너무 큼)은 다시 보내도 같은 답이 온다 → 뺀다(설계 4.5).
