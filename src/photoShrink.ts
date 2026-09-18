@@ -22,3 +22,26 @@ export function shrinkAction(width: number, height: number, maxLongSide = PHOTO_
   }
   return width > maxLongSide ? { width: maxLongSide } : null;
 }
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.heic': 'image/heic',
+  '.heif': 'image/heic',
+};
+
+/**
+ * 파일 이름·uri의 확장자(소문자, 점 포함). `?query`·`#hash` 꼬리는 떼고 본다. 확장자가 없으면
+ * `.jpg` — 서버로 보낼 사본은 줄여서 JPEG로 다시 저장한 것이 기본이기 때문이다.
+ */
+export function extensionOf(nameOrUri: string): string {
+  const path = String(nameOrUri).replace(/[?#].*$/, '');
+  const match = /\.[A-Za-z0-9]+$/.exec(path);
+  return match ? match[0].toLowerCase() : '.jpg';
+}
+
+/** 서버로 보낼 MIME. 보관 사본의 uri로 정한다 — 앨범 파일명(HEIC)이 아니라 실제 보낼 파일 기준. */
+export function mimeOf(nameOrUri: string): string {
+  return MIME_BY_EXTENSION[extensionOf(nameOrUri)] ?? 'image/jpeg';
+}

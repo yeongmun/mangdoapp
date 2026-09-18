@@ -7,7 +7,7 @@ import { File, Paths } from 'expo-file-system';
 // createAssetAsync는 최신 index가 아니라 legacy에만 있다(Asset.create()로 대체 예정이지만,
 // filename을 바로 돌려주는 건 legacy뿐 — 조사 2장).
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { ImageManipulator, type ImageManipulatorContext, SaveFormat } from 'expo-image-manipulator';
 import { PHOTO_JPEG_QUALITY, shrinkAction } from './photoShrink';
 import { keepCopy } from './photoUpload';
 
@@ -37,21 +37,31 @@ export function photoFileName(date: Date): string {
 // 두고 JPEG 75%로 다시 저장만 한다(용량·HEIC 변환). 실패하면 원본 uri를 그대로 돌려준다.
 // 리샘플링은 OS 네이티브(iOS CoreGraphics·Android Bitmap 필터)라 알고리즘을 고를 수 없다.
 async function shrinkForUpload(uri: string, width: number, height: number): Promise<string> {
+  // 네이티브 객체(디코딩된 비트맵을 쥔다)는 어느 단계에서 실패하든 반드시 놓아준다 — 안 놓으면 다음
+  // 촬영의 메모리가 모자라 줄이기가 또 실패하고 조용히 원본(4~5MB)이 올라간다(검토 Important 1).
+  let context: ReturnType<typeof ImageManipulator.manipulate> | null = null;
+  let image: Awaited<ReturnType<ImageManipulatorContext['renderAsync']>> | null = null;
   try {
-    const context = ImageManipulator.manipulate(uri);
+    context = ImageManipulator.manipulate(uri);
     const action = shrinkAction(width, height);
     if (action) context.resize(action);
-    const image = await context.renderAsync();
-    try {
-      const saved = await image.saveAsync({ format: SaveFormat.JPEG, compress: PHOTO_JPEG_QUALITY });
-      return saved.uri;
-    } finally {
-      image.release();
-      context.release();
-    }
+    image = await context.renderAsync();
+    const saved = await image.saveAsync({ format: SaveFormat.JPEG, compress: PHOTO_JPEG_QUALITY });
+    return saved.uri;
   } catch (err) {
     console.warn('[photo] 사진을 줄이지 못해 원본을 보냅니다', err instanceof Error ? err.message : String(err));
     return uri;
+  } finally {
+    releaseQuietly(image);
+    releaseQuietly(context);
+  }
+}
+
+function releaseQuietly(shared: { release(): void } | null): void {
+  try {
+    shared?.release();
+  } catch {
+    // 이미 놓였거나 네이티브가 거부해도 촬영 흐름에는 영향이 없다.
   }
 }
 

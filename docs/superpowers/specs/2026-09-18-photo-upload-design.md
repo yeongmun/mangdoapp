@@ -70,7 +70,7 @@
 - 뷰어 순수 부분: 썸네일 목록 → 칩/이미지 구분(`photoStripItems(photoNumbers, list)`), 오버레이 열림 가드.
 - 앱: `src/photoUpload.ts`의 대기열 판단은 순수 함수(`nextRetry(queue, now)`, `applyResult(queue, item, outcome)`)로 빼서… 루트에 테스트 러너가 없으므로 이 함수들은 `server/public/viewer/`가 아닌 `src/`에 있어 vitest가 못 본다 → 대기열 규칙 함수는 `src/photoQueue.ts`에 두고 `server/test/photoQueue.test.ts`가 상대 경로로 가져와 검사한다(`server/tsconfig`가 `../src/*.ts`를 포함하도록 — 안 되면 함수를 `server/public/viewer/photoQueue.js`에 두고 앱이 그 파일을 가져온다. 계획에서 확인).
 
-실기기(사용자): 📷 → 번호가 붙고 잠시 뒤 썸네일이 뜨는지; 서버를 끈 채 찍으면 앨범엔 저장되고 안내가 뜨는지, 서버를 켜고 뷰어를 다시 열면 올라가는지; PC에서 사진 zip 이름이 `1_균열(0.3mm미만)_101530.jpg` 형식인지; 아이패드 HEIC가 썸네일로 보이는지(안 보이면 후속).
+실기기(사용자): 📷 → 번호가 붙고 잠시 뒤 썸네일이 뜨는지; 서버를 끈 채 찍으면 앨범엔 저장되고 안내가 뜨는지, 서버를 켜고 뷰어를 다시 열면 올라가는지; PC에서 사진 zip 이름이 `1_균열(0.3mm미만)_101530.jpg` 형식인지; 아이패드 HEIC가 썸네일로 보이는지(안 보이면 후속). **세로로 찍은 사진**이 썸네일·크게 보기·zip에서 바로 서 있고 긴 변이 1600px인지(줄인 JPEG의 EXIF 회전이 구워졌는지, 폰 축소가 긴 변을 제대로 골랐는지 — 기기에서만 확인 가능, 검토 Important 6).
 
 ## 9. 미해결
 

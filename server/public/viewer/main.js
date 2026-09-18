@@ -518,22 +518,33 @@ async function start() {
       const img = document.createElement('img');
       img.className = 'photoThumb';
       img.alt = `사진 ${item.number}`;
+      // 본 사진(1600px)의 blob 주소. 한 번 받으면 이 사진 줄이 닫힐 때까지 다시 받지 않는다 —
+      // 누를 때마다 받으면 20번 누르면 20번 내려받고 blob이 20개 쌓인다(검토 Important 2).
+      // 썸네일 요청이 404라 본 사진을 줄에 넣은 경우도 여기에 담아 두 번 받지 않는다(Important 3).
+      let fullPhoto = null;
       img.addEventListener('click', () => {
-        // 줄에는 320px 썸네일만 들어 있다. 누르면 그것을 먼저 크게 띄우고, 본 사진(1600px)을 받아
-        // 도착하면 바꿔 끼운다 — 그 사이 다른 사진을 눌렀거나 닫았으면 버린다.
+        // 줄에는 320px 썸네일만 들어 있다. 누르면 그것을 먼저 크게 띄우고, 본 사진을 받아 도착하면
+        // 바꿔 끼운다 — 그 사이 다른 사진을 눌렀거나 닫았으면 버린다.
         if (!img.src) return;
         openPhotoView(img.src, item.number);
         if (item.url === item.thumbUrl) return;
-        loadPhotoBlobUrl(item.url).then(
+        fullPhoto ??= loadPhotoBlobUrl(item.url);
+        fullPhoto.then(
           (objectUrl) => {
-            if (isStalePhotoStrip(damageId, generation) || !isPhotoViewShowing(item.number)) {
+            // 기다리는 동안 사진 줄이 바뀌었으면(closePhotoStrip이 먼저 거둔 뒤 도착) 지금 거둔다.
+            if (isStalePhotoStrip(damageId, generation)) {
               URL.revokeObjectURL(objectUrl);
               photoObjectUrls = photoObjectUrls.filter((url) => url !== objectUrl);
               return;
             }
+            // 다른 사진을 보고 있거나 닫았으면 끼우지 않는다. blob은 다음 누름을 위해 남긴다.
+            if (!isPhotoViewShowing(item.number)) return;
             $('photoViewImage').src = objectUrl;
           },
-          (err) => console.error('[photos]', item.number, err),
+          (err) => {
+            fullPhoto = null;
+            console.error('[photos]', item.number, err);
+          },
         );
       });
       strip.append(img);
@@ -541,7 +552,8 @@ async function start() {
       loadPhotoBlobUrl(item.thumbUrl)
         .catch((err) => {
           if (item.thumbUrl === item.url) throw err;
-          return loadPhotoBlobUrl(item.url);
+          fullPhoto = loadPhotoBlobUrl(item.url);
+          return fullPhoto;
         })
         .then(
         (objectUrl) => {

@@ -4,6 +4,7 @@
 import { Directory, File, Paths, UploadType, type UploadResult } from 'expo-file-system';
 import { ACCESS_KEY, API_URL } from './config';
 import { applyResult, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQueueItem } from './photoQueue';
+import { extensionOf, mimeOf } from './photoShrink';
 
 /** 뷰어 화면에 머무는 동안 이 간격으로 다시 시도한다(설계 4.4). */
 export const PHOTO_FLUSH_INTERVAL_MS = 60_000;
@@ -18,28 +19,11 @@ const QUEUE_FILE_NAME = 'photo-queue.json';
 const QUEUE_TMP_FILE_NAME = 'photo-queue.json.tmp';
 const KEEP_DIR_NAME = 'photo-queue';
 
-const MIME_BY_EXTENSION: Record<string, string> = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.heic': 'image/heic',
-  '.heif': 'image/heic',
-};
-
 export type UploadNotice =
   | { id: string; ok: true; damageId: string; number: string }
   // willRetry: 나중에 다시 보낼 항목인지. 뷰어 문구가 '다시 시도합니다'와 '서버가 받지
   // 않았습니다'로 갈린다(설계 4.2·4.5).
   | { id: string; ok: false; damageId: string; reason: string; willRetry: boolean };
-
-function extensionOf(filename: string): string {
-  const match = /\.[A-Za-z0-9]+$/.exec(filename);
-  return match ? match[0].toLowerCase() : '.jpg';
-}
-
-function mimeOf(filename: string): string {
-  return MIME_BY_EXTENSION[extensionOf(filename)] ?? 'image/jpeg';
-}
 
 function queueFile(): File {
   return new File(Paths.document, QUEUE_FILE_NAME);
