@@ -5,6 +5,7 @@ import multer from 'multer';
 import { validateDamageDoc } from '../public/viewer/damageDoc.js';
 import { photoNumberFromFilename } from '../public/viewer/quantities.js';
 import type { ApsService } from './aps.js';
+import type { DrawingTrash } from './drawingTrash.js';
 import { requireAccessKey } from './auth.js';
 import type { DamageDoc, DamagesStore } from './damagesStore.js';
 import { isDrawingId, newDrawingId, type DrawingRecord, type DrawingsStore } from './drawingsStore.js';
@@ -35,6 +36,7 @@ export interface AppDeps {
   damages: DamagesStore;
   originals: OriginalsStore;
   photos: PhotosStore;
+  trash: DrawingTrash;
   publicDir: string;
   now?: () => number;
   maxUploadBytes?: number;
@@ -299,6 +301,30 @@ export function createApp(deps: AppDeps) {
     const updated = await deps.drawings.update(drawing.id, { status: 'pending', progress: '', error: null });
     // 옛 레코드(frames 없음)를 재시도할 수도 있으니, GET과 같은 헬퍼로 frames를 채워 보낸다.
     res.json(await ensureFrames(deps, updated ?? drawing));
+  });
+
+  // 도면 삭제 = 휴지통으로 옮기기(drawingTrash.ts). 점검 데이터는 다시 만들 수 없어 서버는 영구 삭제를
+  // 하지 않는다. PC 업로드 페이지와 앱 목록 화면이 부른다(2026-09-18 사용자 결정).
+  api.delete('/drawings/:id', async (req, res) => {
+    const trashed = await deps.trash.moveToTrash(req.params.id, new Date(now()).toISOString());
+    if (!trashed) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    res.json(trashed);
+  });
+
+  api.get('/trash', async (_req, res) => {
+    res.json(await deps.trash.list());
+  });
+
+  api.post('/trash/:id/restore', async (req, res) => {
+    const record = await deps.trash.restore(req.params.id);
+    if (!record) {
+      res.status(404).json({ error: '휴지통에서 도면을 찾을 수 없습니다.' });
+      return;
+    }
+    res.json(await ensureFrames(deps, record));
   });
 
   api.get('/viewer-token', async (_req, res) => {

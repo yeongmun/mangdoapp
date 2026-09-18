@@ -66,6 +66,20 @@ export class DrawingsStore {
     });
   }
 
+  // 목록에서 뺀다(파일은 건드리지 않는다 — 휴지통으로 옮기는 일은 drawingTrash.ts가 한다).
+  remove(id: string): Promise<DrawingRecord | null> {
+    return this.serialize(async () => {
+      const records = await this.readAll();
+      const found = records.find((r) => r.id === id) ?? null;
+      if (!found) return null;
+      await writeJsonFileAtomic(
+        this.filePath,
+        records.filter((r) => r.id !== id),
+      );
+      return found;
+    });
+  }
+
   private async readAll(): Promise<DrawingRecord[]> {
     return (await readJsonFile<DrawingRecord[]>(this.filePath)) ?? [];
   }

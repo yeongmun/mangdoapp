@@ -25,6 +25,7 @@
       .badge.failed { background: #d32f2f; }
       .error { color: #d32f2f; }
       .small { font-size: 12px; margin-top: 4px; }
+      button.danger { color: #d32f2f; margin-left: 6px; }
     </style>
   </head>
   <body>
@@ -57,6 +58,17 @@
           <tbody id="rows"></tbody>
         </table>
         <p id="empty" hidden>업로드한 도면이 없습니다.</p>
+      </section>
+
+      <section id="trashSection" class="card" hidden>
+        <h2>휴지통</h2>
+        <p class="small">삭제한 도면은 손상 기록·사진과 함께 여기에 남습니다. 복구하면 그대로 돌아옵니다.</p>
+        <table>
+          <thead>
+            <tr><th>도면</th><th>삭제 시각</th><th></th></tr>
+          </thead>
+          <tbody id="trashRows"></tbody>
+        </table>
       </section>
     </main>
     <script type="module" src="upload.js"></script>

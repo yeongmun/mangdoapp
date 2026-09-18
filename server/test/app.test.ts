@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { DamagesStore } from '../src/damagesStore.js';
 import { DrawingsStore, newDrawingId, type DrawingRecord } from '../src/drawingsStore.js';
+import { DrawingTrash } from '../src/drawingTrash.js';
 import { OriginalsStore } from '../src/originalsStore.js';
 import { PhotosStore } from '../src/photosStore.js';
 
@@ -47,6 +48,15 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
   const damages = new DamagesStore(join(dir, 'data', 'damages'));
   const originals = new OriginalsStore(join(dir, 'data', 'drawings'));
   const photos = new PhotosStore(join(dir, 'data', 'photos'));
+  const trash = new DrawingTrash(
+    {
+      trashDir: join(dir, 'data', 'trash'),
+      originalsDir: join(dir, 'data', 'drawings'),
+      damagesDir: join(dir, 'data', 'damages'),
+      photosDir: join(dir, 'data', 'photos'),
+    },
+    drawings,
+  );
   const app = createApp({
     accessKey: KEY,
     aps,
@@ -54,12 +64,13 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
     damages,
     originals,
     photos,
+    trash,
     publicDir: join(dir, 'public'),
     now: () => NOW,
     maxUploadBytes,
     maxPhotoBytes,
   });
-  return { app, aps, drawings, damages, originals, photos };
+  return { app, aps, drawings, damages, originals, photos, trash };
 }
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
@@ -1076,5 +1087,63 @@ describe('사진 썸네일 (…/photos/:number/thumb)', () => {
     const names = Buffer.from(res.body).toString('latin1');
     expect(names).toContain('0040.jpg');
     expect(names).not.toContain('thumb');
+  });
+});
+
+describe('도면 삭제·휴지통 (DELETE /api/drawings/:id, /api/trash)', () => {
+  it('지우면 목록에서 빠지고 휴지통 목록에 나온다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings, { name: '교량 A.dxf' });
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('p'));
+
+    const res = await request(app).delete(`/api/drawings/${drawing.id}`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: drawing.id,
+      name: '교량 A.dxf',
+      uploadedAt: drawing.uploadedAt,
+      deletedAt: new Date(NOW).toISOString(),
+    });
+    expect(await drawings.get(drawing.id)).toBeNull();
+    expect(await photos.listDrawing(drawing.id)).toEqual([]);
+
+    const list = await request(app).get('/api/trash').set('x-access-key', KEY);
+    expect(list.status).toBe(200);
+    expect(list.body).toEqual([res.body]);
+  });
+
+  it('지운 도면의 손상·사진 API는 404가 된다', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    await request(app).delete(`/api/drawings/${drawing.id}`).set('x-access-key', KEY);
+    expect((await request(app).get(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY)).status).toBe(404);
+    expect(
+      (await request(app).get(`/api/drawings/${drawing.id}/damages/${D1}/photos`).set('x-access-key', KEY)).status,
+    ).toBe(404);
+  });
+
+  it('복구하면 목록·사진이 돌아오고 휴지통에서 빠진다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('p'));
+    await request(app).delete(`/api/drawings/${drawing.id}`).set('x-access-key', KEY);
+
+    const res = await request(app).post(`/api/trash/${drawing.id}/restore`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(drawing.id);
+    expect((await drawings.get(drawing.id))?.name).toBe(drawing.name);
+    expect((await photos.listDrawing(drawing.id)).map((e) => e.number)).toEqual(['101530']);
+    expect((await request(app).get('/api/trash').set('x-access-key', KEY)).body).toEqual([]);
+  });
+
+  it('없는 도면 삭제·없는 휴지통 복구는 404, 접근키 없으면 401', async () => {
+    const { app } = setup();
+    const id = newDrawingId();
+    expect((await request(app).delete(`/api/drawings/${id}`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).delete('/api/drawings/nope').set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).post(`/api/trash/${id}/restore`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).delete(`/api/drawings/${id}`)).status).toBe(401);
+    expect((await request(app).get('/api/trash')).status).toBe(401);
+    expect((await request(app).post(`/api/trash/${id}/restore`)).status).toBe(401);
   });
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { fetchDrawings, type Drawing } from '../api';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { deleteDrawing, fetchDrawings, type Drawing } from '../api';
 import { configProblem } from '../config';
 import { flushPhotoQueue, pendingPhotoCount, retryPendingPhotos } from '../photoUpload';
 
@@ -41,6 +41,32 @@ export function DrawingListScreen({ onOpen }: Props) {
     setPendingPhotos(pendingPhotoCount());
   }, []);
 
+  // 삭제는 서버 휴지통으로 옮기기다(복구는 PC 업로드 페이지). 현장에서 실수로 누르지 않도록 행을
+  // **길게 눌러야** 뜨고, 한 번 더 확인한다.
+  const confirmDelete = useCallback(
+    (drawing: Drawing) => {
+      Alert.alert(
+        '도면 삭제',
+        `"${drawing.name}"을(를) 삭제할까요?
+
+도면과 그 손상 기록·사진이 서버 휴지통으로 옮겨집니다. PC 업로드 페이지의 휴지통에서 복구할 수 있습니다.`,
+        [
+          { text: '취소', style: 'cancel' },
+          {
+            text: '삭제',
+            style: 'destructive',
+            onPress: () => {
+              deleteDrawing(drawing.id)
+                .then(load)
+                .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+            },
+          },
+        ],
+      );
+    },
+    [load],
+  );
+
   useEffect(() => {
     if (problem) {
       setLoading(false);
@@ -80,6 +106,7 @@ export function DrawingListScreen({ onOpen }: Props) {
         </Pressable>
       )}
       {error && <Text style={styles.errorBanner}>{error}</Text>}
+      {drawings.length > 0 && <Text style={styles.hint}>도면을 길게 누르면 삭제할 수 있습니다.</Text>}
       <FlatList
         data={drawings}
         keyExtractor={(item) => item.id}
@@ -93,8 +120,12 @@ export function DrawingListScreen({ onOpen }: Props) {
           return (
             <Pressable
               style={({ pressed }) => [styles.row, !openable && styles.rowDisabled, pressed && openable && styles.rowPressed]}
-              disabled={!openable}
-              onPress={() => onOpen(item)}
+              // disabled로 막으면 길게 누르기도 죽는다 — 변환 실패·대기 중인 도면도 지울 수 있어야 한다.
+              onPress={() => {
+                if (openable) onOpen(item);
+              }}
+              onLongPress={() => confirmDelete(item)}
+              delayLongPress={600}
             >
               <View style={styles.rowText}>
                 <Text style={styles.name}>{item.name}</Text>
@@ -120,6 +151,7 @@ const styles = StyleSheet.create({
   problem: { fontSize: 16, color: '#d32f2f', textAlign: 'center', lineHeight: 24 },
   errorBanner: { color: '#fff', backgroundColor: '#d32f2f', padding: 12, borderRadius: 8, marginBottom: 12 },
   photoBanner: { color: '#fff', backgroundColor: '#ef6c00', padding: 12, borderRadius: 8, marginBottom: 12 },
+  hint: { fontSize: 12, color: '#8a8f98', marginBottom: 8 },
   empty: { textAlign: 'center', color: '#8a8f98', marginTop: 48, lineHeight: 22 },
   row: {
     flexDirection: 'row',
