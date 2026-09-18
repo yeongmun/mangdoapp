@@ -1,4 +1,5 @@
 import { extname } from 'node:path';
+import archiver from 'archiver';
 import express, { type ErrorRequestHandler, type Request, type RequestHandler, type Response } from 'express';
 import multer from 'multer';
 import { validateDamageDoc } from '../public/viewer/damageDoc.js';
@@ -11,6 +12,7 @@ import { parseDxf } from './export/dxfDocument.js';
 import { ExportError, exportDamagesToDxf } from './export/exportDrawing.js';
 import { findFrames, type FrameBounds } from './export/frames.js';
 import type { OriginalsStore } from './originalsStore.js';
+import { zipEntryNamesFor } from './photoZip.js';
 import {
   isDamageId,
   isPhotoNumber,
@@ -114,6 +116,17 @@ async function ensureFrames(deps: AppDeps, record: DrawingRecord): Promise<Drawi
     console.error('[frames]', record.id, messageOf(err));
     return { ...record, frames: [] };
   }
+}
+
+// zip 이름의 <번호>는 사용자가 산출 DXF·앱 화면에서 보는 번호와 같아야 한다. 산출
+// (exportDamagesToDxf)이 레코드가 아니라 **원본에서** 틀을 다시 구하므로 zip도 같은 길을 쓴다 —
+// 원본이 곧 진실이다(2026-09-16 틀 설계 6장). DXF가 아니거나 원본이 없으면 레코드의 frames로
+// 물러선다(DWG 레코드는 [] 이므로 도면 전체가 한 묶음, 예전 번호 규칙과 같다).
+async function zipFramesOf(deps: AppDeps, drawing: DrawingRecord): Promise<FrameBounds[]> {
+  if (!drawing.objectKey.toLowerCase().endsWith('.dxf')) return drawing.frames ?? [];
+  const original = await deps.originals.read(drawing.objectKey);
+  if (!original) return drawing.frames ?? [];
+  return framesOf(original, drawing.objectKey);
 }
 
 const apiErrorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
@@ -362,6 +375,49 @@ export function createApp(deps: AppDeps) {
     res.setHeader('Content-Type', PHOTO_MIME_TYPES[extname(entry.file).toLowerCase()] ?? 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(data);
+  });
+
+  api.get('/drawings/:id/photos.zip', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    const files = await deps.photos.listDrawing(drawing.id);
+    if (files.length === 0) {
+      res.status(400).json({ error: '저장된 사진이 없습니다' });
+      return;
+    }
+    const doc = await deps.damages.get(drawing.id);
+    const entries = zipEntryNamesFor(doc.damages, await zipFramesOf(deps, drawing), files);
+
+    // 한글은 HTTP 헤더 값에 그대로 넣을 수 없다(export.dxf와 같은 이유) — RFC 5987 filename*.
+    const fileName = `${drawing.name.replace(/\.[^.]*$/, '')}_사진.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="photos.zip"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+    );
+
+    // JPEG·HEIC·PNG는 이미 압축돼 있어 다시 줄여도 거의 안 줄어든다. store로 두면 사진 수십 장에도
+    // CPU를 쓰지 않는다. 파일은 스트림으로 읽는다 — 20MB짜리 수십 장을 메모리에 쌓지 않는다.
+    const archive = archiver('zip', { store: true });
+    archive.on('warning', (err) => console.error('[photos.zip]', drawing.id, err));
+    // 여기까지 오면 머리글을 이미 보냈으므로 상태 코드를 400·500으로 바꿀 수 없다. 받는 쪽이
+    // 깨진 zip을 온전한 것으로 착각하지 않도록 연결을 끊는다.
+    archive.on('error', (err) => {
+      console.error('[photos.zip]', drawing.id, err);
+      if (res.headersSent) {
+        res.destroy(err);
+      } else {
+        res.status(500).json({ error: '사진 zip 생성에 실패했습니다.' });
+      }
+    });
+    archive.pipe(res);
+    for (const { name, entry } of entries) {
+      archive.file(deps.photos.pathOf(drawing.id, entry), { name });
+    }
+    await archive.finalize();
   });
 
   api.get('/drawings/:id/export.dxf', async (req, res) => {
