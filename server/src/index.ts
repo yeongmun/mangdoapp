@@ -7,7 +7,9 @@ import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { DamagesStore } from './damagesStore.js';
 import { DrawingsStore } from './drawingsStore.js';
+import { DrawingTrash } from './drawingTrash.js';
 import { OriginalsStore } from './originalsStore.js';
+import { PhotosStore } from './photosStore.js';
 
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
 dotenv.config({ path: join(serverRoot, '.env'), quiet: true });
@@ -27,12 +29,23 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const drawings = new DrawingsStore(join(config.dataDir, 'drawings.json'));
   const app = createApp({
     accessKey: config.appAccessKey,
     aps,
-    drawings: new DrawingsStore(join(config.dataDir, 'drawings.json')),
+    drawings,
     damages: new DamagesStore(join(config.dataDir, 'damages')),
     originals: new OriginalsStore(join(config.dataDir, 'drawings')),
+    photos: new PhotosStore(join(config.dataDir, 'photos')),
+    trash: new DrawingTrash(
+      {
+        trashDir: join(config.dataDir, 'trash'),
+        originalsDir: join(config.dataDir, 'drawings'),
+        damagesDir: join(config.dataDir, 'damages'),
+        photosDir: join(config.dataDir, 'photos'),
+      },
+      drawings,
+    ),
     publicDir: join(serverRoot, 'public'),
   });
 

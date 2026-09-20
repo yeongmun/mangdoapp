@@ -116,6 +116,15 @@ function renderRows(drawings) {
     }
     tr.append(exportTd);
 
+    // 사진 zip은 DWG로 올린 도면에서도 된다 — 사진은 도면 파일 형식과 상관이 없다.
+    const photoTd = document.createElement('td');
+    const photoButton = document.createElement('button');
+    photoButton.type = 'button';
+    photoButton.textContent = '사진 zip';
+    photoButton.addEventListener('click', () => downloadPhotos(drawing, photoButton));
+    photoTd.append(photoButton);
+    tr.append(photoTd);
+
     const actionTd = document.createElement('td');
     if (drawing.status === 'failed') {
       const button = document.createElement('button');
@@ -124,8 +133,74 @@ function renderRows(drawings) {
       button.addEventListener('click', () => retry(drawing.id, button));
       actionTd.append(button);
     }
+    // 삭제는 휴지통으로 옮기기다 — 아래 휴지통에서 복구할 수 있다(서버는 영구 삭제하지 않는다).
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'danger';
+    deleteButton.textContent = '삭제';
+    deleteButton.addEventListener('click', () => removeDrawing(drawing, deleteButton));
+    actionTd.append(deleteButton);
     tr.append(actionTd);
     rows.append(tr);
+  }
+}
+
+function renderTrash(items) {
+  const rows = $('trashRows');
+  rows.replaceChildren();
+  $('trashSection').hidden = items.length === 0;
+  for (const item of items) {
+    const tr = document.createElement('tr');
+    tr.append(textCell(item.name));
+    tr.append(textCell(new Date(item.deletedAt).toLocaleString('ko-KR')));
+    const actionTd = document.createElement('td');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '복구';
+    button.addEventListener('click', () => restoreDrawing(item, button));
+    actionTd.append(button);
+    tr.append(actionTd);
+    rows.append(tr);
+  }
+}
+
+// 휴지통을 못 읽어도 도면 목록은 그대로 쓴다.
+async function loadTrash() {
+  try {
+    renderTrash(await api('/trash'));
+  } catch (err) {
+    console.error('[trash]', err);
+  }
+}
+
+async function removeDrawing(drawing, button) {
+  const ok = window.confirm(
+    `"${drawing.name}"을(를) 삭제할까요?
+
+도면과 그 손상 기록·사진이 휴지통으로 옮겨지고, 앱 목록에서도 사라집니다.
+이 페이지 아래 휴지통에서 복구할 수 있습니다.`,
+  );
+  if (!ok) return;
+  button.disabled = true;
+  try {
+    await api(`/drawings/${drawing.id}`, { method: 'DELETE' });
+    showMessage(`휴지통으로 옮겼습니다: ${drawing.name}`);
+    await loadList();
+  } catch (err) {
+    showMessage(err.message, true);
+    button.disabled = false;
+  }
+}
+
+async function restoreDrawing(item, button) {
+  button.disabled = true;
+  try {
+    await api(`/trash/${item.id}/restore`, { method: 'POST' });
+    showMessage(`복구했습니다: ${item.name}`);
+    await loadList();
+  } catch (err) {
+    showMessage(err.message, true);
+    button.disabled = false;
   }
 }
 
@@ -134,6 +209,7 @@ async function loadList() {
   try {
     const drawings = await api('/drawings');
     renderRows(drawings);
+    void loadTrash();
     if (drawings.some((d) => d.status === 'pending' || d.status === 'inprogress')) {
       pollTimer = setTimeout(loadList, POLL_MS);
     }
@@ -163,6 +239,21 @@ async function exportDxf(drawing, button) {
     if (result.skipped > 0) notes.push(`도면 좌표를 구하지 못한 손상 ${result.skipped}개는 빠졌습니다.`);
     if (result.warning) notes.push(result.warning);
     showMessage(`내려받았습니다: ${result.name}${notes.length > 0 ? ` — ${notes.join(' / ')}` : ''}`);
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// 사진이 없으면 서버가 400과 '저장된 사진이 없습니다'를 주고, download가 그 문구로 던진다 —
+// 여기서는 그대로 보여준다(다른 오류도 같다).
+async function downloadPhotos(drawing, button) {
+  button.disabled = true;
+  showMessage('사진을 모으는 중…');
+  try {
+    const result = await download(`/drawings/${drawing.id}/photos.zip`, `${drawing.name}_사진.zip`);
+    showMessage(`내려받았습니다: ${result.name}`);
   } catch (err) {
     showMessage(err.message, true);
   } finally {

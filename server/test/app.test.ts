@@ -2,15 +2,20 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { DamagesStore } from '../src/damagesStore.js';
 import { DrawingsStore, newDrawingId, type DrawingRecord } from '../src/drawingsStore.js';
+import { DrawingTrash } from '../src/drawingTrash.js';
 import { OriginalsStore } from '../src/originalsStore.js';
+import { PhotosStore } from '../src/photosStore.js';
 
 const KEY = 'test-access-key';
 const NOW = Date.parse('2026-09-10T00:00:00.000Z');
+// 뷰어가 crypto.randomUUID()로 만드는 손상 id 형식. 사진 API는 UUID만 받는다.
+const D1 = '11111111-1111-4111-8111-111111111111';
 let dir: string;
 
 beforeEach(async () => {
@@ -37,22 +42,35 @@ function fakeAps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: number) {
+function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: number, maxPhotoBytes?: number) {
   const aps = fakeAps(apsOverrides);
   const drawings = new DrawingsStore(join(dir, 'data', 'drawings.json'));
   const damages = new DamagesStore(join(dir, 'data', 'damages'));
   const originals = new OriginalsStore(join(dir, 'data', 'drawings'));
+  const photos = new PhotosStore(join(dir, 'data', 'photos'));
+  const trash = new DrawingTrash(
+    {
+      trashDir: join(dir, 'data', 'trash'),
+      originalsDir: join(dir, 'data', 'drawings'),
+      damagesDir: join(dir, 'data', 'damages'),
+      photosDir: join(dir, 'data', 'photos'),
+    },
+    drawings,
+  );
   const app = createApp({
     accessKey: KEY,
     aps,
     drawings,
     damages,
     originals,
+    photos,
+    trash,
     publicDir: join(dir, 'public'),
     now: () => NOW,
     maxUploadBytes,
+    maxPhotoBytes,
   });
-  return { app, aps, drawings, damages, originals };
+  return { app, aps, drawings, damages, originals, photos, trash };
 }
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
@@ -89,6 +107,27 @@ function crackDoc(drawingId: string) {
         measured: { width: 0.3, length: 5, count: 2 },
         computed: { lengthDwg: 5, areaDwg: null },
         attrs: { note: '', statusText: '', photoNumbers: ['12', '13'] },
+      },
+    ],
+  };
+}
+
+// 사진이 붙은 손상 하나. 폭 0.2 → 손상현황 '균열(0.3mm미만)'.
+function photoDoc(drawingId: string) {
+  return {
+    schemaVersion: 5,
+    drawingId,
+    updatedAt: '2026-09-18T01:00:00.000Z',
+    damages: [
+      {
+        id: D1,
+        type: 'crack',
+        createdAt: '2026-09-18T01:00:00.000Z',
+        geometry: { kind: 'polyline', world: [[0, 0], [1, 0]], dwg: [[0, 0], [1, 0]] },
+        copies: [],
+        measured: { width: 0.2, length: 5, count: 1 },
+        computed: { lengthDwg: 5, areaDwg: null },
+        attrs: { note: '', statusText: '', photoNumbers: ['101530'] },
       },
     ],
   };
@@ -659,5 +698,452 @@ describe('GET /api/drawings/:id/export.dxf', () => {
     expect(res.body).toEqual({ error: 'DXF 산출에 실패했습니다.' });
     expect(JSON.stringify(res.body)).not.toContain('홀수');
     expect(JSON.stringify(res.body)).not.toContain('코드와 값의 짝');
+  });
+});
+
+describe('POST /api/drawings/:id/damages/:damageId/photos', () => {
+  it('사진을 올리면 201과 번호·주소를 준다 (안드로이드 이름)', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .field('filename', '20260918_101530.jpg')
+      .attach('file', Buffer.from('jpeg-bytes'), { filename: '20260918_101530.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({
+      number: '101530',
+      url: `/api/drawings/${drawing.id}/damages/${D1}/photos/101530`,
+      thumbUrl: `/api/drawings/${drawing.id}/damages/${D1}/photos/101530/thumb`,
+    });
+    expect((await photos.list(drawing.id, D1)).map((e) => e.file)).toEqual(['101530.jpg']);
+  });
+
+  it('아이폰 HEIC 이름에서도 번호를 뽑고 확장자를 지킨다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .field('filename', 'IMG_0021.HEIC')
+      .attach('file', Buffer.from('heic'), { filename: 'IMG_0021.HEIC', contentType: 'image/heic' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.number).toBe('0021');
+    expect((await photos.list(drawing.id, D1)).map((e) => e.file)).toEqual(['0021.heic']);
+  });
+
+  it('filename 필드가 없으면 multipart 파일명을 쓴다', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('jpeg'), { filename: 'IMG_0007.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.number).toBe('0007');
+  });
+
+  it('같은 번호를 다시 올리면 덮어쓴다 (확장자가 달라도 하나)', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    const post = () =>
+      request(app).post(`/api/drawings/${drawing.id}/damages/${D1}/photos`).set('x-access-key', KEY);
+
+    await post().attach('file', Buffer.from('one'), { filename: 'IMG_0001.jpg', contentType: 'image/jpeg' });
+    const res = await post().attach('file', Buffer.from('twotwo'), {
+      filename: 'IMG_0001.png',
+      contentType: 'image/png',
+    });
+
+    expect(res.status).toBe(201);
+    const list = await photos.list(drawing.id, D1);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ number: '0001', file: '0001.png', size: 6 });
+  });
+
+  it('없는 도면은 404', async () => {
+    const { app } = setup();
+    const res = await request(app)
+      .post(`/api/drawings/${newDrawingId()}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('x'), { filename: 'IMG_1.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(404);
+  });
+
+  it('UUID가 아닌 손상 id는 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/c1/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('x'), { filename: 'IMG_1.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('손상 id 형식이 올바르지 않습니다.');
+  });
+
+  it('파일이 없으면 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .field('filename', 'IMG_1.jpg');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('사진 파일이 없습니다.');
+  });
+
+  it('사진이 아닌 형식은 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('hello'), { filename: 'memo.txt', contentType: 'text/plain' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('JPEG·PNG·HEIC 사진만 올릴 수 있습니다.');
+  });
+
+  it('번호를 뽑지 못하면 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('x'), { filename: '.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('사진 파일 이름에서 사진번호를 찾을 수 없습니다.');
+  });
+
+  it('쓸 수 없는 글자가 든 번호는 400 (경로 조작 방지)', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .field('filename', '사진 1.jpg')
+      .attach('file', Buffer.from('x'), { filename: 'a.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('사진번호에 쓸 수 없는 글자가 있습니다');
+  });
+
+  it('상한을 넘으면 413', async () => {
+    const { app, drawings } = setup({}, undefined, 10);
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('12345678901234567890'), { filename: 'IMG_1.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(413);
+    expect(res.body.error).toBe('사진이 20MB를 넘습니다.');
+  });
+
+  it('접근키가 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .attach('file', Buffer.from('x'), { filename: 'IMG_1.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/drawings/:id/damages/:damageId/photos', () => {
+  it('번호 오름차순 목록을 준다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('abc'));
+    await photos.save(drawing.id, D1, '9', '.jpg', Buffer.from('de'));
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/damages/${D1}/photos`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body.map((p: { number: string }) => p.number)).toEqual(['9', '101530']);
+    expect(res.body[0]).toMatchObject({
+      number: '9',
+      url: `/api/drawings/${drawing.id}/damages/${D1}/photos/9`,
+      thumbUrl: `/api/drawings/${drawing.id}/damages/${D1}/photos/9/thumb`,
+      size: 2,
+    });
+    expect(Number.isFinite(Date.parse(res.body[0].savedAt))).toBe(true);
+  });
+
+  it('사진이 없으면 빈 배열', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app).get(`/api/drawings/${drawing.id}/damages/${D1}/photos`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('없는 도면은 404, UUID가 아닌 손상 id는 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    expect(
+      (await request(app).get(`/api/drawings/${newDrawingId()}/damages/${D1}/photos`).set('x-access-key', KEY)).status,
+    ).toBe(404);
+    expect(
+      (await request(app).get(`/api/drawings/${drawing.id}/damages/c1/photos`).set('x-access-key', KEY)).status,
+    ).toBe(400);
+  });
+});
+
+describe('GET /api/drawings/:id/damages/:damageId/photos/:number', () => {
+  it('저장한 바이트를 저장 시 형식으로 돌려준다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('jpeg-bytes'));
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/101530`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/jpeg');
+    expect(res.headers['cache-control']).toBe('private, max-age=3600');
+    expect(Buffer.from(res.body).toString()).toBe('jpeg-bytes');
+  });
+
+  it('HEIC는 image/heic로 돌려준다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '0021', '.heic', Buffer.from('heic'));
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/0021`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+    expect(res.headers['content-type']).toBe('image/heic');
+  });
+
+  it('없는 번호는 404', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/999`)
+      .set('x-access-key', KEY);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('사진을 찾을 수 없습니다.');
+  });
+
+  it('쓸 수 없는 글자가 든 번호는 400 (경로 조작 방지)', async () => {
+    // %2E%2E(퍼센트 인코딩된 점 두 개)는 슈퍼에이전트(superagent)가 URL을 WHATWG new URL()로
+    // 파싱하며 점-세그먼트로 인식해 요청을 보내기도 전에 클라이언트 쪽에서 '/'로 접어버린다
+    // (RFC 3986과 달리 WHATWG URL 명세는 %2e를 점 세그먼트 판정에서 '.'과 동일하게 본다) —
+    // 그러면 서버는 이 라우트 자체를 못 만나 404('없는 API입니다')를 준다. 인코딩된 슬래시
+    // (%2f)는 점-세그먼트 판정 대상이 아니라 그대로 전달되므로, 같은 경로 조작 방지 검사
+    // (isPhotoNumber)를 실제로 태워 보는 값으로 쓴다.
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/..%2f..`)
+      .set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('사진번호 형식이 올바르지 않습니다.');
+  });
+});
+
+describe('GET /api/drawings/:id/photos.zip', () => {
+  it('사진을 zip으로 묶어 보낸다 (이름은 번호_손상현황_사진번호)', async () => {
+    const { app, drawings, damages, photos } = setup();
+    const drawing = await seed(drawings, { name: '교량 A.dwg' });
+    await damages.save(photoDoc(drawing.id));
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('photo-one'));
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/photos.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-disposition']).toContain(
+      `filename*=UTF-8''${encodeURIComponent('교량 A_사진.zip')}`,
+    );
+    const body = Buffer.from(res.body);
+    // 진짜 zip인지: 첫 항목 머리글 서명 PK\x03\x04
+    expect(body.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    // 항목 이름은 머리글에 UTF-8 그대로 들어가고, store 방식이라 내용도 그대로 들어간다.
+    expect(body.includes(Buffer.from('1_균열(0.3mm미만)_101530.jpg', 'utf8'))).toBe(true);
+    expect(body.includes(Buffer.from('photo-one', 'utf8'))).toBe(true);
+  });
+
+  it('손상 기록이 없으면 삭제된손상 이름으로 넣는다 (사진을 버리지 않는다)', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('x'));
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/photos.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(Buffer.from(res.body).includes(Buffer.from('삭제된손상_11111111_101530.jpg', 'utf8'))).toBe(true);
+  });
+
+  it('사진이 하나도 없으면 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app).get(`/api/drawings/${drawing.id}/photos.zip`).set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('저장된 사진이 없습니다');
+  });
+
+  it('없는 도면은 404, 키가 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    expect((await request(app).get(`/api/drawings/${newDrawingId()}/photos.zip`).set('x-access-key', KEY)).status).toBe(
+      404,
+    );
+    expect((await request(app).get(`/api/drawings/${drawing.id}/photos.zip`)).status).toBe(401);
+  });
+});
+
+describe('사진 썸네일 (…/photos/:number/thumb)', () => {
+  async function jpeg(width: number, height: number): Promise<Buffer> {
+    return sharp({ create: { width, height, channels: 3, background: { r: 10, g: 120, b: 200 } } })
+      .jpeg()
+      .toBuffer();
+  }
+
+  it('올릴 때 320px 썸네일을 옆에 만들고 GET …/thumb가 image/jpeg로 준다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    const post = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .field('filename', 'IMG_0031.jpg')
+      .attach('file', await jpeg(1600, 1200), { filename: 'IMG_0031.jpg', contentType: 'image/jpeg' });
+    expect(post.status).toBe(201);
+    const entry = (await photos.find(drawing.id, D1, '0031'))!;
+    expect(await photos.readThumb(drawing.id, entry)).not.toBeNull();
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/0031/thumb`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/jpeg');
+    expect(res.headers['cache-control']).toBe('private, max-age=3600');
+    const meta = await sharp(Buffer.from(res.body)).metadata();
+    expect([meta.width, meta.height]).toEqual([320, 240]);
+  });
+
+  it('썸네일을 못 만들어도(사진이 아닌 바이트) 업로드는 201이고 thumb는 404', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const post = await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('jpeg-bytes'), { filename: 'IMG_0032.jpg', contentType: 'image/jpeg' });
+    expect(post.status).toBe(201);
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/0032/thumb`)
+      .set('x-access-key', KEY);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('썸네일을 만들 수 없습니다.');
+  });
+
+  it('썸네일 파일이 없으면(옛 사진) 본 사진에서 만들어 저장한 뒤 준다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '77', '.jpg', await jpeg(800, 1000));
+    const entry = (await photos.find(drawing.id, D1, '77'))!;
+    expect(await photos.readThumb(drawing.id, entry)).toBeNull();
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/damages/${D1}/photos/77/thumb`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+    expect(res.status).toBe(200);
+    const meta = await sharp(Buffer.from(res.body)).metadata();
+    expect([meta.width, meta.height]).toEqual([256, 320]);
+    expect(await photos.readThumb(drawing.id, entry)).not.toBeNull();
+  });
+
+  it('없는 번호는 404, 형식이 틀린 번호는 400, 접근키 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const base = `/api/drawings/${drawing.id}/damages/${D1}/photos`;
+    expect((await request(app).get(`${base}/999/thumb`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).get(`${base}/a.b/thumb`).set('x-access-key', KEY)).status).toBe(400);
+    expect((await request(app).get(`${base}/999/thumb`)).status).toBe(401);
+  });
+
+  it('사진 zip에는 썸네일이 들어가지 않는다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await request(app)
+      .post(`/api/drawings/${drawing.id}/damages/${D1}/photos`)
+      .set('x-access-key', KEY)
+      .attach('file', await jpeg(400, 300), { filename: 'IMG_0040.jpg', contentType: 'image/jpeg' });
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/photos.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+    expect(res.status).toBe(200);
+    const names = Buffer.from(res.body).toString('latin1');
+    expect(names).toContain('0040.jpg');
+    expect(names).not.toContain('thumb');
+  });
+});
+
+describe('도면 삭제·휴지통 (DELETE /api/drawings/:id, /api/trash)', () => {
+  it('지우면 목록에서 빠지고 휴지통 목록에 나온다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings, { name: '교량 A.dxf' });
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('p'));
+
+    const res = await request(app).delete(`/api/drawings/${drawing.id}`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: drawing.id,
+      name: '교량 A.dxf',
+      uploadedAt: drawing.uploadedAt,
+      deletedAt: new Date(NOW).toISOString(),
+    });
+    expect(await drawings.get(drawing.id)).toBeNull();
+    expect(await photos.listDrawing(drawing.id)).toEqual([]);
+
+    const list = await request(app).get('/api/trash').set('x-access-key', KEY);
+    expect(list.status).toBe(200);
+    expect(list.body).toEqual([res.body]);
+  });
+
+  it('지운 도면의 손상·사진 API는 404가 된다', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    await request(app).delete(`/api/drawings/${drawing.id}`).set('x-access-key', KEY);
+    expect((await request(app).get(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY)).status).toBe(404);
+    expect(
+      (await request(app).get(`/api/drawings/${drawing.id}/damages/${D1}/photos`).set('x-access-key', KEY)).status,
+    ).toBe(404);
+  });
+
+  it('복구하면 목록·사진이 돌아오고 휴지통에서 빠진다', async () => {
+    const { app, drawings, photos } = setup();
+    const drawing = await seed(drawings);
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('p'));
+    await request(app).delete(`/api/drawings/${drawing.id}`).set('x-access-key', KEY);
+
+    const res = await request(app).post(`/api/trash/${drawing.id}/restore`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(drawing.id);
+    expect((await drawings.get(drawing.id))?.name).toBe(drawing.name);
+    expect((await photos.listDrawing(drawing.id)).map((e) => e.number)).toEqual(['101530']);
+    expect((await request(app).get('/api/trash').set('x-access-key', KEY)).body).toEqual([]);
+  });
+
+  it('없는 도면 삭제·없는 휴지통 복구는 404, 접근키 없으면 401', async () => {
+    const { app } = setup();
+    const id = newDrawingId();
+    expect((await request(app).delete(`/api/drawings/${id}`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).delete('/api/drawings/nope').set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).post(`/api/trash/${id}/restore`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).delete(`/api/drawings/${id}`)).status).toBe(401);
+    expect((await request(app).get('/api/trash')).status).toBe(401);
+    expect((await request(app).post(`/api/trash/${id}/restore`)).status).toBe(401);
   });
 });
