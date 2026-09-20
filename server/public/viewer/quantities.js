@@ -289,6 +289,20 @@ export function appendPhotoNumber(currentText, number) {
   return numbers.join(', ');
 }
 
+// 📷로 찍은 번호를 **저장된** 사진번호 목록에 바로 더한다(2026-09-21 현장: 찍고 나서 속성창의
+// 저장을 누르지 않으면 사진은 서버에 올라갔는데 번호가 손상에 없어 zip에서 `미연결_`로 나왔다).
+// 이미 있거나 number가 ''이면 **같은 배열을 그대로** 돌려준다 — 호출부가 바뀌었는지 ===로 가린다.
+/**
+ * @param {unknown} savedNumbers
+ * @param {string} number
+ * @returns {string[]}
+ */
+export function withPhotoNumber(savedNumbers, number) {
+  const list = Array.isArray(savedNumbers) ? savedNumbers : [];
+  if (typeof number !== 'string' || number === '' || list.includes(number)) return list;
+  return [...list, number];
+}
+
 // 도면 라벨의 사진 줄 문구(2026-09-16 설계 3장). 번호마다 '#'를 붙이고 ', '로 잇는다:
 // ['12','13'] → '#12, #13'. 없거나 비어 있으면 빈 문자열. attrs가 없는 손상도 던지지 않는다.
 // '사진 ' 접두어는 2026-09-16에 없앴다 — 사내 망도 표기가 '#001' 형식이다.

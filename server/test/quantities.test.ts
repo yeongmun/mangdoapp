@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getDamageType } from '../public/viewer/damageTypes.js';
 import {
   appendPhotoNumber,
+  withPhotoNumber,
   comparePhotoNumbers,
   computeNumbers,
   countOutsideFrames,
@@ -619,5 +620,25 @@ describe('comparePhotoNumbers', () => {
 
   it('같은 값은 0', () => {
     expect(comparePhotoNumbers('12', '12')).toBe(0);
+  });
+});
+
+describe('withPhotoNumber (찍은 번호를 저장된 목록에 바로 더한다)', () => {
+  it('없던 번호는 뒤에 붙인 새 배열을 준다', () => {
+    const saved = ['7523'];
+    const next = withPhotoNumber(saved, '7524');
+    expect(next).toEqual(['7523', '7524']);
+    expect(saved).toEqual(['7523']);
+  });
+
+  it('이미 있거나 빈 번호면 같은 배열을 그대로 준다 (호출부가 ===로 변화 여부를 가린다)', () => {
+    const saved = ['7523'];
+    expect(withPhotoNumber(saved, '7523')).toBe(saved);
+    expect(withPhotoNumber(saved, '')).toBe(saved);
+  });
+
+  it('저장된 목록이 없으면(옛 손상) 새 목록을 만든다', () => {
+    expect(withPhotoNumber(undefined, '101530')).toEqual(['101530']);
+    expect(withPhotoNumber(null, '')).toEqual([]);
   });
 });

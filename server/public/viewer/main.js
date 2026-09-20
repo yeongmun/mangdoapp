@@ -26,6 +26,7 @@ import {
   statusTextOf,
   unitOf,
   widthUnitOf,
+  withPhotoNumber,
 } from './quantities.js';
 import { blocksDrawing, photoStripItems } from './photoStrip.js';
 
@@ -689,8 +690,18 @@ async function start() {
     // 찍는 동안 속성창이 닫혔으면(다른 손상 선택 등) 결과를 버린다 — 잘못된 손상에 번호가 붙지 않게.
     if (!isPropsOpen()) return;
     if (result.ok) {
-      $('photoInput').value = appendPhotoNumber($('photoInput').value, photoNumberFromFilename(result.filename));
+      const number = photoNumberFromFilename(result.filename);
+      $('photoInput').value = appendPhotoNumber($('photoInput').value, number);
       updateSummary();
+      // 찍은 번호는 **바로 손상에 저장한다** — 속성창의 저장을 기다리지 않는다. 사진은 곧 서버로
+      // 올라가는데 번호가 손상에 없으면 zip에서 `미연결_`이 된다(2026-09-21 현장). 다른 칸(폭·길이·비고)은
+      // 건드리지 않는다: 그 값들은 여전히 저장을 눌러야 들어간다.
+      const target = selectedDamage();
+      if (target) {
+        const saved = target.attrs?.photoNumbers;
+        const next = withPhotoNumber(saved, number);
+        if (next !== saved) apply(updateDamage(editor, target.id, { attrs: { photoNumbers: next } }, nowIso()));
+      }
       // 방금 붙인 번호는 아직 서버에 없다 — 칩으로 보인다. 전송이 끝나면 mangdoPhotoUploaded가
       // 다시 읽어 썸네일로 바뀐다.
       const shown = selectedDamage();
