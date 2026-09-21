@@ -64,6 +64,9 @@ export class DrawingTrash {
   constructor(
     private readonly dirs: DrawingTrashDirs,
     private readonly drawings: DrawingsStore,
+    // 없어진 프로젝트를 되살릴 때 미분류로 되돌리기 위한 확인 함수(선택). 없으면(옛 호출)
+    // projectId를 그대로 둔다 — 프로젝트 기능이 생기기 전 코드와 호환된다(설계 2.3).
+    private readonly projectExists?: (id: string) => Promise<boolean>,
   ) {}
 
   /** 도면을 휴지통으로 옮긴다. 없는 도면이면 null. */
@@ -112,8 +115,15 @@ export class DrawingTrash {
     if (!isDrawingId(drawingId)) return null;
     const saved = await this.readRecord(drawingId);
     if (!saved) return null;
-    const { record } = saved;
+    let { record } = saved;
     const folder = this.folderFor(record.id);
+
+    // 지우려던 프로젝트는 "비어 있음" 판단에 휴지통 도면을 넣지 않으므로, 이 도면이 가리키던
+    // 프로젝트가 그 사이 지워졌을 수 있다 — 그러면 미분류로 되살린다(설계 2.3).
+    if (typeof record.projectId === 'string' && this.projectExists) {
+      const stillThere = await this.projectExists(record.projectId);
+      if (!stillThere) record = { ...record, projectId: null };
+    }
 
     if (OBJECT_KEY_PATTERN.test(record.objectKey)) {
       await mkdir(this.dirs.originalsDir, { recursive: true });

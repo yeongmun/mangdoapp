@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DamagesStore } from '../src/damagesStore.js';
 import { DrawingsStore, type DrawingRecord } from '../src/drawingsStore.js';
 import { DrawingTrash } from '../src/drawingTrash.js';
@@ -181,5 +181,79 @@ describe('DrawingTrash.restore', () => {
     await trash.moveToTrash(ID, DELETED_AT);
     const saved = JSON.parse(await readFile(join(dir, 'trash', ID, 'record.json'), 'utf8'));
     expect(saved).toEqual({ record: record(ID), deletedAt: DELETED_AT });
+  });
+
+  // 근거: docs/superpowers/specs/2026-09-21-projects-design.md 2.3 — 비어 있음 판단에
+  // 휴지통 도면을 넣지 않으므로, 프로젝트가 지워진 뒤 휴지통 도면을 복구하는 경우가 생긴다.
+  describe('projectId와 프로젝트 존재 확인(세 번째 생성자 인자)', () => {
+    it('projectExists가 true를 주면 projectId를 그대로 둔다', async () => {
+      const withProject = new DrawingTrash(
+        {
+          trashDir: join(dir, 'trash'),
+          originalsDir: join(dir, 'drawings'),
+          damagesDir: join(dir, 'damages'),
+          photosDir: join(dir, 'photos'),
+        },
+        drawings,
+        async (id) => id === 'p_exists',
+      );
+      await drawings.add({ ...record(ID), projectId: 'p_exists' });
+      await withProject.moveToTrash(ID, DELETED_AT);
+
+      const restored = await withProject.restore(ID);
+
+      expect(restored?.projectId).toBe('p_exists');
+    });
+
+    it('projectExists가 false를 주면 복구 시 projectId를 null로 바꾼다', async () => {
+      const withProject = new DrawingTrash(
+        {
+          trashDir: join(dir, 'trash'),
+          originalsDir: join(dir, 'drawings'),
+          damagesDir: join(dir, 'damages'),
+          photosDir: join(dir, 'photos'),
+        },
+        drawings,
+        async () => false,
+      );
+      await drawings.add({ ...record(ID), projectId: 'p_gone' });
+      await withProject.moveToTrash(ID, DELETED_AT);
+
+      const restored = await withProject.restore(ID);
+
+      expect(restored?.projectId).toBeNull();
+      expect((await drawings.get(ID))?.projectId).toBeNull();
+    });
+
+    it('세 번째 인자를 주지 않으면(옛 호출) projectId를 그대로 둔다', async () => {
+      // trash(모듈 최상위 인스턴스)는 projectExists 없이 만들어졌다 — 컴파일이 그대로 되는지도 확인한다.
+      await drawings.add({ ...record(ID), projectId: 'p_whatever' });
+      await trash.moveToTrash(ID, DELETED_AT);
+
+      const restored = await trash.restore(ID);
+
+      expect(restored?.projectId).toBe('p_whatever');
+    });
+
+    it('projectId가 없거나 null인 도면은 projectExists를 부르지 않는다', async () => {
+      const projectExists = vi.fn(async (_id: string) => false);
+      const withProject = new DrawingTrash(
+        {
+          trashDir: join(dir, 'trash'),
+          originalsDir: join(dir, 'drawings'),
+          damagesDir: join(dir, 'damages'),
+          photosDir: join(dir, 'photos'),
+        },
+        drawings,
+        projectExists,
+      );
+      await drawings.add(record(ID));
+      await withProject.moveToTrash(ID, DELETED_AT);
+
+      const restored = await withProject.restore(ID);
+
+      expect(restored?.projectId).toBeUndefined();
+      expect(projectExists).not.toHaveBeenCalled();
+    });
   });
 });

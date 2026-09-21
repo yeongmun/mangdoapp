@@ -22,6 +22,8 @@ import {
   PHOTO_MIME_TYPES,
   type PhotosStore,
 } from './photosStore.js';
+import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
+import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -37,6 +39,7 @@ export interface AppDeps {
   originals: OriginalsStore;
   photos: PhotosStore;
   trash: DrawingTrash;
+  projects: ProjectsStore;
   publicDir: string;
   now?: () => number;
   maxUploadBytes?: number;
@@ -49,6 +52,21 @@ function messageOf(err: unknown): string {
 
 async function findDrawing(deps: AppDeps, id: string): Promise<DrawingRecord | null> {
   return isDrawingId(id) ? deps.drawings.get(id) : null;
+}
+
+// ProjectRuleError → 상태 코드(설계 3장): parent(상위를 못 찾음)는 404, notEmpty(삭제 규칙)는
+// 409, 나머지(name·memo·duplicate·depth, 모두 입력값 문제)는 400.
+function projectRuleStatus(code: ProjectRuleCode): number {
+  if (code === 'parent') return 404;
+  if (code === 'notEmpty') return 409;
+  return 400;
+}
+
+// 프로젝트를 만들거나 고친 직후에도 응답은 항상 트리 계산(ProjectView)을 거쳐 돌려준다 —
+// PC 페이지와 앱이 같은 path·개수 계산을 따로 갖지 않게 하기 위해서다(설계 3.1).
+async function projectViewFor(deps: AppDeps, id: string): Promise<ProjectView | undefined> {
+  const views = buildProjectViews(await deps.projects.list(), await deps.drawings.list());
+  return views.find((v) => v.id === id);
 }
 
 // 사진 주소는 검증된 값 셋(도면 id, UUID, 영문·숫자·-·_)으로만 만들어지므로 그대로 이어 붙인다.
@@ -236,6 +254,18 @@ export function createApp(deps: AppDeps) {
       return;
     }
 
+    // 프로젝트 확인은 APS를 부르기 전에 한다 — 없는 프로젝트로 올리려는 요청이 헛되이
+    // APS 업로드·변환을 시작하지 않도록(설계 3장). 빈 문자열·필드 없음은 미분류(키를 안 넣는다).
+    const rawProjectId = req.body?.projectId;
+    let projectId: string | undefined;
+    if (typeof rawProjectId === 'string' && rawProjectId !== '') {
+      if (!isProjectId(rawProjectId) || !(await deps.projects.get(rawProjectId))) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      projectId = rawProjectId;
+    }
+
     const id = newDrawingId();
     const extension = isDwg ? '.dwg' : '.dxf';
     const objectKey = `${id}${extension}`;
@@ -262,6 +292,8 @@ export function createApp(deps: AppDeps) {
         uploadedAt: new Date(now()).toISOString(),
         // DWG는 원본을 읽을 수 없으므로 틀이 없다(설계 3장).
         frames: isDxf ? framesOf(file.buffer, objectKey) : [],
+        // 없거나 미분류면 키 자체를 넣지 않는다(설계 2.2 — 기존 도면과 같은 모양으로 남는다).
+        ...(projectId !== undefined ? { projectId } : {}),
       };
       await deps.drawings.add(record);
       res.status(201).json(record);
@@ -279,6 +311,37 @@ export function createApp(deps: AppDeps) {
     const withFrames: DrawingRecord[] = [];
     for (const record of refreshed) withFrames.push(await ensureFrames(deps, record));
     res.json(withFrames);
+  });
+
+  // 도면을 다른 프로젝트로 옮긴다(또는 미분류로). PC 업로드 페이지의 "옮기기" 선택 상자가 부른다
+  // (설계 3장). projectId는 필수 키다 — 실수로 빼먹은 요청과 "미분류로 옮기기"(null)를 구분한다.
+  api.patch('/drawings/:id', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (!('projectId' in body)) {
+      res.status(400).json({ error: 'projectId가 필요합니다.' });
+      return;
+    }
+    const value = body.projectId;
+    let projectId: string | null;
+    if (value === null) {
+      projectId = null;
+    } else if (typeof value === 'string') {
+      if (!isProjectId(value) || !(await deps.projects.get(value))) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      projectId = value;
+    } else {
+      res.status(400).json({ error: 'projectId 형식이 올바르지 않습니다.' });
+      return;
+    }
+    const updated = await deps.drawings.update(drawing.id, { projectId });
+    res.json(await ensureFrames(deps, updated ?? drawing));
   });
 
   api.post('/drawings/:id/retry', async (req, res) => {
@@ -325,6 +388,83 @@ export function createApp(deps: AppDeps) {
       return;
     }
     res.json(await ensureFrames(deps, record));
+  });
+
+  // 프로젝트(현장·구조물) 관리. 만들기·고치기·옮기기는 PC 업로드 페이지에서만 쓴다 — 앱은 이
+  // 목록을 읽기만 한다(설계 1장). 응답은 항상 트리 계산(ProjectView)을 거친다(설계 3.1).
+  api.get('/projects', async (_req, res) => {
+    res.json(buildProjectViews(await deps.projects.list(), await deps.drawings.list()));
+  });
+
+  api.post('/projects', async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const created = await deps.projects.create(
+        { name: body.name, memo: body.memo, parentId: body.parentId },
+        new Date(now()).toISOString(),
+      );
+      res.status(201).json(await projectViewFor(deps, created.id));
+    } catch (err) {
+      if (err instanceof ProjectRuleError) {
+        res.status(projectRuleStatus(err.code)).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  api.patch('/projects/:id', async (req, res) => {
+    const id = req.params.id;
+    if (!isProjectId(id)) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    // ProjectsStore.update는 준 키만 바꾼다 — req.body에 실제로 있던 키만 넘긴다(항상 undefined를
+    // 넣으면 "그 키를 지워라"로 오해할 수 있다).
+    const patch: { name?: unknown; memo?: unknown } = {};
+    if ('name' in body) patch.name = body.name;
+    if ('memo' in body) patch.memo = body.memo;
+    try {
+      const updated = await deps.projects.update(id, patch);
+      if (!updated) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      res.json(await projectViewFor(deps, id));
+    } catch (err) {
+      if (err instanceof ProjectRuleError) {
+        res.status(projectRuleStatus(err.code)).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  api.delete('/projects/:id', async (req, res) => {
+    const id = req.params.id;
+    if (!isProjectId(id)) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    // 도면 수는 휴지통을 뺀 현재 목록에서 센다 — effectiveProjectId는 가리키는 프로젝트가
+    // 없어졌으면(있을 수 없지만) 미분류로 보므로 이 프로젝트를 가리키는 도면만 정확히 센다.
+    const [projectRecords, drawingRecords] = await Promise.all([deps.projects.list(), deps.drawings.list()]);
+    const drawingCount = drawingRecords.filter((d) => effectiveProjectId(d.projectId, projectRecords) === id).length;
+    try {
+      const removed = await deps.projects.remove(id, { drawingCount });
+      if (!removed) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      res.json({ id });
+    } catch (err) {
+      if (err instanceof ProjectRuleError) {
+        res.status(projectRuleStatus(err.code)).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
   });
 
   api.get('/viewer-token', async (_req, res) => {

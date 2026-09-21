@@ -10,6 +10,7 @@ import { DrawingsStore } from './drawingsStore.js';
 import { DrawingTrash } from './drawingTrash.js';
 import { OriginalsStore } from './originalsStore.js';
 import { PhotosStore } from './photosStore.js';
+import { ProjectsStore } from './projectsStore.js';
 
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
 dotenv.config({ path: join(serverRoot, '.env'), quiet: true });
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
   }
 
   const drawings = new DrawingsStore(join(config.dataDir, 'drawings.json'));
+  const projects = new ProjectsStore(join(config.dataDir, 'projects.json'));
   const app = createApp({
     accessKey: config.appAccessKey,
     aps,
@@ -45,7 +47,9 @@ async function main(): Promise<void> {
         photosDir: join(config.dataDir, 'photos'),
       },
       drawings,
+      (id) => projects.get(id).then(Boolean),
     ),
+    projects,
     publicDir: join(serverRoot, 'public'),
   });
 
