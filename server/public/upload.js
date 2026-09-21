@@ -230,13 +230,21 @@ function projectRow(id, label, isChild) {
   return li;
 }
 
+// 표에는 그 프로젝트에 **바로 든** 도면만 보이므로 줄의 숫자도 그 수다. 하위 프로젝트가 있는
+// 최상위는 합계를 함께 적는다(최종 검토 M-3: 줄에는 5인데 표에는 2개만 보여 헷갈렸다).
+function countLabel(project) {
+  return project.childCount > 0
+    ? `도면 ${project.drawingCount} · 하위 포함 ${project.totalDrawingCount}`
+    : `도면 ${project.drawingCount}`;
+}
+
 function renderProjects() {
   const list = $('projectList');
   list.replaceChildren();
 
   for (const project of projects) {
     list.append(
-      projectRow(project.id, `${project.name} (도면 ${project.totalDrawingCount})`, project.depth === 1),
+      projectRow(project.id, `${project.name} (${countLabel(project)})`, project.depth === 1),
     );
   }
   list.append(projectRow('unfiled', `미분류 (${unfiledCount()})`, false));
@@ -430,13 +438,25 @@ async function loadList() {
   clearTimeout(pollTimer);
   const generation = ++loadGeneration;
   try {
-    const [projectList, drawingList] = await Promise.all([api('/projects'), api('/drawings')]);
+    // 프로젝트 목록만 실패해도(예: projects.json이 깨져 500) 도면 표·휴지통·폴링은 살아 있어야 한다
+    // (최종 검토 Important 2) — 그때는 프로젝트 없이 전부 미분류로 보이고 오류 문구만 띄운다.
+    // 도면 목록이 실패하면 지금처럼 아래 catch로 간다.
+    const [projectResult, drawingList] = await Promise.all([
+      api('/projects').then(
+        (list) => ({ list, error: null }),
+        (error) => ({ list: [], error }),
+      ),
+      api('/drawings'),
+    ]);
     if (generation !== loadGeneration) return;
-    projects = projectList;
+    projects = Array.isArray(projectResult.list) ? projectResult.list : [];
     drawings = drawingList;
+    if (projectResult.error) showMessage(`프로젝트 목록을 불러오지 못했습니다: ${projectResult.error.message}`, true);
     // 고른 프로젝트가 없어졌으면(삭제됨) 미분류로 되돌린다.
     if (selected !== 'unfiled' && !projects.some((p) => p.id === selected)) {
-      setSelectedProject('unfiled');
+      // 목록을 못 읽은 것뿐이면 기억해 둔 선택은 지우지 않는다 — 이번 화면에서만 미분류로 본다.
+      if (projectResult.error) selected = 'unfiled';
+      else setSelectedProject('unfiled');
     }
     renderProjects();
     renderRows(visibleDrawings());

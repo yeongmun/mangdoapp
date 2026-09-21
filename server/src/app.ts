@@ -23,7 +23,7 @@ import {
   type PhotoEntry,
   type PhotosStore,
 } from './photosStore.js';
-import { baseNameOf, drawingFoldersFor, uniqueNames, type DrawingFolder } from './projectZip.js';
+import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFolder } from './projectZip.js';
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 
@@ -549,7 +549,7 @@ export function createApp(deps: AppDeps) {
       return;
     }
 
-    const fileName = `${project.name}_사진.zip`;
+    const fileName = `${safeSegment(project.name)}_사진.zip`;
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(
       'Content-Disposition',
@@ -592,63 +592,88 @@ export function createApp(deps: AppDeps) {
     const folders = drawingFoldersFor(id, projectRecords, drawingRecords);
     const baseNames = baseNamesFor(folders);
 
-    const exported: { name: string; text: string }[] = [];
+    // 산출물을 모아 두지 않는다(최종 검토 Important 1): 30MB DXF 몇 장이면 수백 MB가 메모리에 쌓이고,
+    // 동기 파싱이 이어지는 동안 서버가 다른 요청(앱 폴링·사진 업로드)에 답하지 못했다. 그래서
+    //  · **첫 산출이 성공한 순간** 머리글을 보내고 zip을 열어 도면을 하나씩 흘려보낸다 — 메모리에는
+    //    한 번에 DXF 한 장만 있다(앞 항목이 다 쓰인 뒤에 다음 도면을 산출한다).
+    //  · 도면 사이마다 이벤트 루프에 차례를 넘긴다.
+    //  · 끝까지 하나도 성공하지 못했으면 아직 머리글을 안 보냈으므로 400을 줄 수 있다(스펙 4장).
+    let archive: archiver.Archiver | null = null;
+    const openArchive = (): archiver.Archiver => {
+      const fileName = `${safeSegment(project.name)}_손상.zip`;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export.zip"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      );
+      // DXF는 글자라 압축한다(deflate) — 사진 zip과 달리 store를 쓰지 않는다.
+      const created = archiver('zip');
+      created.on('warning', (err) => console.error('[projects/export.zip]', id, err));
+      // 여기까지 오면 머리글을 이미 보냈다 — 깨진 zip을 온전한 것으로 착각하지 않게 연결을 끊는다.
+      created.on('error', (err) => {
+        console.error('[projects/export.zip]', id, err);
+        res.destroy(err);
+      });
+      created.pipe(res);
+      return created;
+    };
+    // 항목 하나가 zip에 다 쓰일 때까지 기다린다. archiver는 append를 줄 세워 두므로, 기다리지 않으면
+    // 산출한 글자들이 줄에 그대로 쌓인다.
+    const appendAndWait = (target: archiver.Archiver, data: Buffer, name: string): Promise<void> =>
+      new Promise((resolve, reject) => {
+        const onEntry = (entry: archiver.EntryData): void => {
+          if (entry.name !== name) return;
+          target.off('entry', onEntry);
+          target.off('error', reject);
+          resolve();
+        };
+        target.on('entry', onEntry);
+        target.once('error', reject);
+        target.append(data, { name });
+      });
+
     const skipLines: string[] = [];
     const skipReasons: string[] = [];
-    for (const { drawing, folder } of folders) {
-      const outcome = await exportDrawing(deps, drawing);
-      const path = `${folder}${drawing.name}`;
-      if (!outcome.ok) {
-        const reason =
-          outcome.kind === 'notDxf'
-            ? 'DXF로 올린 도면만 산출할 수 있습니다'
-            : outcome.kind === 'noOriginal'
-              ? '원본 파일이 없습니다'
-              : outcome.kind === 'exportError'
-                ? (outcome.detail ?? 'DXF 산출에 실패했습니다')
-                : 'DXF 산출에 실패했습니다';
-        skipLines.push(`${path}: ${reason}`);
-        skipReasons.push(reason);
-        continue;
+    try {
+      for (const { drawing, folder } of folders) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const outcome = await exportDrawing(deps, drawing);
+        const path = `${folder}${drawing.name}`;
+        if (!outcome.ok) {
+          const reason =
+            outcome.kind === 'notDxf'
+              ? 'DXF로 올린 도면만 산출할 수 있습니다'
+              : outcome.kind === 'noOriginal'
+                ? '원본 파일이 없습니다'
+                : outcome.kind === 'exportError'
+                  ? (outcome.detail ?? 'DXF 산출에 실패했습니다')
+                  : 'DXF 산출에 실패했습니다';
+          skipLines.push(`${path}: ${reason}`);
+          skipReasons.push(reason);
+          continue;
+        }
+        if (outcome.result.skipped > 0) {
+          skipLines.push(`${path}: 손상 ${outcome.result.skipped}개가 빠졌습니다`);
+        }
+        for (const warning of outcome.result.warnings) {
+          skipLines.push(`${path}: ${warning}`);
+        }
+        const base = baseNames.get(drawing.id) ?? baseNameOf(drawing.name);
+        archive ??= openArchive();
+        await appendAndWait(archive, Buffer.from(outcome.result.dxfText, 'utf8'), `${folder}${base}_손상.dxf`);
       }
-      const base = baseNames.get(drawing.id) ?? baseNameOf(drawing.name);
-      exported.push({ name: `${folder}${base}_손상.dxf`, text: outcome.result.dxfText });
-      if (outcome.result.skipped > 0) {
-        skipLines.push(`${path}: 손상 ${outcome.result.skipped}개가 빠졌습니다`);
-      }
-      for (const warning of outcome.result.warnings) {
-        skipLines.push(`${path}: ${warning}`);
-      }
+    } catch (err) {
+      // archiver 오류는 위 'error' 처리기가 이미 연결을 끊었다. 머리글 전이면 500으로 답한다.
+      console.error('[projects/export.zip]', id, err);
+      if (!res.headersSent) res.status(500).json({ error: 'DXF zip 생성에 실패했습니다.' });
+      return;
     }
 
-    if (exported.length === 0) {
+    if (archive === null) {
       const uniqueReasons = [...new Set(skipReasons)];
       const suffix = uniqueReasons.length === 1 ? ` (${uniqueReasons[0]})` : '';
       res.status(400).json({ error: `산출할 수 있는 도면이 없습니다${suffix}` });
       return;
-    }
-
-    const fileName = `${project.name}_손상.zip`;
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="export.zip"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-    );
-
-    // DXF는 글자라 압축한다(deflate) — 사진 zip과 달리 store를 쓰지 않는다.
-    const archive = archiver('zip');
-    archive.on('warning', (err) => console.error('[projects/export.zip]', id, err));
-    archive.on('error', (err) => {
-      console.error('[projects/export.zip]', id, err);
-      if (res.headersSent) {
-        res.destroy(err);
-      } else {
-        res.status(500).json({ error: 'DXF zip 생성에 실패했습니다.' });
-      }
-    });
-    archive.pipe(res);
-    for (const file of exported) {
-      archive.append(Buffer.from(file.text, 'utf8'), { name: file.name });
     }
     if (skipLines.length > 0) {
       archive.append(Buffer.from(skipLines.join('\n'), 'utf8'), { name: '건너뜀.txt' });
