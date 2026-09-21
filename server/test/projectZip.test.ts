@@ -2,7 +2,7 @@
 // 값으로 검사한다. 근거: docs/superpowers/specs/2026-09-21-projects-design.md 4장
 import { describe, expect, it } from 'vitest';
 import type { DrawingRecord } from '../src/drawingsStore.js';
-import { baseNameOf, drawingFoldersFor, uniqueNames } from '../src/projectZip.js';
+import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames } from '../src/projectZip.js';
 import type { ProjectRecord } from '../src/projectsStore.js';
 
 function project(id: string, name: string, parentId: string | null = null): ProjectRecord {
@@ -137,5 +137,43 @@ describe('uniqueNames', () => {
   it('baseNameOf와 함께 쓰면 확장자만 다른 도면 이름도 가른다', () => {
     const names = ['교량.dxf', '교량.dwg'].map(baseNameOf);
     expect(uniqueNames(names)).toEqual(['교량', '교량 (2)']);
+  });
+});
+
+describe('safeSegment — zip 밖을 가리키는 이름을 막는다 (zip-slip)', () => {
+  it('점으로만 된 이름과 빈 이름은 _ 가 된다', () => {
+    expect(safeSegment('..')).toBe('_');
+    expect(safeSegment('.')).toBe('_');
+    expect(safeSegment('...')).toBe('_');
+    expect(safeSegment('   ')).toBe('_');
+    expect(safeSegment('')).toBe('_');
+  });
+
+  it('경로 구분자는 sanitizeEntryName과 같이 _ 로 바뀐다', () => {
+    expect(safeSegment('../x')).toBe('.._x');
+    expect(safeSegment('a\\b')).toBe('a_b');
+  });
+
+  it('보통 이름은 그대로다', () => {
+    expect(safeSegment('A교 (상부)')).toBe('A교 (상부)');
+    expect(safeSegment('v1.2')).toBe('v1.2');
+  });
+
+  it("이름이 '..'인 하위 프로젝트의 폴더는 '_/'이고, 같은 꼴이 둘이면 갈린다", () => {
+    const P = 'p_' + '0'.repeat(32);
+    const C1 = 'p_' + '1'.repeat(32);
+    const C2 = 'p_' + '2'.repeat(32);
+    const folders = drawingFoldersFor(
+      P,
+      [project(P, '현장'), project(C1, '..', P), project(C2, '.', P)],
+      [drawing('d_' + 'a'.repeat(32), 'x.dxf', C1), drawing('d_' + 'b'.repeat(32), 'y.dxf', C2)],
+    ).map((f) => f.folder);
+    expect(folders.every((f) => !f.includes('..'))).toBe(true);
+    expect(new Set(folders).size).toBe(2);
+  });
+
+  it("도면 이름이 '..dxf'·'..'여도 바탕 이름에 '..'이 남지 않는다", () => {
+    expect(baseNameOf('..')).toBe('_');
+    expect(baseNameOf('...dxf')).toBe('_');
   });
 });

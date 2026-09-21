@@ -18,8 +18,18 @@ function byKoName(a: { name: string }, b: { name: string }): number {
 
 // 확장자를 뗀 뒤 zip 항목 이름으로 안전하게 고친다. photoZip.ts의 sanitizeEntryName과 같은
 // 규칙을 쓴다 — 항목 이름 규칙이 zip 종류마다 갈리지 않는다.
+/**
+ * zip 경로의 **한 마디**(폴더·파일 이름)로 안전한 글자열. sanitizeEntryName은 `/ \ :` 등만 바꾸므로
+ * 이름이 `.`·`..`인 프로젝트는 그대로 `../`가 되어 zip 밖을 가리킨다(zip-slip, 검토 Task 3
+ * Important). 점으로만 된 이름과 빈 이름은 `_`로 바꾼다.
+ */
+export function safeSegment(name: string): string {
+  const cleaned = sanitizeEntryName(String(name)).trim();
+  return cleaned === '' || /^\.+$/.test(cleaned) ? '_' : cleaned;
+}
+
 export function baseNameOf(drawingName: string): string {
-  return sanitizeEntryName(String(drawingName).replace(/\.[^.]*$/, ''));
+  return safeSegment(String(drawingName).replace(/\.[^.]*$/, ''));
 }
 
 /**
@@ -60,7 +70,7 @@ export function drawingFoldersFor(
   for (const drawing of own) result.push({ drawing, folder: '' });
 
   const children = projects.filter((p) => p.parentId === projectId).sort(byKoName);
-  const folderNames = uniqueNames(children.map((c) => sanitizeEntryName(c.name)));
+  const folderNames = uniqueNames(children.map((c) => safeSegment(c.name)));
   children.forEach((child, index) => {
     const folder = `${folderNames[index]}/`;
     const bucket = drawings.filter((d) => effectiveProjectId(d.projectId, projects) === child.id).sort(byKoName);
