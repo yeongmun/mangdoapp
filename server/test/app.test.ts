@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inflateRawSync } from 'node:zlib';
 import sharp from 'sharp';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1452,5 +1453,153 @@ describe('프로젝트 API (GET/POST/PATCH/DELETE /api/projects)', () => {
       const res = await request(app).delete(`/api/projects/${project.id}`);
       expect(res.status).toBe(401);
     });
+  });
+});
+
+// zip 안 항목을 중앙 디렉터리(PK\x01\x02)에서 읽는다 — archiver가 데이터 디스크립터를 쓰면
+// 로컬 헤더의 크기 필드가 0일 수 있어(export.zip의 deflate 항목) 중앙 디렉터리 쪽이 항상
+// 정확하다(브리프 근거). store 항목(photos.zip)도 같은 방식으로 읽을 수 있다.
+interface ZipCdEntry {
+  name: string;
+  method: number;
+  compressedSize: number;
+  localHeaderOffset: number;
+}
+
+function centralDirectoryEntries(buf: Buffer): ZipCdEntry[] {
+  const CD_SIG = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+  const entries: ZipCdEntry[] = [];
+  let offset = buf.indexOf(CD_SIG);
+  while (offset !== -1 && buf.readUInt32LE(offset) === 0x02014b50) {
+    const method = buf.readUInt16LE(offset + 10);
+    const compressedSize = buf.readUInt32LE(offset + 20);
+    const nameLen = buf.readUInt16LE(offset + 28);
+    const extraLen = buf.readUInt16LE(offset + 30);
+    const commentLen = buf.readUInt16LE(offset + 32);
+    const localHeaderOffset = buf.readUInt32LE(offset + 42);
+    const name = buf.subarray(offset + 46, offset + 46 + nameLen).toString('utf8');
+    entries.push({ name, method, compressedSize, localHeaderOffset });
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+function readZipEntryData(buf: Buffer, entry: ZipCdEntry): Buffer {
+  const lh = entry.localHeaderOffset;
+  const nameLen = buf.readUInt16LE(lh + 26);
+  const extraLen = buf.readUInt16LE(lh + 28);
+  const dataStart = lh + 30 + nameLen + extraLen;
+  const raw = buf.subarray(dataStart, dataStart + entry.compressedSize);
+  return entry.method === 0 ? Buffer.from(raw) : inflateRawSync(raw);
+}
+
+describe('GET /api/projects/:id/photos.zip', () => {
+  it('고른 프로젝트는 최상위, 하위 프로젝트는 <하위>/ 폴더에 담고 썸네일은 넣지 않는다', async () => {
+    const { app, projects, drawings, photos } = setup();
+    const top = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const child = await projects.create({ name: 'A교', parentId: top.id }, '2026-09-01T00:00:01.000Z');
+    const drawing = await seed(drawings, { name: '교량.dwg', projectId: child.id });
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('photo-one'));
+    await photos.saveThumb(drawing.id, D1, '101530', Buffer.from('thumb-bytes'));
+
+    const res = await request(app)
+      .get(`/api/projects/${top.id}/photos.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-disposition']).toContain(
+      `filename*=UTF-8''${encodeURIComponent('오봉대교_사진.zip')}`,
+    );
+    const body = Buffer.from(res.body);
+    // 손상 기록이 없는 도면이라 '삭제된손상_…' 이름이 된다(photoZip.ts와 같은 규칙).
+    expect(body.includes(Buffer.from('A교/교량/삭제된손상_11111111_101530.jpg', 'utf8'))).toBe(true);
+    expect(body.includes(Buffer.from('thumb-bytes', 'utf8'))).toBe(false);
+  });
+
+  it('사진이 하나도 없으면 400', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const res = await request(app).get(`/api/projects/${project.id}/photos.zip`).set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: '저장된 사진이 없습니다' });
+  });
+
+  it('없는 프로젝트는 404, 키가 없으면 401', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    expect(
+      (await request(app).get(`/api/projects/${newProjectId()}/photos.zip`).set('x-access-key', KEY)).status,
+    ).toBe(404);
+    expect((await request(app).get(`/api/projects/${project.id}/photos.zip`)).status).toBe(401);
+  });
+});
+
+describe('GET /api/projects/:id/export.zip', () => {
+  it('DXF 도면은 산출하고 DWG 도면은 건너뛰어 건너뜀.txt에 사유를 남긴다', async () => {
+    const { app, projects, drawings, originals } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const dxfDrawing = await seed(drawings, { name: '교량 A.dxf', projectId: project.id });
+    await originals.save(dxfDrawing.objectKey, await readFile(templatePath));
+    await request(app)
+      .put(`/api/drawings/${dxfDrawing.id}/damages`)
+      .set('x-access-key', KEY)
+      .send(exportDoc(dxfDrawing.id));
+    await seed(drawings, { name: '교량 B.dwg', projectId: project.id });
+
+    const res = await request(app)
+      .get(`/api/projects/${project.id}/export.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-disposition']).toContain(
+      `filename*=UTF-8''${encodeURIComponent('오봉대교_손상.zip')}`,
+    );
+    const body = Buffer.from(res.body);
+    const entries = centralDirectoryEntries(body);
+    const names = entries.map((e) => e.name);
+    expect(names).toContain('교량 A_손상.dxf');
+    expect(names).toContain('건너뜀.txt');
+    const skipEntry = entries.find((e) => e.name === '건너뜀.txt')!;
+    expect(readZipEntryData(body, skipEntry).toString('utf8')).toBe(
+      '교량 B.dwg: DXF로 올린 도면만 산출할 수 있습니다',
+    );
+    const dxfEntry = entries.find((e) => e.name === '교량 A_손상.dxf')!;
+    expect(readZipEntryData(body, dxfEntry).toString('utf8')).toContain('신규손상');
+  });
+
+  it('전부 DWG면 400이고 사유가 하나면 괄호로 붙는다', async () => {
+    const { app, projects, drawings } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    await seed(drawings, { name: '교량.dwg', projectId: project.id });
+
+    const res = await request(app).get(`/api/projects/${project.id}/export.zip`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: '산출할 수 있는 도면이 없습니다 (DXF로 올린 도면만 산출할 수 있습니다)',
+    });
+  });
+
+  it('도면이 하나도 없는 프로젝트는 400(괄호 없음)', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+
+    const res = await request(app).get(`/api/projects/${project.id}/export.zip`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: '산출할 수 있는 도면이 없습니다' });
+  });
+
+  it('없는 프로젝트는 404, 키가 없으면 401', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    expect(
+      (await request(app).get(`/api/projects/${newProjectId()}/export.zip`).set('x-access-key', KEY)).status,
+    ).toBe(404);
+    expect((await request(app).get(`/api/projects/${project.id}/export.zip`)).status).toBe(401);
   });
 });
