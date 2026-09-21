@@ -1,10 +1,31 @@
 const KEY_STORAGE = 'mangdo.accessKey';
+const PROJECT_STORAGE = 'mangdo.project';
 const POLL_MS = 5000;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const STATUS_LABELS = { pending: '대기', inprogress: '변환 중', success: '완료', failed: '실패' };
 
 const $ = (id) => document.getElementById(id);
 let pollTimer = null;
+let projects = [];
+let drawings = [];
+let selected = getSelectedProject();
+
+function getSelectedProject() {
+  try {
+    return localStorage.getItem(PROJECT_STORAGE) || 'unfiled';
+  } catch {
+    return 'unfiled';
+  }
+}
+
+function setSelectedProject(value) {
+  selected = value;
+  try {
+    localStorage.setItem(PROJECT_STORAGE, value);
+  } catch {
+    // 저장소를 쓸 수 없는 브라우저에서는 이번 세션 동안만 고른 것을 기억한다.
+  }
+}
 
 function getKey() {
   try {
@@ -125,6 +146,8 @@ function renderRows(drawings) {
     photoTd.append(photoButton);
     tr.append(photoTd);
 
+    tr.append(moveSelectCell(drawing));
+
     const actionTd = document.createElement('td');
     if (drawing.status === 'failed') {
       const button = document.createElement('button');
@@ -162,6 +185,189 @@ function renderTrash(items) {
     tr.append(actionTd);
     rows.append(tr);
   }
+}
+
+// 프로젝트 카드 -----------------------------------------------------------
+
+// 가리키는 프로젝트가 없어진 projectId(있을 수 없지만 파일을 손으로 고친 경우 등)는
+// 미분류로 본다 — server/src/projectTree.ts의 effectiveProjectId와 같은 규칙이다.
+function isKnownProject(projectId) {
+  return typeof projectId === 'string' && projects.some((p) => p.id === projectId);
+}
+
+function unfiledCount() {
+  return drawings.filter((d) => !isKnownProject(d.projectId)).length;
+}
+
+function visibleDrawings() {
+  if (selected === 'unfiled') {
+    return drawings.filter((d) => !isKnownProject(d.projectId));
+  }
+  return drawings.filter((d) => d.projectId === selected);
+}
+
+function selectProject(id) {
+  setSelectedProject(id);
+  renderProjects();
+  renderRows(visibleDrawings());
+}
+
+function renderProjects() {
+  const list = $('projectList');
+  list.replaceChildren();
+
+  for (const project of projects) {
+    const li = document.createElement('li');
+    if (project.depth === 1) li.classList.add('child');
+    if (project.id === selected) li.classList.add('selected');
+    li.textContent = `${project.name} (도면 ${project.totalDrawingCount})`;
+    li.addEventListener('click', () => selectProject(project.id));
+    list.append(li);
+  }
+
+  const unfiledLi = document.createElement('li');
+  if (selected === 'unfiled') unfiledLi.classList.add('selected');
+  unfiledLi.textContent = `미분류 (${unfiledCount()})`;
+  unfiledLi.addEventListener('click', () => selectProject('unfiled'));
+  list.append(unfiledLi);
+
+  const current = projects.find((p) => p.id === selected);
+  $('projectMemo').textContent = current ? current.memo : '';
+  $('uploadTarget').textContent = `올릴 곳: ${current ? current.path : '미분류'}`;
+
+  // 하위 만들기는 최상위 프로젝트를 골랐을 때만 된다(설계 2.1 — 깊이는 2단계까지다).
+  $('newChild').disabled = !(current && current.depth === 0);
+  $('editProject').disabled = !current;
+  $('deleteProject').disabled = !current;
+  $('projectPhotos').disabled = !current;
+  $('projectExport').disabled = !current;
+}
+
+// 새 프로젝트(parentId 없음) 또는 하위 프로젝트(parentId 있음)를 만든다. 이름을 취소하면
+// 그만두고, 메모를 취소하면 빈 메모로 만든다(고칠 이전 값이 없는 새 프로젝트라서).
+async function createProject(parentId) {
+  const name = window.prompt('프로젝트 이름을 입력하세요.', '');
+  if (name === null) return;
+  const memo = window.prompt('메모를 입력하세요. (선택)', '');
+  try {
+    const created = await api('/projects', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, memo: memo ?? '', ...(parentId ? { parentId } : {}) }),
+    });
+    showMessage(`프로젝트를 만들었습니다: ${created.path}`);
+    setSelectedProject(created.id);
+    await loadList();
+  } catch (err) {
+    showMessage(err.message, true);
+  }
+}
+
+async function editSelectedProject() {
+  const current = projects.find((p) => p.id === selected);
+  if (!current) return;
+  const name = window.prompt('프로젝트 이름을 입력하세요.', current.name);
+  if (name === null) return;
+  const memo = window.prompt('메모를 입력하세요. (선택)', current.memo);
+  try {
+    await api(`/projects/${current.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, memo: memo === null ? current.memo : memo }),
+    });
+    showMessage(`프로젝트를 고쳤습니다: ${name}`);
+    await loadList();
+  } catch (err) {
+    showMessage(err.message, true);
+  }
+}
+
+async function deleteSelectedProject() {
+  const current = projects.find((p) => p.id === selected);
+  if (!current) return;
+  const ok = window.confirm(`"${current.path}" 프로젝트를 삭제할까요?\n\n비어 있는 프로젝트만 삭제됩니다.`);
+  if (!ok) return;
+  try {
+    await api(`/projects/${current.id}`, { method: 'DELETE' });
+    showMessage(`프로젝트를 삭제했습니다: ${current.path}`);
+    setSelectedProject('unfiled');
+    await loadList();
+  } catch (err) {
+    showMessage(err.message, true);
+  }
+}
+
+async function downloadProjectPhotos() {
+  const current = projects.find((p) => p.id === selected);
+  if (!current) return;
+  $('projectPhotos').disabled = true;
+  showMessage('사진을 모으는 중…');
+  try {
+    const result = await download(`/projects/${current.id}/photos.zip`, `${current.name}_사진.zip`);
+    showMessage(`내려받았습니다: ${result.name}`);
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
+    renderProjects();
+  }
+}
+
+async function downloadProjectExport() {
+  const current = projects.find((p) => p.id === selected);
+  if (!current) return;
+  $('projectExport').disabled = true;
+  showMessage('산출 중…');
+  try {
+    const result = await download(`/projects/${current.id}/export.zip`, `${current.name}_손상.zip`);
+    showMessage(`내려받았습니다: ${result.name}`);
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
+    renderProjects();
+  }
+}
+
+// 도면 줄의 "옮기기" 선택 상자(첫 옵션은 미분류, 이어서 모든 프로젝트의 path). 바꾸면 바로
+// PATCH하고 목록을 새로 고친다. 실패하면 메시지를 보이고 고르던 값을 되돌린다.
+function moveSelectCell(drawing) {
+  const td = document.createElement('td');
+  const select = document.createElement('select');
+
+  const unfiledOption = document.createElement('option');
+  unfiledOption.value = '';
+  unfiledOption.textContent = '미분류';
+  select.append(unfiledOption);
+
+  for (const project of projects) {
+    const option = document.createElement('option');
+    option.value = project.id;
+    option.textContent = project.path;
+    select.append(option);
+  }
+
+  const currentValue = isKnownProject(drawing.projectId) ? drawing.projectId : '';
+  select.value = currentValue;
+
+  select.addEventListener('change', async () => {
+    const next = select.value;
+    select.disabled = true;
+    try {
+      await api(`/drawings/${drawing.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId: next || null }),
+      });
+      showMessage(`옮겼습니다: ${drawing.name}`);
+      await loadList();
+    } catch (err) {
+      showMessage(err.message, true);
+      select.value = currentValue;
+      select.disabled = false;
+    }
+  });
+
+  td.append(select);
+  return td;
 }
 
 // 휴지통을 못 읽어도 도면 목록은 그대로 쓴다.
@@ -207,9 +413,18 @@ async function restoreDrawing(item, button) {
 async function loadList() {
   clearTimeout(pollTimer);
   try {
-    const drawings = await api('/drawings');
-    renderRows(drawings);
+    const [projectList, drawingList] = await Promise.all([api('/projects'), api('/drawings')]);
+    projects = projectList;
+    drawings = drawingList;
+    // 고른 프로젝트가 없어졌으면(삭제됨) 미분류로 되돌린다.
+    if (selected !== 'unfiled' && !projects.some((p) => p.id === selected)) {
+      setSelectedProject('unfiled');
+    }
+    renderProjects();
+    renderRows(visibleDrawings());
     void loadTrash();
+    // 폴링은 전체 도면 기준으로 건다 — 지금 보이는 프로젝트뿐 아니라 다른 프로젝트의
+    // 변환이 끝나도 다음 새로고침에서 반영되게 한다.
     if (drawings.some((d) => d.status === 'pending' || d.status === 'inprogress')) {
       pollTimer = setTimeout(loadList, POLL_MS);
     }
@@ -271,6 +486,19 @@ $('saveKey').addEventListener('click', () => {
 
 $('refresh').addEventListener('click', loadList);
 
+$('newProject').addEventListener('click', () => createProject());
+
+$('newChild').addEventListener('click', () => {
+  const current = projects.find((p) => p.id === selected);
+  if (!current || current.depth !== 0) return;
+  createProject(selected);
+});
+
+$('editProject').addEventListener('click', editSelectedProject);
+$('deleteProject').addEventListener('click', deleteSelectedProject);
+$('projectPhotos').addEventListener('click', downloadProjectPhotos);
+$('projectExport').addEventListener('click', downloadProjectExport);
+
 $('uploadForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const file = $('file').files[0];
@@ -287,6 +515,10 @@ $('uploadForm').addEventListener('submit', async (event) => {
 
   const form = new FormData();
   form.append('name', file.name);
+  // 미분류가 아니면 고른 프로젝트로 올린다(설계 5장).
+  if (selected !== 'unfiled') {
+    form.append('projectId', selected);
+  }
   form.append('file', file);
 
   $('uploadButton').disabled = true;
