@@ -19,9 +19,14 @@ export interface DrawingRecord {
    * 한 번 계산해 채운다(설계 3장). 표는 넣지 않는다 — 앱은 영역만 쓴다.
    */
   frames?: FrameBounds[];
+  /**
+   * 이 도면이 속한 프로젝트 id. 없거나 null이면 미분류다 — 프로젝트 기능이 생기기 전에
+   * 올린 도면도 아무것도 바꾸지 않고 미분류로 보인다(설계 2.2).
+   */
+  projectId?: string | null;
 }
 
-export type DrawingPatch = Partial<Pick<DrawingRecord, 'status' | 'progress' | 'error' | 'frames'>>;
+export type DrawingPatch = Partial<Pick<DrawingRecord, 'status' | 'progress' | 'error' | 'frames' | 'projectId'>>;
 
 const DRAWING_ID_PATTERN = /^d_[0-9a-f]{32}$/;
 
