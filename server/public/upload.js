@@ -212,24 +212,34 @@ function selectProject(id) {
   renderRows(visibleDrawings());
 }
 
+// 한 줄은 <li> 안의 <button>이다 — 키보드(Tab·Enter·Space)로 고를 수 있고, 고른 줄은
+// aria-current로 보조 기술에 전해진다(검토 Task 4 Important: 클릭만 되는 <li>였다).
+function projectRow(id, label, isChild) {
+  const li = document.createElement('li');
+  if (isChild) li.classList.add('child');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'project-row';
+  button.textContent = label;
+  if (id === selected) {
+    li.classList.add('selected');
+    button.setAttribute('aria-current', 'true');
+  }
+  button.addEventListener('click', () => selectProject(id));
+  li.append(button);
+  return li;
+}
+
 function renderProjects() {
   const list = $('projectList');
   list.replaceChildren();
 
   for (const project of projects) {
-    const li = document.createElement('li');
-    if (project.depth === 1) li.classList.add('child');
-    if (project.id === selected) li.classList.add('selected');
-    li.textContent = `${project.name} (도면 ${project.totalDrawingCount})`;
-    li.addEventListener('click', () => selectProject(project.id));
-    list.append(li);
+    list.append(
+      projectRow(project.id, `${project.name} (도면 ${project.totalDrawingCount})`, project.depth === 1),
+    );
   }
-
-  const unfiledLi = document.createElement('li');
-  if (selected === 'unfiled') unfiledLi.classList.add('selected');
-  unfiledLi.textContent = `미분류 (${unfiledCount()})`;
-  unfiledLi.addEventListener('click', () => selectProject('unfiled'));
-  list.append(unfiledLi);
+  list.append(projectRow('unfiled', `미분류 (${unfiledCount()})`, false));
 
   const current = projects.find((p) => p.id === selected);
   $('projectMemo').textContent = current ? current.memo : '';
@@ -332,6 +342,7 @@ async function downloadProjectExport() {
 function moveSelectCell(drawing) {
   const td = document.createElement('td');
   const select = document.createElement('select');
+  select.setAttribute('aria-label', `${drawing.name} 옮기기`);
 
   const unfiledOption = document.createElement('option');
   unfiledOption.value = '';
@@ -410,10 +421,17 @@ async function restoreDrawing(item, button) {
   }
 }
 
+// loadList는 폴링 타이머·버튼·만들기/옮기기 뒤에서 겹쳐 불린다. prompt/confirm이 떠 있는 동안 밀린
+// 폴링이 먼저 출발하고 늦게 도착하면 방금 고친 내용을 옛 목록으로 덮어쓴다(검토 Task 4 Important).
+// 호출마다 세대 번호를 올리고, 돌아왔을 때 자기가 가장 최근 호출이 아니면 결과를 버린다.
+let loadGeneration = 0;
+
 async function loadList() {
   clearTimeout(pollTimer);
+  const generation = ++loadGeneration;
   try {
     const [projectList, drawingList] = await Promise.all([api('/projects'), api('/drawings')]);
+    if (generation !== loadGeneration) return;
     projects = projectList;
     drawings = drawingList;
     // 고른 프로젝트가 없어졌으면(삭제됨) 미분류로 되돌린다.
@@ -429,6 +447,7 @@ async function loadList() {
       pollTimer = setTimeout(loadList, POLL_MS);
     }
   } catch (err) {
+    if (generation !== loadGeneration) return;
     showMessage(err.message, true);
   }
 }
