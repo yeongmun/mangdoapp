@@ -3,99 +3,249 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>망도 도면 업로드</title>
+    <title>망도 관리</title>
     <style>
-      :root { font-family: system-ui, -apple-system, 'Malgun Gothic', sans-serif; color: #1a1a1a; background: #f4f5f7; }
-      main { max-width: 960px; margin: 32px auto; padding: 0 16px; }
-      h1 { font-size: 22px; margin: 0 0 16px; }
-      h2 { font-size: 17px; margin: 0; }
-      .card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
-      label { margin-right: 8px; }
-      input[type='password'] { padding: 6px 8px; width: 260px; }
-      button { padding: 6px 14px; border-radius: 6px; border: 1px solid #c7c9cf; background: #fff; cursor: pointer; }
-      button:disabled { opacity: 0.5; cursor: default; }
-      button[type='submit'] { background: #1e66f5; border-color: #1e66f5; color: #fff; }
-      .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+      /* 관리자 페이지 — 왼쪽 프로젝트, 오른쪽 도면. 글꼴은 시스템 기본(사내망·오프라인에서도 같게 보이게). */
+      :root {
+        --bg: #f3f4f6;
+        --surface: #ffffff;
+        --surface-2: #f8f9fb;
+        --ink: #1c2129;
+        --ink-2: #4b5563;
+        --muted: #8a919c;
+        --line: #e2e5ea;
+        --line-strong: #c9cdd4;
+        --accent: #2b5fb8;
+        --accent-hover: #244f9a;
+        --accent-soft: #e8effb;
+        --red: #c53a2f;
+        --red-soft: #fcebe9;
+        --green: #2e7d4f;
+        --green-soft: #e3f2e8;
+        --yellow: #9a6b00;
+        --yellow-soft: #fff4d6;
+        --grey: #6b7280;
+        --grey-soft: #eceef2;
+        --radius: 6px;
+        --topbar: 52px;
+        font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        color: var(--ink);
+        background: var(--bg);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; }
+      h1, h2, h3 { margin: 0; font-weight: 700; }
+      button, input, select { font: inherit; color: inherit; }
+      code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; }
+
+      /* 상단 바 */
+      .topbar {
+        position: sticky; top: 0; z-index: 10;
+        height: var(--topbar);
+        display: flex; align-items: center; gap: 16px;
+        padding: 0 20px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
+      }
+      .topbar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; white-space: nowrap; }
+      .topbar .brand .mark { width: 22px; height: 22px; border: 2px solid var(--accent); border-radius: 4px; display: grid; place-items: center; }
+      .topbar .brand .mark::before { content: ''; width: 10px; height: 10px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); transform: translate(2px, 2px); }
+      .topbar .spacer { flex: 1; }
+      .topbar .key { display: flex; align-items: center; gap: 6px; }
+      .topbar .key label { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+      .topbar input[type='password'] { width: 220px; }
+      @media (max-width: 720px) {
+        .topbar { height: auto; flex-wrap: wrap; padding: 10px 14px; row-gap: 8px; }
+        .topbar .key { width: 100%; }
+        .topbar input[type='password'] { flex: 1; width: auto; }
+      }
+
+      /* 입력·버튼 */
+      input[type='password'], input[type='file'], select {
+        padding: 6px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface);
+      }
+      input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      button {
+        padding: 6px 12px; border-radius: var(--radius); border: 1px solid var(--line-strong);
+        background: var(--surface); cursor: pointer; white-space: nowrap; line-height: 1.4;
+      }
+      button:hover:not(:disabled) { background: var(--surface-2); border-color: #b3b9c3; }
+      button:disabled { opacity: 0.45; cursor: default; }
+      button.primary, button[type='submit'] { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button.primary:hover:not(:disabled), button[type='submit']:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+      button.danger { color: var(--red); }
+      button.danger:hover:not(:disabled) { background: var(--red-soft); border-color: #e5b3ae; }
+      td button, td select { padding: 4px 9px; font-size: 13px; }
+      td button + button { margin-left: 4px; }
+
+      /* 본문 배치 */
+      .layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: calc(100vh - var(--topbar));
+      }
+      @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+      /* 왼쪽: 프로젝트 */
+      aside.side {
+        background: var(--surface);
+        border-right: 1px solid var(--line);
+        padding: 18px 14px 24px;
+        display: flex; flex-direction: column; gap: 10px;
+      }
+      @media (max-width: 900px) { aside.side { border-right: 0; border-bottom: 1px solid var(--line); } }
+      .side-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
+      .side-head h2 { font-size: 13px; letter-spacing: 0.04em; color: var(--muted); text-transform: uppercase; }
+      .side .buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px; }
+      .side .buttons button { padding: 5px 10px; font-size: 13px; }
+      #projectList { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+      #projectList li { border-radius: var(--radius); }
+      #projectList li.child { margin-left: 18px; position: relative; }
+      #projectList li.child::before { content: ''; position: absolute; left: -10px; top: 0; bottom: 50%; width: 8px; border-left: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); border-radius: 0 0 0 4px; }
+      #projectList button.project-row {
+        display: flex; align-items: center; gap: 8px; width: 100%;
+        padding: 7px 10px; border: 0; background: none; text-align: left; border-radius: var(--radius); cursor: pointer;
+      }
+      #projectList button.project-row:hover { background: var(--surface-2); }
+      #projectList li.selected button.project-row { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+      #projectList .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #projectList .count { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+      #projectList li.selected .count { color: var(--accent); }
+      #projectList li.unfiled { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); border-radius: 0; }
+      #projectMemo { color: var(--ink-2); font-size: 13px; padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius); white-space: pre-wrap; margin: 0; }
+      #projectMemo:empty { display: none; }
+      .side .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 4px 0; border-top: 1px solid var(--line); margin-top: 4px; }
+      .side .actions button { padding: 5px 10px; font-size: 13px; }
+
+      /* 오른쪽: 도면 */
+      main.content { padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+      @media (max-width: 720px) { main.content { padding: 14px 14px 32px; } }
+      .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .page-head h1 { font-size: 20px; }
+      .page-head .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+      #message { margin: 0; padding: 9px 12px; border-radius: var(--radius); background: var(--accent-soft); color: var(--accent); font-size: 13.5px; }
+      #message:empty { display: none; }
+      #message.error { background: var(--red-soft); color: var(--red); }
+
+      .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .card > .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+      .card > .card-head h2 { font-size: 15px; }
+      .card > .card-head .hint { color: var(--muted); font-size: 12.5px; }
+      .card > .card-body { padding: 14px 16px; }
+
+      #uploadForm { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      #uploadForm input[type='file'] { flex: 1; min-width: 220px; padding: 5px 8px; }
+      #uploadTarget { margin: 0; color: var(--ink-2); font-size: 13px; }
+
+      .table-wrap { overflow-x: auto; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eceef1; vertical-align: top; font-size: 14px; }
-      .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
-      .badge.pending { background: #8a8f98; }
-      .badge.inprogress { background: #1e66f5; }
-      .badge.success { background: #2e7d32; }
-      .badge.failed { background: #d32f2f; }
-      .error { color: #d32f2f; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; font-size: 13.5px; }
+      th { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.02em; background: var(--surface-2); white-space: nowrap; }
+      tbody tr:hover { background: var(--surface-2); }
+      tbody tr:last-child td { border-bottom: 0; }
+      td:first-child { font-weight: 500; }
+      #empty, #trashSection .card-body p.small { margin: 0; color: var(--muted); font-size: 13px; }
+      #empty { padding: 20px 16px; text-align: center; }
+
+      .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+      .badge.pending { background: var(--grey-soft); color: var(--grey); }
+      .badge.inprogress { background: var(--accent-soft); color: var(--accent); }
+      .badge.success { background: var(--green-soft); color: var(--green); }
+      .badge.failed { background: var(--red-soft); color: var(--red); }
+      .error { color: var(--red); }
       .small { font-size: 12px; margin-top: 4px; }
-      button.danger { color: #d32f2f; margin-left: 6px; }
-      #projectList { list-style: none; margin: 0 0 8px; padding: 0; }
-      #projectList li { border-radius: 6px; }
-      #projectList li:hover { background: #f4f5f7; }
-      #projectList li.selected { background: #e5edff; font-weight: 600; }
-      #projectList li.child { padding-left: 20px; }
-      #projectList button.project-row { display: block; width: 100%; padding: 6px 8px; border: 0; background: none; font: inherit; font-weight: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
-      #projectMemo { color: #6b6f76; min-height: 16px; }
-      .list-header .buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+
+      #trashSection .card-head h2 { color: var(--ink-2); }
+      #trashSection .card-body { padding-top: 10px; }
     </style>
   </head>
   <body>
-    <main>
-      <h1>망도 도면 업로드</h1>
-
-      <section class="card">
+    <header class="topbar">
+      <div class="brand"><span class="mark" aria-hidden="true"></span>망도 관리</div>
+      <div class="spacer"></div>
+      <div class="key">
         <label for="accessKey">접근키</label>
-        <input id="accessKey" type="password" autocomplete="off" />
+        <input id="accessKey" type="password" autocomplete="off" placeholder="접근키를 입력하세요" />
         <button id="saveKey" type="button">저장</button>
-      </section>
+      </div>
+      <button id="refresh" type="button">새로고침</button>
+    </header>
 
-      <section id="projectCard" class="card">
-        <div class="list-header">
+    <div class="layout">
+      <aside id="projectCard" class="side" aria-label="프로젝트">
+        <div class="side-head">
           <h2>프로젝트</h2>
-          <div class="buttons">
-            <button id="newProject" type="button">새 프로젝트</button>
-            <button id="newChild" type="button" disabled>하위 만들기</button>
-            <button id="editProject" type="button" disabled>이름·메모 고치기</button>
-            <button id="deleteProject" type="button" class="danger" disabled>삭제</button>
-            <button id="projectPhotos" type="button" disabled>사진 zip 전체</button>
-            <button id="projectExport" type="button" disabled>DXF 전체</button>
-          </div>
+          <button id="newProject" type="button" class="primary">+ 새 프로젝트</button>
         </div>
         <ul id="projectList"></ul>
-        <p id="projectMemo" class="small"></p>
-      </section>
-
-      <section class="card">
-        <p id="uploadTarget" class="small">올릴 곳: 미분류</p>
-        <form id="uploadForm">
-          <input id="file" type="file" accept=".dxf" required />
-          <button id="uploadButton" type="submit">업로드</button>
-        </form>
-        <p id="message" role="status"></p>
-      </section>
-
-      <section class="card">
-        <div class="list-header">
-          <h2>도면 목록</h2>
-          <button id="refresh" type="button">새로고침</button>
+        <p id="projectMemo"></p>
+        <div class="actions" aria-label="고른 프로젝트 작업">
+          <button id="newChild" type="button" disabled>하위 만들기</button>
+          <button id="editProject" type="button" disabled>이름·메모 고치기</button>
+          <button id="projectPhotos" type="button" disabled>사진 zip 전체</button>
+          <button id="projectExport" type="button" disabled>DXF 전체</button>
+          <button id="deleteProject" type="button" class="danger" disabled>삭제</button>
         </div>
-        <table>
-          <thead>
-            <tr><th>도면</th><th>상태</th><th>진행률</th><th>업로드 시각</th><th>산출</th><th>사진</th><th>옮기기</th><th></th></tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-        <p id="empty" hidden>업로드한 도면이 없습니다.</p>
-      </section>
+      </aside>
 
-      <section id="trashSection" class="card" hidden>
-        <h2>휴지통</h2>
-        <p class="small">삭제한 도면은 손상 기록·사진과 함께 여기에 남습니다. 복구하면 그대로 돌아옵니다.</p>
-        <table>
-          <thead>
-            <tr><th>도면</th><th>삭제 시각</th><th></th></tr>
-          </thead>
-          <tbody id="trashRows"></tbody>
-        </table>
-      </section>
-    </main>
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h1 id="currentTitle">미분류</h1>
+            <div class="sub">프로젝트를 고르면 그 안의 도면만 보입니다.</div>
+          </div>
+        </div>
+
+        <p id="message" role="status"></p>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>도면 올리기</h2>
+            <span class="hint">DXF만 됩니다. DWG는 캐드에서 DXF로 저장해 올리세요.</span>
+          </div>
+          <div class="card-body">
+            <form id="uploadForm">
+              <input id="file" type="file" accept=".dxf" required />
+              <button id="uploadButton" type="submit">업로드</button>
+              <p id="uploadTarget">올릴 곳: 미분류</p>
+            </form>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>도면 목록</h2>
+            <span class="hint">삭제한 도면은 아래 휴지통에서 복구할 수 있습니다.</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>도면</th><th>상태</th><th>진행률</th><th>업로드 시각</th><th>산출</th><th>사진</th><th>옮기기</th><th></th></tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+          <p id="empty" hidden>이 프로젝트에 올린 도면이 없습니다.</p>
+        </section>
+
+        <section id="trashSection" class="card" hidden>
+          <div class="card-head">
+            <h2>휴지통</h2>
+            <span class="hint">손상 기록·사진과 함께 보관됩니다. 복구하면 그대로 돌아옵니다.</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>도면</th><th>삭제 시각</th><th></th></tr>
+              </thead>
+              <tbody id="trashRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
     <script type="module" src="upload.js"></script>
   </body>
 </html>

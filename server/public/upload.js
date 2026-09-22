@@ -214,13 +214,20 @@ function selectProject(id) {
 
 // 한 줄은 <li> 안의 <button>이다 — 키보드(Tab·Enter·Space)로 고를 수 있고, 고른 줄은
 // aria-current로 보조 기술에 전해진다(검토 Task 4 Important: 클릭만 되는 <li>였다).
-function projectRow(id, label, isChild) {
+function projectRow(id, name, count, isChild) {
   const li = document.createElement('li');
   if (isChild) li.classList.add('child');
+  if (id === 'unfiled') li.classList.add('unfiled');
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'project-row';
-  button.textContent = label;
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'name';
+  nameSpan.textContent = name;
+  const countSpan = document.createElement('span');
+  countSpan.className = 'count';
+  countSpan.textContent = count;
+  button.append(nameSpan, countSpan);
   if (id === selected) {
     li.classList.add('selected');
     button.setAttribute('aria-current', 'true');
@@ -234,8 +241,8 @@ function projectRow(id, label, isChild) {
 // 최상위는 합계를 함께 적는다(최종 검토 M-3: 줄에는 5인데 표에는 2개만 보여 헷갈렸다).
 function countLabel(project) {
   return project.childCount > 0
-    ? `도면 ${project.drawingCount} · 하위 포함 ${project.totalDrawingCount}`
-    : `도면 ${project.drawingCount}`;
+    ? `${project.drawingCount} · 전체 ${project.totalDrawingCount}`
+    : `${project.drawingCount}`;
 }
 
 function renderProjects() {
@@ -243,14 +250,13 @@ function renderProjects() {
   list.replaceChildren();
 
   for (const project of projects) {
-    list.append(
-      projectRow(project.id, `${project.name} (${countLabel(project)})`, project.depth === 1),
-    );
+    list.append(projectRow(project.id, project.name, countLabel(project), project.depth === 1));
   }
-  list.append(projectRow('unfiled', `미분류 (${unfiledCount()})`, false));
+  list.append(projectRow('unfiled', '미분류', `도면 ${unfiledCount()}`, false));
 
   const current = projects.find((p) => p.id === selected);
   $('projectMemo').textContent = current ? current.memo : '';
+  $('currentTitle').textContent = current ? current.path : '미분류';
   $('uploadTarget').textContent = `올릴 곳: ${current ? current.path : '미분류'}`;
 
   // 하위 만들기는 최상위 프로젝트를 골랐을 때만 된다(설계 2.1 — 깊이는 2단계까지다).
