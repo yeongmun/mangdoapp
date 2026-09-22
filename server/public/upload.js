@@ -261,6 +261,13 @@ function renderProjects() {
   $('projectExport').disabled = !current;
 }
 
+// 프로젝트 카드의 동작이 거절되면 **창으로도** 알린다(2026-09-22 사용자 확인: 같은 이름·비어 있지 않은
+// 프로젝트 삭제가 막히긴 하는데 문구가 아래 업로드 카드의 메시지 줄에만 떠서 안 보였다).
+function notifyProjectError(err) {
+  showMessage(err.message, true);
+  window.alert(err.message);
+}
+
 // 새 프로젝트(parentId 없음) 또는 하위 프로젝트(parentId 있음)를 만든다. 이름을 취소하면
 // 그만두고, 메모를 취소하면 빈 메모로 만든다(고칠 이전 값이 없는 새 프로젝트라서).
 async function createProject(parentId) {
@@ -277,7 +284,7 @@ async function createProject(parentId) {
     setSelectedProject(created.id);
     await loadList();
   } catch (err) {
-    showMessage(err.message, true);
+    notifyProjectError(err);
   }
 }
 
@@ -296,7 +303,7 @@ async function editSelectedProject() {
     showMessage(`프로젝트를 고쳤습니다: ${name}`);
     await loadList();
   } catch (err) {
-    showMessage(err.message, true);
+    notifyProjectError(err);
   }
 }
 
@@ -311,7 +318,7 @@ async function deleteSelectedProject() {
     setSelectedProject('unfiled');
     await loadList();
   } catch (err) {
-    showMessage(err.message, true);
+    notifyProjectError(err);
   }
 }
 
@@ -324,7 +331,7 @@ async function downloadProjectPhotos() {
     const result = await download(`/projects/${current.id}/photos.zip`, `${current.name}_사진.zip`);
     showMessage(`내려받았습니다: ${result.name}`);
   } catch (err) {
-    showMessage(err.message, true);
+    notifyProjectError(err);
   } finally {
     renderProjects();
   }
@@ -339,7 +346,7 @@ async function downloadProjectExport() {
     const result = await download(`/projects/${current.id}/export.zip`, `${current.name}_손상.zip`);
     showMessage(`내려받았습니다: ${result.name}`);
   } catch (err) {
-    showMessage(err.message, true);
+    notifyProjectError(err);
   } finally {
     renderProjects();
   }
@@ -543,8 +550,17 @@ $('uploadForm').addEventListener('submit', async (event) => {
   const file = $('file').files[0];
   if (!file) return;
   const nameLower = file.name.toLowerCase();
-  if (!nameLower.endsWith('.dwg') && !nameLower.endsWith('.dxf')) {
-    showMessage('.dwg 또는 .dxf 파일만 업로드할 수 있습니다.', true);
+  // DWG는 화면에는 뜨지만 손상 DXF 산출·망도틀별 번호·물량표 채우기가 안 된다(원본을 서버가 읽지
+  // 못한다). 결과물을 못 내는 도면이라 올리는 단계에서 막는다(2026-09-22 사용자 결정). 서버 API는
+  // 예전에 올린 DWG 도면을 위해 그대로 둔다.
+  if (nameLower.endsWith('.dwg')) {
+    const text = 'DWG는 올릴 수 없습니다. 캐드에서 DXF로 저장한 뒤 올려 주세요. (DWG는 손상 DXF 산출과 물량표 채우기가 되지 않습니다)';
+    showMessage(text, true);
+    window.alert(text);
+    return;
+  }
+  if (!nameLower.endsWith('.dxf')) {
+    showMessage('.dxf 파일만 업로드할 수 있습니다.', true);
     return;
   }
   if (file.size > MAX_UPLOAD_BYTES) {
