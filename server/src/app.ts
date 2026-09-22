@@ -8,7 +8,7 @@ import type { ApsService } from './aps.js';
 import type { DrawingTrash } from './drawingTrash.js';
 import { requireAccessKey } from './auth.js';
 import type { DamageDoc, DamagesStore } from './damagesStore.js';
-import { isDrawingId, newDrawingId, type DrawingRecord, type DrawingsStore } from './drawingsStore.js';
+import { isDrawingId, newDrawingId, offlineReadyOf, type DrawingRecord, type DrawingsStore } from './drawingsStore.js';
 import { parseDxf } from './export/dxfDocument.js';
 import { ExportError, exportDamagesToDxf } from './export/exportDrawing.js';
 import { findFrames, type FrameBounds } from './export/frames.js';
@@ -162,6 +162,12 @@ async function ensureFrames(deps: AppDeps, record: DrawingRecord): Promise<Drawi
     console.error('[frames]', record.id, messageOf(err));
     return { ...record, frames: [] };
   }
+}
+
+// 오프라인 모드(설계 2장): offlineReady는 저장하지 않고 클라이언트로 보낼 때마다 계산해
+// 붙인다 — 레코드를 보내는 모든 라우트(업로드·목록·옮기기·다시 시도·다시 변환·복구)가 이걸 쓴다.
+function withOfflineReady(record: DrawingRecord): DrawingRecord & { offlineReady: boolean } {
+  return { ...record, offlineReady: offlineReadyOf(record) };
 }
 
 // zip 이름의 <번호>는 사용자가 산출 DXF·앱 화면에서 보는 번호와 같아야 한다. 산출
@@ -340,11 +346,13 @@ export function createApp(deps: AppDeps) {
         uploadedAt: new Date(now()).toISOString(),
         // DWG는 원본을 읽을 수 없으므로 틀이 없다(설계 3장).
         frames: isDxf ? framesOf(file.buffer, objectKey) : [],
+        // 오프라인 모드(설계 2장): 새로 올리는 도면은 항상 SVF(2D)로 변환한다.
+        viewFormat: 'svf',
         // 없거나 미분류면 키 자체를 넣지 않는다(설계 2.2 — 기존 도면과 같은 모양으로 남는다).
         ...(projectId !== undefined ? { projectId } : {}),
       };
       await deps.drawings.add(record);
-      res.status(201).json(record);
+      res.status(201).json(withOfflineReady(record));
     } catch (err) {
       console.error('[upload]', err);
       res.status(502).json({ error: `APS 업로드 또는 변환 요청에 실패했습니다: ${messageOf(err)}` });
@@ -358,7 +366,7 @@ export function createApp(deps: AppDeps) {
     // 여럿이면 병렬로 돌릴 때 메모리가 레코드 수만큼 겹친다. 이미 frames가 있는 레코드는 그냥 지나간다.
     const withFrames: DrawingRecord[] = [];
     for (const record of refreshed) withFrames.push(await ensureFrames(deps, record));
-    res.json(withFrames);
+    res.json(withFrames.map(withOfflineReady));
   });
 
   // 도면을 다른 프로젝트로 옮긴다(또는 미분류로). PC 업로드 페이지의 "옮기기" 선택 상자가 부른다
@@ -389,7 +397,7 @@ export function createApp(deps: AppDeps) {
       return;
     }
     const updated = await deps.drawings.update(drawing.id, { projectId });
-    res.json(await ensureFrames(deps, updated ?? drawing));
+    res.json(withOfflineReady(await ensureFrames(deps, updated ?? drawing)));
   });
 
   api.post('/drawings/:id/retry', async (req, res) => {
@@ -411,7 +419,39 @@ export function createApp(deps: AppDeps) {
     }
     const updated = await deps.drawings.update(drawing.id, { status: 'pending', progress: '', error: null });
     // 옛 레코드(frames 없음)를 재시도할 수도 있으니, GET과 같은 헬퍼로 frames를 채워 보낸다.
-    res.json(await ensureFrames(deps, updated ?? drawing));
+    res.json(withOfflineReady(await ensureFrames(deps, updated ?? drawing)));
+  });
+
+  // 오프라인 모드(설계 2장, 4장): SVF2(또는 그 전 옛 도면)를 PC 업로드 페이지의 "다시 변환"
+  // 버튼으로 SVF로 강제 재변환한다. startJob은 이미 x-ads-force: true를 늘 보낸다(apsSdk.ts).
+  api.post('/drawings/:id/retranslate', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    if (drawing.viewFormat === 'svf') {
+      res.status(409).json({ error: '이미 오프라인용(SVF)으로 변환된 도면입니다.' });
+      return;
+    }
+    if (drawing.status === 'pending' || drawing.status === 'inprogress') {
+      res.status(409).json({ error: '변환이 끝난 뒤에 다시 시도하세요.' });
+      return;
+    }
+    try {
+      await deps.aps.startTranslation(drawing.urn);
+    } catch (err) {
+      console.error('[retranslate]', err);
+      res.status(502).json({ error: `변환 재요청에 실패했습니다: ${messageOf(err)}` });
+      return;
+    }
+    const updated = await deps.drawings.update(drawing.id, {
+      status: 'pending',
+      progress: '',
+      error: null,
+      viewFormat: 'svf',
+    });
+    res.json(withOfflineReady(await ensureFrames(deps, updated ?? drawing)));
   });
 
   // 도면 삭제 = 휴지통으로 옮기기(drawingTrash.ts). 점검 데이터는 다시 만들 수 없어 서버는 영구 삭제를
@@ -435,7 +475,7 @@ export function createApp(deps: AppDeps) {
       res.status(404).json({ error: '휴지통에서 도면을 찾을 수 없습니다.' });
       return;
     }
-    res.json(await ensureFrames(deps, record));
+    res.json(withOfflineReady(await ensureFrames(deps, record)));
   });
 
   // 프로젝트(현장·구조물) 관리. 만들기·고치기·옮기기는 PC 업로드 페이지에서만 쓴다 — 앱은 이

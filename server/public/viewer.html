@@ -4,9 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>망도 뷰어</title>
-    <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
+    <!-- 오프라인 모드(설계 3.1장): 버전을 고정한다 — 로컬(기기)과 온라인 뷰어가 같은 코드라야 좌표가 같다. -->
+    <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.126.0/style.min.css" />
     <link rel="stylesheet" href="viewer/viewer.css" />
-    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.126.0/viewer3D.min.js"></script>
   </head>
   <body>
     <div id="viewer"></div>

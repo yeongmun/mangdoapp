@@ -31,6 +31,8 @@ export function createSdkClients(clientId: string, clientSecret: string): ApsCli
       ),
     uploadObject: (bucketKey, objectKey, data, accessToken) =>
       ossClient.uploadObject(bucketKey, objectKey, data, { accessToken }),
+    // 오프라인 모드(설계 2장): SVF(2D)로만 변환한다 — 온라인 뷰어도 SVF를 그대로 열고,
+    // SVF의 파생 파일(f2d)이라야 기기에 내려받아 인터넷 없이 열 수 있다.
     startJob: (urn, accessToken) =>
       modelDerivativeClient.startJob(
         {
@@ -38,8 +40,8 @@ export function createSdkClients(clientId: string, clientSecret: string): ApsCli
           output: {
             formats: [
               {
-                type: modelDerivativeSdk.OutputType.Svf2,
-                views: [modelDerivativeSdk.View._2d, modelDerivativeSdk.View._3d],
+                type: modelDerivativeSdk.OutputType.Svf,
+                views: [modelDerivativeSdk.View._2d],
               },
             ],
           },

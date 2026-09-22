@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DamagesStore } from '../src/damagesStore.js';
-import { DrawingsStore, isDrawingId, newDrawingId, type DrawingRecord } from '../src/drawingsStore.js';
+import { DrawingsStore, isDrawingId, newDrawingId, offlineReadyOf, type DrawingRecord } from '../src/drawingsStore.js';
 import { readJsonFile, renameWithRetry, writeJsonFileAtomic } from '../src/jsonFile.js';
 import { OriginalsStore } from '../src/originalsStore.js';
 
@@ -144,6 +144,30 @@ describe('DrawingsStore', () => {
       ),
     );
     expect((await store.list()).length).toBe(20);
+  });
+});
+
+// 오프라인 모드(설계 2장): offlineReady는 저장하지 않고 응답에서 계산한다 —
+// 변환이 SVF로 끝난 도면만 기기에 내려받을 수 있다.
+describe('offlineReadyOf', () => {
+  it('status가 success이고 viewFormat이 svf면 true', () => {
+    const r = { ...record(newDrawingId(), '2026-09-10T00:00:00.000Z'), status: 'success', viewFormat: 'svf' } as DrawingRecord;
+    expect(offlineReadyOf(r)).toBe(true);
+  });
+
+  it('viewFormat이 없는 옛 레코드는 success여도 false', () => {
+    const r = { ...record(newDrawingId(), '2026-09-10T00:00:00.000Z'), status: 'success' } as DrawingRecord;
+    expect(offlineReadyOf(r)).toBe(false);
+  });
+
+  it('viewFormat이 svf2면 false', () => {
+    const r = { ...record(newDrawingId(), '2026-09-10T00:00:00.000Z'), status: 'success', viewFormat: 'svf2' } as DrawingRecord;
+    expect(offlineReadyOf(r)).toBe(false);
+  });
+
+  it('svf여도 status가 success가 아니면 false', () => {
+    const r = { ...record(newDrawingId(), '2026-09-10T00:00:00.000Z'), status: 'pending', viewFormat: 'svf' } as DrawingRecord;
+    expect(offlineReadyOf(r)).toBe(false);
   });
 });
 
