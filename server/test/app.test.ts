@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inflateRawSync } from 'node:zlib';
 import sharp from 'sharp';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,7 @@ import { DrawingsStore, newDrawingId, type DrawingRecord } from '../src/drawings
 import { DrawingTrash } from '../src/drawingTrash.js';
 import { OriginalsStore } from '../src/originalsStore.js';
 import { PhotosStore } from '../src/photosStore.js';
+import { newProjectId, ProjectsStore } from '../src/projectsStore.js';
 
 const KEY = 'test-access-key';
 const NOW = Date.parse('2026-09-10T00:00:00.000Z');
@@ -48,6 +50,7 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
   const damages = new DamagesStore(join(dir, 'data', 'damages'));
   const originals = new OriginalsStore(join(dir, 'data', 'drawings'));
   const photos = new PhotosStore(join(dir, 'data', 'photos'));
+  const projects = new ProjectsStore(join(dir, 'data', 'projects.json'));
   const trash = new DrawingTrash(
     {
       trashDir: join(dir, 'data', 'trash'),
@@ -56,6 +59,7 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
       photosDir: join(dir, 'data', 'photos'),
     },
     drawings,
+    (id) => projects.get(id).then(Boolean),
   );
   const app = createApp({
     accessKey: KEY,
@@ -65,12 +69,13 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
     originals,
     photos,
     trash,
+    projects,
     publicDir: join(dir, 'public'),
     now: () => NOW,
     maxUploadBytes,
     maxPhotoBytes,
   });
-  return { app, aps, drawings, damages, originals, photos, trash };
+  return { app, aps, drawings, damages, originals, photos, trash, projects };
 }
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
@@ -329,6 +334,54 @@ describe('POST /api/drawings', () => {
     expect(errorSpy).toHaveBeenCalledWith('[frames]', expect.any(String), expect.stringContaining('홀수'));
     errorSpy.mockRestore();
   });
+
+  // 근거: docs/superpowers/specs/2026-09-21-projects-design.md 3장
+  it('projectId를 보내면 레코드에 실린다', async () => {
+    const { app, drawings, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('projectId', project.id)
+      .attach('file', Buffer.from('x'), 'a.dwg');
+
+    expect(res.status).toBe(201);
+    expect(res.body.projectId).toBe(project.id);
+    expect((await drawings.get(res.body.id))?.projectId).toBe(project.id);
+  });
+
+  it('projectId를 보내지 않으면 레코드에 그 키가 없다', async () => {
+    const { app } = setup();
+    const res = await request(app).post('/api/drawings').set('x-access-key', KEY).attach('file', Buffer.from('x'), 'a.dwg');
+    expect(res.status).toBe(201);
+    expect('projectId' in res.body).toBe(false);
+  });
+
+  it('없는 프로젝트로 올리면 APS를 부르기 전에 404', async () => {
+    const { app, aps, drawings } = setup();
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('projectId', newProjectId())
+      .attach('file', Buffer.from('x'), 'a.dwg');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: '프로젝트를 찾을 수 없습니다.' });
+    expect(aps.uploadDrawing).not.toHaveBeenCalled();
+    expect(await drawings.list()).toEqual([]);
+  });
+
+  it('형식이 틀린 projectId도 404이고 APS를 부르지 않는다', async () => {
+    const { app, aps } = setup();
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('projectId', 'bad-id')
+      .attach('file', Buffer.from('x'), 'a.dwg');
+
+    expect(res.status).toBe(404);
+    expect(aps.uploadDrawing).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/drawings', () => {
@@ -466,6 +519,91 @@ describe('POST /api/drawings/:id/retry', () => {
       expect(res.status).toBe(404);
       expect(res.body).toEqual({ error: '도면을 찾을 수 없습니다.' });
     }
+  });
+});
+
+describe('PATCH /api/drawings/:id (프로젝트로 옮기기)', () => {
+  it('프로젝트로 옮긴다', async () => {
+    const { app, drawings, projects } = setup();
+    const drawing = await seed(drawings);
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+
+    const res = await request(app)
+      .patch(`/api/drawings/${drawing.id}`)
+      .set('x-access-key', KEY)
+      .send({ projectId: project.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.projectId).toBe(project.id);
+    expect((await drawings.get(drawing.id))?.projectId).toBe(project.id);
+  });
+
+  it('null을 보내면 미분류로 옮긴다', async () => {
+    const { app, drawings, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const drawing = await seed(drawings, { projectId: project.id });
+
+    const res = await request(app)
+      .patch(`/api/drawings/${drawing.id}`)
+      .set('x-access-key', KEY)
+      .send({ projectId: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.projectId).toBeNull();
+    expect((await drawings.get(drawing.id))?.projectId).toBeNull();
+  });
+
+  it('응답은 ensureFrames를 거친다(옛 레코드도 frames가 채워진다)', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { name: '교량.dwg' });
+    const res = await request(app)
+      .patch(`/api/drawings/${drawing.id}`)
+      .set('x-access-key', KEY)
+      .send({ projectId: null });
+    expect(res.body.frames).toEqual([]);
+  });
+
+  it('본문에 projectId 키가 없으면 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app).patch(`/api/drawings/${drawing.id}`).set('x-access-key', KEY).send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'projectId가 필요합니다.' });
+  });
+
+  it('projectId가 문자열도 null도 아니면 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app).patch(`/api/drawings/${drawing.id}`).set('x-access-key', KEY).send({ projectId: 42 });
+    expect(res.status).toBe(400);
+  });
+
+  it('없는 프로젝트면 404', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app)
+      .patch(`/api/drawings/${drawing.id}`)
+      .set('x-access-key', KEY)
+      .send({ projectId: newProjectId() });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: '프로젝트를 찾을 수 없습니다.' });
+  });
+
+  it('없는 도면이면 404', async () => {
+    const { app } = setup();
+    const res = await request(app)
+      .patch(`/api/drawings/${newDrawingId()}`)
+      .set('x-access-key', KEY)
+      .send({ projectId: null });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: '도면을 찾을 수 없습니다.' });
+  });
+
+  it('접근키가 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const res = await request(app).patch(`/api/drawings/${drawing.id}`).send({ projectId: null });
+    expect(res.status).toBe(401);
   });
 });
 
@@ -1145,5 +1283,323 @@ describe('도면 삭제·휴지통 (DELETE /api/drawings/:id, /api/trash)', () =
     expect((await request(app).delete(`/api/drawings/${id}`)).status).toBe(401);
     expect((await request(app).get('/api/trash')).status).toBe(401);
     expect((await request(app).post(`/api/trash/${id}/restore`)).status).toBe(401);
+  });
+});
+
+describe('프로젝트 API (GET/POST/PATCH/DELETE /api/projects)', () => {
+  describe('GET /api/projects', () => {
+    it('빈 배열로 시작해 만든 뒤에는 트리 순서로 나온다', async () => {
+      const { app, projects } = setup();
+      expect((await request(app).get('/api/projects').set('x-access-key', KEY)).body).toEqual([]);
+
+      const b = await projects.create({ name: 'B현장' }, '2026-09-01T00:00:00.000Z');
+      const a = await projects.create({ name: 'A현장' }, '2026-09-01T00:00:01.000Z');
+      const child = await projects.create({ name: 'A교', parentId: a.id }, '2026-09-01T00:00:02.000Z');
+
+      const res = await request(app).get('/api/projects').set('x-access-key', KEY);
+      expect(res.status).toBe(200);
+      expect(res.body.map((p: { id: string; path: string }) => [p.id, p.path])).toEqual([
+        [a.id, 'A현장'],
+        [child.id, 'A현장 › A교'],
+        [b.id, 'B현장'],
+      ]);
+      expect(res.body).toHaveLength(3);
+    });
+
+    it('접근키가 없으면 401', async () => {
+      const res = await request(setup().app).get('/api/projects');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/projects', () => {
+    it('만들면 201과 ProjectView(트리 계산 결과)를 준다', async () => {
+      const { app } = setup();
+      const res = await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교', memo: '메모' });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({
+        name: '오봉대교',
+        memo: '메모',
+        parentId: null,
+        depth: 0,
+        path: '오봉대교',
+        drawingCount: 0,
+        totalDrawingCount: 0,
+        childCount: 0,
+      });
+    });
+
+    it('하위 프로젝트를 만들 수 있다', async () => {
+      const { app, projects } = setup();
+      const top = await projects.create({ name: 'OO용역' }, '2026-09-01T00:00:00.000Z');
+      const res = await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ depth: 1, path: 'OO용역 › A교' });
+    });
+
+    it('이름이 없으면 400', async () => {
+      const { app } = setup();
+      const res = await request(app).post('/api/projects').set('x-access-key', KEY).send({});
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: '프로젝트 이름은 1~80자로 적어 주세요.' });
+    });
+
+    it('없는 parentId는 404', async () => {
+      const { app } = setup();
+      const res = await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '이름', parentId: newProjectId() });
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: '상위 프로젝트를 찾을 수 없습니다.' });
+    });
+
+    it('하위 프로젝트 아래에는 만들 수 없다(depth) → 400', async () => {
+      const { app, projects } = setup();
+      const top = await projects.create({ name: 'OO용역' }, '2026-09-01T00:00:00.000Z');
+      const child = await projects.create({ name: 'A교', parentId: top.id }, '2026-09-01T00:00:01.000Z');
+      const res = await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'B', parentId: child.id });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: '하위 프로젝트 안에는 프로젝트를 만들 수 없습니다.' });
+    });
+
+    it('같은 자리 같은 이름은 400', async () => {
+      const { app, projects } = setup();
+      await projects.create({ name: '이름' }, '2026-09-01T00:00:00.000Z');
+      const res = await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '이름' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: '같은 자리에 같은 이름의 프로젝트가 있습니다.' });
+    });
+
+    it('접근키가 없으면 401', async () => {
+      const res = await request(setup().app).post('/api/projects').send({ name: '이름' });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('PATCH /api/projects/:id', () => {
+    it('이름·메모를 고치고 ProjectView를 준다', async () => {
+      const { app, projects } = setup();
+      const project = await projects.create({ name: '이름', memo: '메모' }, '2026-09-01T00:00:00.000Z');
+      const res = await request(app).patch(`/api/projects/${project.id}`).set('x-access-key', KEY).send({ memo: '새 메모' });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ id: project.id, name: '이름', memo: '새 메모', path: '이름' });
+    });
+
+    it('없는 id는 404', async () => {
+      const { app } = setup();
+      const res = await request(app).patch(`/api/projects/${newProjectId()}`).set('x-access-key', KEY).send({ memo: 'x' });
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: '프로젝트를 찾을 수 없습니다.' });
+    });
+
+    it('형식이 틀린 id도 404', async () => {
+      const { app } = setup();
+      const res = await request(app).patch('/api/projects/bad-id').set('x-access-key', KEY).send({ memo: 'x' });
+      expect(res.status).toBe(404);
+    });
+
+    it('규칙 위반은 400', async () => {
+      const { app, projects } = setup();
+      const project = await projects.create({ name: '이름' }, '2026-09-01T00:00:00.000Z');
+      const res = await request(app).patch(`/api/projects/${project.id}`).set('x-access-key', KEY).send({ name: '' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: '프로젝트 이름은 1~80자로 적어 주세요.' });
+    });
+
+    it('접근키가 없으면 401', async () => {
+      const { app, projects } = setup();
+      const project = await projects.create({ name: '이름' }, '2026-09-01T00:00:00.000Z');
+      const res = await request(app).patch(`/api/projects/${project.id}`).send({ memo: 'x' });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('DELETE /api/projects/:id', () => {
+    it('비어 있으면 지우고 200 { id }', async () => {
+      const { app, projects } = setup();
+      const project = await projects.create({ name: '이름' }, '2026-09-01T00:00:00.000Z');
+      const res = await request(app).delete(`/api/projects/${project.id}`).set('x-access-key', KEY);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ id: project.id });
+      expect(await projects.get(project.id)).toBeNull();
+    });
+
+    it('없는 id는 404', async () => {
+      const { app } = setup();
+      const res = await request(app).delete(`/api/projects/${newProjectId()}`).set('x-access-key', KEY);
+      expect(res.status).toBe(404);
+    });
+
+    it('도면이 있으면 409, 문구에 도면 수가 들어간다', async () => {
+      const { app, drawings, projects } = setup();
+      const project = await projects.create({ name: '이름' }, '2026-09-01T00:00:00.000Z');
+      await seed(drawings, { projectId: project.id });
+      const res = await request(app).delete(`/api/projects/${project.id}`).set('x-access-key', KEY);
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: '비어 있는 프로젝트만 삭제할 수 있습니다. 도면 1개, 하위 프로젝트 0개가 있습니다.',
+      });
+    });
+
+    it('하위 프로젝트가 있으면 409', async () => {
+      const { app, projects } = setup();
+      const top = await projects.create({ name: '이름' }, '2026-09-01T00:00:00.000Z');
+      await projects.create({ name: 'A교', parentId: top.id }, '2026-09-01T00:00:01.000Z');
+      const res = await request(app).delete(`/api/projects/${top.id}`).set('x-access-key', KEY);
+      expect(res.status).toBe(409);
+    });
+
+    it('접근키가 없으면 401', async () => {
+      const { app, projects } = setup();
+      const project = await projects.create({ name: '이름' }, '2026-09-01T00:00:00.000Z');
+      const res = await request(app).delete(`/api/projects/${project.id}`);
+      expect(res.status).toBe(401);
+    });
+  });
+});
+
+// zip 안 항목을 중앙 디렉터리(PK\x01\x02)에서 읽는다 — archiver가 데이터 디스크립터를 쓰면
+// 로컬 헤더의 크기 필드가 0일 수 있어(export.zip의 deflate 항목) 중앙 디렉터리 쪽이 항상
+// 정확하다(브리프 근거). store 항목(photos.zip)도 같은 방식으로 읽을 수 있다.
+interface ZipCdEntry {
+  name: string;
+  method: number;
+  compressedSize: number;
+  localHeaderOffset: number;
+}
+
+function centralDirectoryEntries(buf: Buffer): ZipCdEntry[] {
+  const CD_SIG = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+  const entries: ZipCdEntry[] = [];
+  let offset = buf.indexOf(CD_SIG);
+  while (offset !== -1 && buf.readUInt32LE(offset) === 0x02014b50) {
+    const method = buf.readUInt16LE(offset + 10);
+    const compressedSize = buf.readUInt32LE(offset + 20);
+    const nameLen = buf.readUInt16LE(offset + 28);
+    const extraLen = buf.readUInt16LE(offset + 30);
+    const commentLen = buf.readUInt16LE(offset + 32);
+    const localHeaderOffset = buf.readUInt32LE(offset + 42);
+    const name = buf.subarray(offset + 46, offset + 46 + nameLen).toString('utf8');
+    entries.push({ name, method, compressedSize, localHeaderOffset });
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+function readZipEntryData(buf: Buffer, entry: ZipCdEntry): Buffer {
+  const lh = entry.localHeaderOffset;
+  const nameLen = buf.readUInt16LE(lh + 26);
+  const extraLen = buf.readUInt16LE(lh + 28);
+  const dataStart = lh + 30 + nameLen + extraLen;
+  const raw = buf.subarray(dataStart, dataStart + entry.compressedSize);
+  return entry.method === 0 ? Buffer.from(raw) : inflateRawSync(raw);
+}
+
+describe('GET /api/projects/:id/photos.zip', () => {
+  it('고른 프로젝트는 최상위, 하위 프로젝트는 <하위>/ 폴더에 담고 썸네일은 넣지 않는다', async () => {
+    const { app, projects, drawings, photos } = setup();
+    const top = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const child = await projects.create({ name: 'A교', parentId: top.id }, '2026-09-01T00:00:01.000Z');
+    const drawing = await seed(drawings, { name: '교량.dwg', projectId: child.id });
+    await photos.save(drawing.id, D1, '101530', '.jpg', Buffer.from('photo-one'));
+    await photos.saveThumb(drawing.id, D1, '101530', Buffer.from('thumb-bytes'));
+
+    const res = await request(app)
+      .get(`/api/projects/${top.id}/photos.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-disposition']).toContain(
+      `filename*=UTF-8''${encodeURIComponent('오봉대교_사진.zip')}`,
+    );
+    const body = Buffer.from(res.body);
+    // 손상 기록이 없는 도면이라 '삭제된손상_…' 이름이 된다(photoZip.ts와 같은 규칙).
+    expect(body.includes(Buffer.from('A교/교량/삭제된손상_11111111_101530.jpg', 'utf8'))).toBe(true);
+    expect(body.includes(Buffer.from('thumb-bytes', 'utf8'))).toBe(false);
+  });
+
+  it('사진이 하나도 없으면 400', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const res = await request(app).get(`/api/projects/${project.id}/photos.zip`).set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: '저장된 사진이 없습니다' });
+  });
+
+  it('없는 프로젝트는 404, 키가 없으면 401', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    expect(
+      (await request(app).get(`/api/projects/${newProjectId()}/photos.zip`).set('x-access-key', KEY)).status,
+    ).toBe(404);
+    expect((await request(app).get(`/api/projects/${project.id}/photos.zip`)).status).toBe(401);
+  });
+});
+
+describe('GET /api/projects/:id/export.zip', () => {
+  it('DXF 도면은 산출하고 DWG 도면은 건너뛰어 건너뜀.txt에 사유를 남긴다', async () => {
+    const { app, projects, drawings, originals } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const dxfDrawing = await seed(drawings, { name: '교량 A.dxf', projectId: project.id });
+    await originals.save(dxfDrawing.objectKey, await readFile(templatePath));
+    await request(app)
+      .put(`/api/drawings/${dxfDrawing.id}/damages`)
+      .set('x-access-key', KEY)
+      .send(exportDoc(dxfDrawing.id));
+    await seed(drawings, { name: '교량 B.dwg', projectId: project.id });
+
+    const res = await request(app)
+      .get(`/api/projects/${project.id}/export.zip`)
+      .set('x-access-key', KEY)
+      .responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-disposition']).toContain(
+      `filename*=UTF-8''${encodeURIComponent('오봉대교_손상.zip')}`,
+    );
+    const body = Buffer.from(res.body);
+    const entries = centralDirectoryEntries(body);
+    const names = entries.map((e) => e.name);
+    expect(names).toContain('교량 A_손상.dxf');
+    expect(names).toContain('건너뜀.txt');
+    const skipEntry = entries.find((e) => e.name === '건너뜀.txt')!;
+    expect(readZipEntryData(body, skipEntry).toString('utf8')).toBe(
+      '교량 B.dwg: DXF로 올린 도면만 산출할 수 있습니다',
+    );
+    const dxfEntry = entries.find((e) => e.name === '교량 A_손상.dxf')!;
+    expect(readZipEntryData(body, dxfEntry).toString('utf8')).toContain('신규손상');
+  });
+
+  it('전부 DWG면 400이고 사유가 하나면 괄호로 붙는다', async () => {
+    const { app, projects, drawings } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    await seed(drawings, { name: '교량.dwg', projectId: project.id });
+
+    const res = await request(app).get(`/api/projects/${project.id}/export.zip`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: '산출할 수 있는 도면이 없습니다 (DXF로 올린 도면만 산출할 수 있습니다)',
+    });
+  });
+
+  it('도면이 하나도 없는 프로젝트는 400(괄호 없음)', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+
+    const res = await request(app).get(`/api/projects/${project.id}/export.zip`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: '산출할 수 있는 도면이 없습니다' });
+  });
+
+  it('없는 프로젝트는 404, 키가 없으면 401', async () => {
+    const { app, projects } = setup();
+    const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    expect(
+      (await request(app).get(`/api/projects/${newProjectId()}/export.zip`).set('x-access-key', KEY)).status,
+    ).toBe(404);
+    expect((await request(app).get(`/api/projects/${project.id}/export.zip`)).status).toBe(401);
   });
 });

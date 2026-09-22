@@ -20,8 +20,12 @@ import {
   isPhotoNumber,
   PHOTO_EXTENSIONS,
   PHOTO_MIME_TYPES,
+  type PhotoEntry,
   type PhotosStore,
 } from './photosStore.js';
+import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFolder } from './projectZip.js';
+import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
+import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -37,6 +41,7 @@ export interface AppDeps {
   originals: OriginalsStore;
   photos: PhotosStore;
   trash: DrawingTrash;
+  projects: ProjectsStore;
   publicDir: string;
   now?: () => number;
   maxUploadBytes?: number;
@@ -49,6 +54,21 @@ function messageOf(err: unknown): string {
 
 async function findDrawing(deps: AppDeps, id: string): Promise<DrawingRecord | null> {
   return isDrawingId(id) ? deps.drawings.get(id) : null;
+}
+
+// ProjectRuleError → 상태 코드(설계 3장): parent(상위를 못 찾음)는 404, notEmpty(삭제 규칙)는
+// 409, 나머지(name·memo·duplicate·depth, 모두 입력값 문제)는 400.
+function projectRuleStatus(code: ProjectRuleCode): number {
+  if (code === 'parent') return 404;
+  if (code === 'notEmpty') return 409;
+  return 400;
+}
+
+// 프로젝트를 만들거나 고친 직후에도 응답은 항상 트리 계산(ProjectView)을 거쳐 돌려준다 —
+// PC 페이지와 앱이 같은 path·개수 계산을 따로 갖지 않게 하기 위해서다(설계 3.1).
+async function projectViewFor(deps: AppDeps, id: string): Promise<ProjectView | undefined> {
+  const views = buildProjectViews(await deps.projects.list(), await deps.drawings.list());
+  return views.find((v) => v.id === id);
 }
 
 // 사진 주소는 검증된 값 셋(도면 id, UUID, 영문·숫자·-·_)으로만 만들어지므로 그대로 이어 붙인다.
@@ -155,6 +175,52 @@ async function zipFramesOf(deps: AppDeps, drawing: DrawingRecord): Promise<Frame
   return framesOf(original, drawing.objectKey);
 }
 
+// 도면 하나를 산출한다. 단일 도면 라우트(export.dxf)와 프로젝트 zip 라우트(export.zip)가
+// 같이 쓴다 — DWG·원본 없음·ExportError·그 밖의 오류를 가르는 판단은 하나만 둔다. 문구는
+// 라우트마다 다르므로(export.zip의 건너뜀.txt는 더 짧은 문구를 쓴다) kind만 돌려주고 문구는
+// 호출부가 짓는다. exportError만 detail(err.message)을 함께 돌려준다.
+type ExportOutcome =
+  | { ok: true; result: import('./export/exportDrawing.js').ExportResult }
+  | { ok: false; kind: 'notDxf' | 'noOriginal' | 'exportError' | 'other'; detail?: string };
+
+async function exportDrawing(deps: AppDeps, drawing: DrawingRecord): Promise<ExportOutcome> {
+  if (!drawing.objectKey.toLowerCase().endsWith('.dxf')) {
+    return { ok: false, kind: 'notDxf' };
+  }
+  const original = await deps.originals.read(drawing.objectKey);
+  if (!original) {
+    return { ok: false, kind: 'noOriginal' };
+  }
+  const doc = await deps.damages.get(drawing.id);
+  try {
+    const result = exportDamagesToDxf(original.toString('utf8'), doc.damages);
+    return { ok: true, result };
+  } catch (err) {
+    if (err instanceof ExportError) {
+      return { ok: false, kind: 'exportError', detail: err.message };
+    }
+    console.error('[export]', drawing.id, err);
+    return { ok: false, kind: 'other' };
+  }
+}
+
+// 프로젝트 zip 안에서 겹치지 않을 도면별 밑이름(baseNameOf)을 짓는다. 같은 폴더('' 또는
+// '<하위>/')끼리만 겹침을 가른다 — 폴더가 다르면 애초에 zip 경로가 갈린다.
+function baseNamesFor(folders: DrawingFolder[]): Map<string, string> {
+  const byFolder = new Map<string, DrawingFolder[]>();
+  for (const f of folders) {
+    const bucket = byFolder.get(f.folder);
+    if (bucket) bucket.push(f);
+    else byFolder.set(f.folder, [f]);
+  }
+  const result = new Map<string, string>();
+  for (const bucket of byFolder.values()) {
+    const names = uniqueNames(bucket.map((f) => baseNameOf(f.drawing.name)));
+    bucket.forEach((f, i) => result.set(f.drawing.id, names[i]));
+  }
+  return result;
+}
+
 const apiErrorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -236,6 +302,18 @@ export function createApp(deps: AppDeps) {
       return;
     }
 
+    // 프로젝트 확인은 APS를 부르기 전에 한다 — 없는 프로젝트로 올리려는 요청이 헛되이
+    // APS 업로드·변환을 시작하지 않도록(설계 3장). 빈 문자열·필드 없음은 미분류(키를 안 넣는다).
+    const rawProjectId = req.body?.projectId;
+    let projectId: string | undefined;
+    if (typeof rawProjectId === 'string' && rawProjectId !== '') {
+      if (!isProjectId(rawProjectId) || !(await deps.projects.get(rawProjectId))) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      projectId = rawProjectId;
+    }
+
     const id = newDrawingId();
     const extension = isDwg ? '.dwg' : '.dxf';
     const objectKey = `${id}${extension}`;
@@ -262,6 +340,8 @@ export function createApp(deps: AppDeps) {
         uploadedAt: new Date(now()).toISOString(),
         // DWG는 원본을 읽을 수 없으므로 틀이 없다(설계 3장).
         frames: isDxf ? framesOf(file.buffer, objectKey) : [],
+        // 없거나 미분류면 키 자체를 넣지 않는다(설계 2.2 — 기존 도면과 같은 모양으로 남는다).
+        ...(projectId !== undefined ? { projectId } : {}),
       };
       await deps.drawings.add(record);
       res.status(201).json(record);
@@ -279,6 +359,37 @@ export function createApp(deps: AppDeps) {
     const withFrames: DrawingRecord[] = [];
     for (const record of refreshed) withFrames.push(await ensureFrames(deps, record));
     res.json(withFrames);
+  });
+
+  // 도면을 다른 프로젝트로 옮긴다(또는 미분류로). PC 업로드 페이지의 "옮기기" 선택 상자가 부른다
+  // (설계 3장). projectId는 필수 키다 — 실수로 빼먹은 요청과 "미분류로 옮기기"(null)를 구분한다.
+  api.patch('/drawings/:id', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (!('projectId' in body)) {
+      res.status(400).json({ error: 'projectId가 필요합니다.' });
+      return;
+    }
+    const value = body.projectId;
+    let projectId: string | null;
+    if (value === null) {
+      projectId = null;
+    } else if (typeof value === 'string') {
+      if (!isProjectId(value) || !(await deps.projects.get(value))) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      projectId = value;
+    } else {
+      res.status(400).json({ error: 'projectId 형식이 올바르지 않습니다.' });
+      return;
+    }
+    const updated = await deps.drawings.update(drawing.id, { projectId });
+    res.json(await ensureFrames(deps, updated ?? drawing));
   });
 
   api.post('/drawings/:id/retry', async (req, res) => {
@@ -325,6 +436,249 @@ export function createApp(deps: AppDeps) {
       return;
     }
     res.json(await ensureFrames(deps, record));
+  });
+
+  // 프로젝트(현장·구조물) 관리. 만들기·고치기·옮기기는 PC 업로드 페이지에서만 쓴다 — 앱은 이
+  // 목록을 읽기만 한다(설계 1장). 응답은 항상 트리 계산(ProjectView)을 거친다(설계 3.1).
+  api.get('/projects', async (_req, res) => {
+    res.json(buildProjectViews(await deps.projects.list(), await deps.drawings.list()));
+  });
+
+  api.post('/projects', async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const created = await deps.projects.create(
+        { name: body.name, memo: body.memo, parentId: body.parentId },
+        new Date(now()).toISOString(),
+      );
+      res.status(201).json(await projectViewFor(deps, created.id));
+    } catch (err) {
+      if (err instanceof ProjectRuleError) {
+        res.status(projectRuleStatus(err.code)).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  api.patch('/projects/:id', async (req, res) => {
+    const id = req.params.id;
+    if (!isProjectId(id)) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    // ProjectsStore.update는 준 키만 바꾼다 — req.body에 실제로 있던 키만 넘긴다(항상 undefined를
+    // 넣으면 "그 키를 지워라"로 오해할 수 있다).
+    const patch: { name?: unknown; memo?: unknown } = {};
+    if ('name' in body) patch.name = body.name;
+    if ('memo' in body) patch.memo = body.memo;
+    try {
+      const updated = await deps.projects.update(id, patch);
+      if (!updated) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      res.json(await projectViewFor(deps, id));
+    } catch (err) {
+      if (err instanceof ProjectRuleError) {
+        res.status(projectRuleStatus(err.code)).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  api.delete('/projects/:id', async (req, res) => {
+    const id = req.params.id;
+    if (!isProjectId(id)) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    // 도면 수는 휴지통을 뺀 현재 목록에서 센다 — effectiveProjectId는 가리키는 프로젝트가
+    // 없어졌으면(있을 수 없지만) 미분류로 보므로 이 프로젝트를 가리키는 도면만 정확히 센다.
+    const [projectRecords, drawingRecords] = await Promise.all([deps.projects.list(), deps.drawings.list()]);
+    const drawingCount = drawingRecords.filter((d) => effectiveProjectId(d.projectId, projectRecords) === id).length;
+    try {
+      const removed = await deps.projects.remove(id, { drawingCount });
+      if (!removed) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+        return;
+      }
+      res.json({ id });
+    } catch (err) {
+      if (err instanceof ProjectRuleError) {
+        res.status(projectRuleStatus(err.code)).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  // 프로젝트(와 하위 프로젝트)의 모든 도면 사진을 zip 하나로 묶는다(설계 4장). photoZip.ts의
+  // zipEntryNamesFor로 도면별 사진 zip과 항목 이름 규칙을 맞춘다 — 겹치는 것은 폴더(하위
+  // 이름 + 도면 밑이름)뿐이다.
+  api.get('/projects/:id/photos.zip', async (req, res) => {
+    const id = req.params.id;
+    if (!isProjectId(id)) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const project = await deps.projects.get(id);
+    if (!project) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const [projectRecords, drawingRecords] = await Promise.all([deps.projects.list(), deps.drawings.list()]);
+    const folders = drawingFoldersFor(id, projectRecords, drawingRecords);
+    const baseNames = baseNamesFor(folders);
+
+    const items: { name: string; drawingId: string; entry: PhotoEntry }[] = [];
+    for (const { drawing, folder } of folders) {
+      const files = await deps.photos.listDrawing(drawing.id);
+      if (files.length === 0) continue;
+      const doc = await deps.damages.get(drawing.id);
+      const entries = zipEntryNamesFor(doc.damages, await zipFramesOf(deps, drawing), files);
+      const base = baseNames.get(drawing.id) ?? baseNameOf(drawing.name);
+      for (const { name, entry } of entries) {
+        items.push({ name: `${folder}${base}/${name}`, drawingId: drawing.id, entry });
+      }
+    }
+    if (items.length === 0) {
+      res.status(400).json({ error: '저장된 사진이 없습니다' });
+      return;
+    }
+
+    const fileName = `${safeSegment(project.name)}_사진.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="photos.zip"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+    );
+
+    const archive = archiver('zip', { store: true });
+    archive.on('warning', (err) => console.error('[projects/photos.zip]', id, err));
+    archive.on('error', (err) => {
+      console.error('[projects/photos.zip]', id, err);
+      if (res.headersSent) {
+        res.destroy(err);
+      } else {
+        res.status(500).json({ error: '사진 zip 생성에 실패했습니다.' });
+      }
+    });
+    archive.pipe(res);
+    for (const { name, drawingId, entry } of items) {
+      archive.file(deps.photos.pathOf(drawingId, entry), { name });
+    }
+    await archive.finalize();
+  });
+
+  // 프로젝트(와 하위 프로젝트)의 모든 도면 산출 DXF를 zip 하나로 묶는다(설계 4장). 산출은
+  // 도면을 하나씩 순서대로 돌린다 — 수 MB DXF를 동기로 파싱하므로 병렬이면 메모리가 겹친다.
+  // 산출을 모두 끝낸 뒤에야 헤더를 보내고 archive에 append한다 — 그래야 산출된 DXF가 하나도
+  // 없을 때 400을 줄 수 있다(헤더를 먼저 보내면 상태 코드를 바꿀 수 없다).
+  api.get('/projects/:id/export.zip', async (req, res) => {
+    const id = req.params.id;
+    if (!isProjectId(id)) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const project = await deps.projects.get(id);
+    if (!project) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const [projectRecords, drawingRecords] = await Promise.all([deps.projects.list(), deps.drawings.list()]);
+    const folders = drawingFoldersFor(id, projectRecords, drawingRecords);
+    const baseNames = baseNamesFor(folders);
+
+    // 산출물을 모아 두지 않는다(최종 검토 Important 1): 30MB DXF 몇 장이면 수백 MB가 메모리에 쌓이고,
+    // 동기 파싱이 이어지는 동안 서버가 다른 요청(앱 폴링·사진 업로드)에 답하지 못했다. 그래서
+    //  · **첫 산출이 성공한 순간** 머리글을 보내고 zip을 열어 도면을 하나씩 흘려보낸다 — 메모리에는
+    //    한 번에 DXF 한 장만 있다(앞 항목이 다 쓰인 뒤에 다음 도면을 산출한다).
+    //  · 도면 사이마다 이벤트 루프에 차례를 넘긴다.
+    //  · 끝까지 하나도 성공하지 못했으면 아직 머리글을 안 보냈으므로 400을 줄 수 있다(스펙 4장).
+    let archive: archiver.Archiver | null = null;
+    const openArchive = (): archiver.Archiver => {
+      const fileName = `${safeSegment(project.name)}_손상.zip`;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export.zip"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      );
+      // DXF는 글자라 압축한다(deflate) — 사진 zip과 달리 store를 쓰지 않는다.
+      const created = archiver('zip');
+      created.on('warning', (err) => console.error('[projects/export.zip]', id, err));
+      // 여기까지 오면 머리글을 이미 보냈다 — 깨진 zip을 온전한 것으로 착각하지 않게 연결을 끊는다.
+      created.on('error', (err) => {
+        console.error('[projects/export.zip]', id, err);
+        res.destroy(err);
+      });
+      created.pipe(res);
+      return created;
+    };
+    // 항목 하나가 zip에 다 쓰일 때까지 기다린다. archiver는 append를 줄 세워 두므로, 기다리지 않으면
+    // 산출한 글자들이 줄에 그대로 쌓인다.
+    const appendAndWait = (target: archiver.Archiver, data: Buffer, name: string): Promise<void> =>
+      new Promise((resolve, reject) => {
+        const onEntry = (entry: archiver.EntryData): void => {
+          if (entry.name !== name) return;
+          target.off('entry', onEntry);
+          target.off('error', reject);
+          resolve();
+        };
+        target.on('entry', onEntry);
+        target.once('error', reject);
+        target.append(data, { name });
+      });
+
+    const skipLines: string[] = [];
+    const skipReasons: string[] = [];
+    try {
+      for (const { drawing, folder } of folders) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const outcome = await exportDrawing(deps, drawing);
+        const path = `${folder}${drawing.name}`;
+        if (!outcome.ok) {
+          const reason =
+            outcome.kind === 'notDxf'
+              ? 'DXF로 올린 도면만 산출할 수 있습니다'
+              : outcome.kind === 'noOriginal'
+                ? '원본 파일이 없습니다'
+                : outcome.kind === 'exportError'
+                  ? (outcome.detail ?? 'DXF 산출에 실패했습니다')
+                  : 'DXF 산출에 실패했습니다';
+          skipLines.push(`${path}: ${reason}`);
+          skipReasons.push(reason);
+          continue;
+        }
+        if (outcome.result.skipped > 0) {
+          skipLines.push(`${path}: 손상 ${outcome.result.skipped}개가 빠졌습니다`);
+        }
+        for (const warning of outcome.result.warnings) {
+          skipLines.push(`${path}: ${warning}`);
+        }
+        const base = baseNames.get(drawing.id) ?? baseNameOf(drawing.name);
+        archive ??= openArchive();
+        await appendAndWait(archive, Buffer.from(outcome.result.dxfText, 'utf8'), `${folder}${base}_손상.dxf`);
+      }
+    } catch (err) {
+      // archiver 오류는 위 'error' 처리기가 이미 연결을 끊었다. 머리글 전이면 500으로 답한다.
+      console.error('[projects/export.zip]', id, err);
+      if (!res.headersSent) res.status(500).json({ error: 'DXF zip 생성에 실패했습니다.' });
+      return;
+    }
+
+    if (archive === null) {
+      const uniqueReasons = [...new Set(skipReasons)];
+      const suffix = uniqueReasons.length === 1 ? ` (${uniqueReasons[0]})` : '';
+      res.status(400).json({ error: `산출할 수 있는 도면이 없습니다${suffix}` });
+      return;
+    }
+    if (skipLines.length > 0) {
+      archive.append(Buffer.from(skipLines.join('\n'), 'utf8'), { name: '건너뜀.txt' });
+    }
+    await archive.finalize();
   });
 
   api.get('/viewer-token', async (_req, res) => {
@@ -517,29 +871,24 @@ export function createApp(deps: AppDeps) {
       res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
       return;
     }
-    if (!drawing.objectKey.toLowerCase().endsWith('.dxf')) {
-      res.status(400).json({ error: 'DXF로 올린 도면만 산출할 수 있습니다' });
-      return;
-    }
-    const original = await deps.originals.read(drawing.objectKey);
-    if (!original) {
-      res.status(400).json({ error: '원본 파일이 없습니다. 도면을 다시 올려 주세요' });
-      return;
-    }
-
-    const doc = await deps.damages.get(drawing.id);
-    let result;
-    try {
-      result = exportDamagesToDxf(original.toString('utf8'), doc.damages);
-    } catch (err) {
-      if (err instanceof ExportError) {
-        res.status(400).json({ error: err.message });
+    const outcome = await exportDrawing(deps, drawing);
+    if (!outcome.ok) {
+      if (outcome.kind === 'notDxf') {
+        res.status(400).json({ error: 'DXF로 올린 도면만 산출할 수 있습니다' });
         return;
       }
-      console.error('[export]', drawing.id, err);
+      if (outcome.kind === 'noOriginal') {
+        res.status(400).json({ error: '원본 파일이 없습니다. 도면을 다시 올려 주세요' });
+        return;
+      }
+      if (outcome.kind === 'exportError') {
+        res.status(400).json({ error: outcome.detail });
+        return;
+      }
       res.status(500).json({ error: 'DXF 산출에 실패했습니다.' });
       return;
     }
+    const result = outcome.result;
 
     // 한글은 HTTP 헤더 값에 그대로 넣을 수 없다(Node가 ERR_INVALID_CHAR로 던진다).
     // 파일명은 RFC 5987 filename*, 경고 문구는 퍼센트 인코딩으로 보낸다.
