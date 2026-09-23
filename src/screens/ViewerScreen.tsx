@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
-import { viewerUrl, type Drawing } from '../api';
+import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
+import { viewerUrl, type DamageDoc, type Drawing } from '../api';
+import {
+  modelUri,
+  offlineRoot,
+  readDamages,
+  readIndex,
+  viewerPageUri,
+  writeDamages,
+  writeIndex,
+} from '../offlineStore';
 import { takePhotoAndSave } from '../photo';
 import { flushPhotoQueue, enqueuePhoto, PHOTO_FLUSH_INTERVAL_MS, type UploadNotice } from '../photoUpload';
 
@@ -14,10 +23,66 @@ const FLUSH_TIMEOUT_MS = 5000;
 // 끝의 true는 iOS에서 injectJavaScript 결과가 직렬화되지 않아 생기는 경고를 막는다.
 const FLUSH_SCRIPT = 'window.mangdoFlush && window.mangdoFlush(); true;';
 
+interface OfflineSource {
+  /** file://…/bundle/<version>/viewer.html?id=…&offline=1 */
+  pageUri: string;
+  /** iOS가 읽도록 허용할 폴더(페이지·모델 파일이 모두 이 아래에 있어야 한다). */
+  readAccessUri: string;
+  /** 콘텐츠가 뜨기 전에 window.mangdoOffline을 놓는 스크립트. */
+  injected: string;
+}
+
+// JSON을 그대로 JS 코드 안에 넣는다. U+2028·U+2029는 JSON 문자열 안에서는 멀쩡하지만 JS
+// 소스에서는 줄바꿈으로 읽혀 코드가 깨진다 — 손상 비고에 그런 글자가 들어와도 안전하도록 바꾼다.
+function embedJson(value: unknown): string {
+  // 소스에 그 글자를 그대로 두면 이 파일 자체가 깨져 보이므로 코드 포인트로 만든다.
+  const separators = new RegExp(`[${String.fromCharCode(0x2028, 0x2029)}]`, 'g');
+  return JSON.stringify(value).replace(separators, (ch) => `\\u${ch.charCodeAt(0).toString(16)}`);
+}
+
+// 기기에 내려받은 도면이면 뷰어를 기기 파일로 연다(설계 3.3). index에 없거나 꾸러미가 없으면
+// null — 지금까지처럼 서버 페이지를 연다.
+function buildOfflineSource(drawing: Drawing): OfflineSource | null {
+  const index = readIndex();
+  const entry = index.drawings[drawing.id];
+  if (entry === undefined || index.bundleVersion === null) return null;
+  const stored = readDamages(drawing.id) as DamageDoc | null;
+  // 기기에 손상 파일이 아직 없으면(내려받기 도중 사라진 경우 등) 빈 문서로 연다 — 뷰어는
+  // 이 문서를 그대로 편집 출발점으로 삼고, 저장하면 서버 것보다 새것이 되어 push된다.
+  const doc: DamageDoc = stored ?? {
+    schemaVersion: 5,
+    drawingId: drawing.id,
+    updatedAt: new Date(0).toISOString(),
+    damages: [],
+  };
+  // 뷰어(main.js)는 이 레코드에서 id·status·frames를 본다. 내려받은 도면은 언제나 변환이 끝난
+  // SVF이고, frames는 목록 레코드에 없으면(오프라인 목록) 내려받을 때 저장해 둔 것을 쓴다.
+  const record: Drawing = {
+    ...drawing,
+    status: 'success',
+    viewFormat: 'svf',
+    frames: drawing.frames ?? entry.frames,
+  };
+  const root = offlineRoot().uri;
+  return {
+    pageUri: viewerPageUri(index.bundleVersion, drawing.id),
+    readAccessUri: root.endsWith('/') ? root : `${root}/`,
+    injected: `window.mangdoOffline = ${embedJson({
+      drawing: record,
+      doc,
+      modelUrl: modelUri(drawing.id, entry.model),
+    })}; true;`,
+  };
+}
+
 export function ViewerScreen({ drawing, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // 기기 파일로 열지(오프라인) 서버 페이지로 열지는 화면에 들어올 때 정한다 — 도면이 index에
+  // 있으면 인터넷과 상관없이 기기 파일이다(설계 3.3). `다시 시도`(reloadKey)로 페이지를 새로
+  // 띄울 때는 기기의 손상 기록을 다시 읽어 주입해야 한다(그 사이 저장된 것이 있다).
+  const offline = useMemo(() => buildOfflineSource(drawing), [drawing, reloadKey]);
 
   const webViewRef = useRef<WebView>(null);
   // 뷰어 페이지가 도면을 다 불러와 { type: 'ready' }를 보낸 뒤에만 저장 확인을 요청한다.
@@ -116,6 +181,26 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       viewerReadyRef.current = true;
     } else if (type === 'flushResult') {
       pendingFlushRef.current?.(saved === true);
+    } else if (type === 'offlineSave') {
+      // 오프라인 뷰어의 저장 요청(설계 3.4). 뷰어는 3초 안에 회신을 기다리므로 파일에 쓰고
+      // 바로 답한다 — writeDamages는 동기(tmp→move)라 늦어지지 않는다. 쓰지 못했으면 답하지
+      // 않는다: 뷰어가 실패로 보고 재시도 규칙에 따라 다시 보낸다.
+      const { doc } = message as { doc?: unknown };
+      if (typeof doc !== 'object' || doc === null) return;
+      const { updatedAt } = doc as { updatedAt?: unknown };
+      if (typeof updatedAt !== 'string') return;
+      if (!writeDamages(drawing.id, doc)) return;
+      // index의 damagesUpdatedAt이 곧 "기기가 가진 가장 새 손상 기록"이다 — 목록 화면의
+      // `서버에 올리지 못한 손상 기록 N개` 배지와 동기화(push/pull) 판단이 이 값을 본다.
+      const index = readIndex();
+      const entry = index.drawings[drawing.id];
+      if (entry) {
+        writeIndex({
+          ...index,
+          drawings: { ...index.drawings, [drawing.id]: { ...entry, damagesUpdatedAt: updatedAt } },
+        });
+      }
+      inject('mangdoOfflineSaved', { updatedAt });
     } else if (type === 'takePhoto') {
       if (typeof requestId !== 'string') return;
       // 뷰어는 drawingId도 함께 보내지만(설계 4장) 저장에는 **앱이 연 도면의 id**를 쓴다 —
@@ -199,6 +284,26 @@ export function ViewerScreen({ drawing, onBack }: Props) {
     return () => clearInterval(timer);
   }, [flushPhotos]);
 
+  // 기기 파일 페이지는 file://이라 원본 제한을 풀고(안드로이드) 읽을 폴더를 알려 줘야(iOS)
+  // 뷰어가 옆의 js·css와 모델 파일을 읽을 수 있다(설계 3.3). onHttpError는 서버로 열 때만
+  // 뜻이 있다 — file://에는 상태 코드가 없다.
+  const sourceProps: WebViewProps = offline
+    ? {
+        source: { uri: offline.pageUri },
+        originWhitelist: ['*'],
+        allowFileAccess: true,
+        allowFileAccessFromFileURLs: true,
+        allowUniversalAccessFromFileURLs: true,
+        allowingReadAccessToURL: offline.readAccessUri,
+        injectedJavaScriptBeforeContentLoaded: offline.injected,
+      }
+    : {
+        source: { uri: viewerUrl(drawing.id) },
+        originWhitelist: ['https://*', 'http://*'],
+        onHttpError: (event) =>
+          setError(`서버 응답 오류 (${event.nativeEvent.statusCode}). PC의 서버와 터널을 확인하세요.`),
+      };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -208,14 +313,14 @@ export function ViewerScreen({ drawing, onBack }: Props) {
         <Text style={styles.title} numberOfLines={1}>
           {drawing.name}
         </Text>
+        {offline && <Text style={styles.offlineTag}>기기 파일</Text>}
       </View>
 
       <View style={styles.body}>
         <WebView
           key={reloadKey}
           ref={webViewRef}
-          source={{ uri: viewerUrl(drawing.id) }}
-          originWhitelist={['https://*', 'http://*']}
+          {...sourceProps}
           javaScriptEnabled
           domStorageEnabled
           bounces={false}
@@ -230,9 +335,6 @@ export function ViewerScreen({ drawing, onBack }: Props) {
           }}
           onLoadEnd={() => setLoading(false)}
           onError={(event) => setError(`페이지를 열 수 없습니다: ${event.nativeEvent.description}`)}
-          onHttpError={(event) =>
-            setError(`서버 응답 오류 (${event.nativeEvent.statusCode}). PC의 서버와 터널을 확인하세요.`)
-          }
         />
         {loading && !error && (
           <View style={styles.overlay}>
@@ -265,6 +367,16 @@ const styles = StyleSheet.create({
   },
   back: { fontSize: 17, color: '#1e66f5', marginRight: 16 },
   title: { flex: 1, fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
+  offlineTag: {
+    marginLeft: 8,
+    color: '#fff',
+    backgroundColor: '#2e7d32',
+    fontSize: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
   body: { flex: 1 },
   overlay: {
     ...StyleSheet.absoluteFill,
