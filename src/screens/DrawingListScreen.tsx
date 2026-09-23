@@ -17,7 +17,7 @@ import { readLastLocation, writeLastLocation } from '../lastProject';
 import { downloadDrawings } from '../offlineDownload';
 import { drawingsToDownload, pendingPushCount, syncDecision } from '../offlineRules';
 import { readIndex, removeDrawing, type OfflineIndex } from '../offlineStore';
-import { syncOffline } from '../offlineSync';
+import { syncOffline, waitForSync } from '../offlineSync';
 import { flushPhotoQueue, PHOTO_FLUSH_INTERVAL_MS, pendingPhotoCount, retryPendingPhotos } from '../photoUpload';
 import { listItemsFor, normalizeLocation, parentLocation, type ListItem, type ListLocation } from '../projectList';
 
@@ -195,6 +195,9 @@ export function DrawingListScreen({ onOpen }: Props) {
     setDownloadResult(null);
     setDownloading({ done: 0, total: targets.length, name: targets[0].name });
     try {
+      // 이미 돌고 있는 동기화가 끝난 뒤에 시작한다 — 둘 다 index.json을 쓴다. 잠금을 먼저 잡았으므로
+      // 이 사이에 새 동기화는 시작되지 않는다(runBackground·syncNow가 downloadingRef를 본다).
+      await waitForSync();
       const result = await downloadDrawings(targets, (done, total, name) => {
         if (mountedRef.current) setDownloading({ done, total, name });
       });
@@ -282,7 +285,7 @@ export function DrawingListScreen({ onOpen }: Props) {
     setRefreshing(true);
     await load();
     await runBackground();
-    setRefreshing(false);
+    if (mountedRef.current) setRefreshing(false);
   }, [load, runBackground]);
 
   const items = useMemo<ListItem<Project, Drawing>[]>(
@@ -438,6 +441,7 @@ export function DrawingListScreen({ onOpen }: Props) {
           // 아직 기기에 없고 오프라인용(SVF)으로 변환된 도면만 줄에서 바로 받을 수 있다.
           // SVF2(옛 도면)는 PC에서 **다시 변환**을 해야 하므로 회색 글씨로 알린다(설계 5장).
           const canDownload = !downloaded && drawing.offlineReady === true;
+          const syncError = index.drawings[drawing.id]?.syncError ?? null;
           const needsRetranslate = !downloaded && drawing.viewFormat !== 'svf';
           return (
             <Pressable
@@ -456,6 +460,7 @@ export function DrawingListScreen({ onOpen }: Props) {
                   {drawing.progress ? ` · ${drawing.progress}` : ''}
                 </Text>
                 {drawing.error && <Text style={styles.rowError}>{drawing.error}</Text>}
+                {syncError && <Text style={styles.rowError}>서버가 손상 기록을 받지 않았습니다: {syncError}</Text>}
               </View>
               <View style={styles.rowRight}>
                 {downloaded && <Text style={styles.deviceChip}>기기</Text>}

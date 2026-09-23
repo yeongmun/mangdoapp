@@ -172,7 +172,12 @@ export async function putDamages(drawingId: string, doc: DamageDoc): Promise<{ u
     throw new Error('서버에 연결할 수 없습니다. PC의 서버와 터널이 켜져 있는지 확인하세요.');
   }
   if (res.status === 401) throw new Error('접근키를 확인하세요.');
-  if (!res.ok) throw new Error(await errorMessageOf(res, `손상 기록을 올리지 못했습니다 (${res.status}).`));
+  // 4xx(형식 오류 등)는 다시 보내도 같으므로 동기화가 "서버 거절"로 표시할 수 있게 status를 붙인다(설계 3.5).
+  if (!res.ok) {
+    throw Object.assign(new Error(await errorMessageOf(res, `손상 기록을 올리지 못했습니다 (${res.status}).`)), {
+      status: res.status,
+    });
+  }
   return (await res.json()) as { updatedAt: string };
 }
 

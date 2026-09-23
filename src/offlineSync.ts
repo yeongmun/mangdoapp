@@ -6,12 +6,31 @@ import { fetchDamages, putDamages, type DamageDoc } from './api';
 import { syncDecision } from './offlineRules';
 import { readDamages, readIndex, writeDamages, writeIndex, type OfflineDrawingEntry, type OfflineIndex } from './offlineStore';
 
-let syncing = false;
+export interface SyncResult {
+  pushed: number;
+  pulled: number;
+  failed: number;
+}
 
-export async function syncOffline(): Promise<{ pushed: number; pulled: number; failed: number }> {
-  if (syncing) return { pushed: 0, pulled: 0, failed: 0 };
-  syncing = true;
-  try {
+// 진행 중인 동기화. 내려받기(offlineDownload)도 index.json을 쓰므로, 시작 전에 waitForSync()로
+// 이것이 끝나기를 기다린다(Task 5 검토 Major: 한쪽 갱신이 사라질 수 있었다).
+let inFlight: Promise<SyncResult> | null = null;
+
+/** 동기화가 돌고 있으면 끝날 때까지 기다린다. 안 돌면 바로 돌아온다. */
+export function waitForSync(): Promise<void> {
+  return inFlight ? inFlight.then(() => undefined, () => undefined) : Promise.resolve();
+}
+
+export function syncOffline(): Promise<SyncResult> {
+  if (inFlight) return inFlight;
+  inFlight = runSync().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function runSync(): Promise<SyncResult> {
+  {
     let index = readIndex();
     let pushed = 0;
     let pulled = 0;
@@ -40,13 +59,19 @@ export async function syncOffline(): Promise<{ pushed: number; pulled: number; f
         }
         try {
           const result = await putDamages(id, localDoc);
-          index = updateEntry(index, id, { serverUpdatedAt: result.updatedAt });
+          index = updateEntry(index, id, { serverUpdatedAt: result.updatedAt, syncError: null });
           writeIndex(index);
           pushed++;
         } catch (err) {
-          // 400(형식 오류)이든 연결 실패든 다음 기회에 다시 시도한다(설계 3.5 sync-error는
-          // 화면 표시 몫 — Task 5).
+          // 연결 실패는 조용히 다음 기회로. 서버가 4xx로 거절한 것(형식 오류 등)은 다시 보내도
+          // 같으므로 사유를 index에 적어 목록 화면이 그 도면에 보여 준다(설계 3.5 sync-error).
+          // 그래도 다음 기회에 다시 시도는 한다 — 서버가 고쳐지면 통과할 수 있다.
           console.error('[offlineSync] 손상 기록을 올리지 못했습니다', id, err);
+          const status = (err as { status?: unknown }).status;
+          if (typeof status === 'number' && status >= 400 && status < 500) {
+            index = updateEntry(index, id, { syncError: err instanceof Error ? err.message : String(err) });
+            writeIndex(index);
+          }
           failed++;
         }
       } else if (decision === 'pull') {
@@ -62,8 +87,6 @@ export async function syncOffline(): Promise<{ pushed: number; pulled: number; f
     }
 
     return { pushed, pulled, failed };
-  } finally {
-    syncing = false;
   }
 }
 

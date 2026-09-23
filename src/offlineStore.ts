@@ -25,6 +25,8 @@ export interface OfflineDrawingEntry {
   /** 마지막으로 안 서버 쪽 updatedAt. 아직 모르면 null(설계 3.5). */
   serverUpdatedAt: string | null;
   downloadedAt: string;
+  /** 서버가 4xx로 거절한 마지막 사유(설계 3.5 sync-error). 다음 동기화에서 성공하면 지운다. 없으면 정상. */
+  syncError?: string | null;
 }
 
 export interface OfflineIndex {

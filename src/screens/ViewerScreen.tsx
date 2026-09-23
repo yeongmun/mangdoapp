@@ -195,10 +195,13 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       const index = readIndex();
       const entry = index.drawings[drawing.id];
       if (entry) {
-        writeIndex({
+        const ok = writeIndex({
           ...index,
           drawings: { ...index.drawings, [drawing.id]: { ...entry, damagesUpdatedAt: updatedAt } },
         });
+        // 손상 파일은 이미 썼으므로 저장 자체는 성공이다. index만 못 쓰면 배지·동기화 판단이 한 번
+        // 늦어질 뿐이고 다음 저장에서 다시 쓴다 — 로그만 남긴다.
+        if (!ok) console.error('[offline] index.json을 갱신하지 못했습니다', drawing.id);
       }
       inject('mangdoOfflineSaved', { updatedAt });
     } else if (type === 'takePhoto') {
