@@ -12,6 +12,7 @@ import { isDrawingId, newDrawingId, offlineReadyOf, type DrawingRecord, type Dra
 import { parseDxf } from './export/dxfDocument.js';
 import { ExportError, exportDamagesToDxf } from './export/exportDrawing.js';
 import { findFrames, type FrameBounds } from './export/frames.js';
+import type { OfflineFilesStore } from './offlineFiles.js';
 import type { OriginalsStore } from './originalsStore.js';
 import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
@@ -26,6 +27,7 @@ import {
 import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFolder } from './projectZip.js';
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
+import type { ViewerBundle } from './viewerBundle.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -42,6 +44,9 @@ export interface AppDeps {
   photos: PhotosStore;
   trash: DrawingTrash;
   projects: ProjectsStore;
+  // 오프라인 모드(설계 3.1): 도면 파생 파일(f2d 등) 캐시와 뷰어 꾸러미 캐시.
+  offline: OfflineFilesStore;
+  viewerBundle: ViewerBundle;
   publicDir: string;
   now?: () => number;
   maxUploadBytes?: number;
@@ -50,6 +55,12 @@ export interface AppDeps {
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+// Express 5 와일드카드(:id/offline/files/*path)의 req.params.path는 세그먼트 배열로 온다.
+// (설계 3.1)
+function wildcardPathOf(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value.join('/') : (value ?? '');
 }
 
 async function findDrawing(deps: AppDeps, id: string): Promise<DrawingRecord | null> {
@@ -454,6 +465,45 @@ export function createApp(deps: AppDeps) {
     res.json(withOfflineReady(await ensureFrames(deps, updated ?? drawing)));
   });
 
+  // 오프라인 모드(설계 3.1): 이 도면을 기기에 두는 데 필요한 파일 목록. offlineReady가 아니면
+  // 409 — 아직 SVF로 변환되지 않았거나 변환 중이거나 실패한 도면은 기기에 내려받을 수 없다.
+  api.get('/drawings/:id/offline', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    if (!offlineReadyOf(drawing)) {
+      res.status(409).json({ error: '오프라인용으로 변환된 도면이 아닙니다.' });
+      return;
+    }
+    try {
+      const damagesDoc = await deps.damages.get(drawing.id);
+      res.json(await deps.offline.listing(drawing, damagesDoc.updatedAt));
+    } catch (err) {
+      console.error('[offline]', drawing.id, messageOf(err));
+      res.status(502).json({ error: `오프라인 파일 목록을 가져오지 못했습니다: ${messageOf(err)}` });
+    }
+  });
+
+  // 오프라인 모드(설계 3.1): 파생 파일 바이트. GET .../offline이 캐시에 확보해 둔 것만 준다.
+  api.get('/drawings/:id/offline/files/*path', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    const path = wildcardPathOf(req.params.path as string | string[] | undefined);
+    const data = await deps.offline.read(drawing.id, path);
+    if (!data) {
+      res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+      return;
+    }
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(data);
+  });
+
   // 도면 삭제 = 휴지통으로 옮기기(drawingTrash.ts). 점검 데이터는 다시 만들 수 없어 서버는 영구 삭제를
   // 하지 않는다. PC 업로드 페이지와 앱 목록 화면이 부른다(2026-09-18 사용자 결정).
   api.delete('/drawings/:id', async (req, res) => {
@@ -730,6 +780,35 @@ export function createApp(deps: AppDeps) {
       console.error('[viewer-token]', err);
       res.status(502).json({ error: `뷰어 토큰 발급에 실패했습니다: ${messageOf(err)}` });
     }
+  });
+
+  // 오프라인 모드(설계 3.1): 우리 뷰어 파일 + 오토데스크 뷰어 파일 7개의 목록(버전 포함).
+  api.get('/viewer-bundle', async (_req, res) => {
+    try {
+      res.json(await deps.viewerBundle.listing());
+    } catch (err) {
+      console.error('[viewer-bundle]', messageOf(err));
+      res.status(502).json({ error: `뷰어 꾸러미 목록을 가져오지 못했습니다: ${messageOf(err)}` });
+    }
+  });
+
+  api.get('/viewer-bundle/files/*path', async (req, res) => {
+    const path = wildcardPathOf(req.params.path as string | string[] | undefined);
+    let data: Buffer | null;
+    try {
+      data = await deps.viewerBundle.read(path);
+    } catch (err) {
+      console.error('[viewer-bundle]', path, messageOf(err));
+      res.status(502).json({ error: `뷰어 파일을 가져오지 못했습니다: ${messageOf(err)}` });
+      return;
+    }
+    if (!data) {
+      res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+      return;
+    }
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(data);
   });
 
   api.get('/drawings/:id/damages', async (req, res) => {

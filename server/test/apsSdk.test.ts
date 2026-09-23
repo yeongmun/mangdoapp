@@ -36,4 +36,40 @@ describe('createSdkClients', () => {
       spy.mockRestore();
     }
   });
+
+  // 오프라인 모드(설계 3.1): 파생 파일 바이트는 APS SDK에 메서드가 없어 전역 fetch로 직접 받는다.
+  describe('downloadDerivative', () => {
+    it('manifest 하위 파생 경로를 Bearer 토큰으로 불러 바이트를 돌려준다', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(Buffer.from('f2d-bytes'), { status: 200 }),
+      );
+      try {
+        const clients = createSdkClients('client-id', 'client-secret');
+        const result = await clients.downloadDerivative(
+          'urn:adsk.objects:os.object:bucket/x.dwg',
+          'urn:adsk.viewing:fs.file:abc/output/x_f2d/primaryGraphics.f2d',
+          'token-x',
+        );
+        expect(result.toString('utf8')).toBe('f2d-bytes');
+        expect(fetchSpy).toHaveBeenCalledWith(
+          'https://developer.api.autodesk.com/modelderivative/v2/designdata/urn:adsk.objects:os.object:bucket/x.dwg/manifest/urn%3Aadsk.viewing%3Afs.file%3Aabc%2Foutput%2Fx_f2d%2FprimaryGraphics.f2d',
+          { headers: { authorization: 'Bearer token-x' } },
+        );
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('200이 아니면 상태 코드를 담은 오류를 던진다', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }));
+      try {
+        const clients = createSdkClients('client-id', 'client-secret');
+        await expect(clients.downloadDerivative('urn-1', 'deriv-urn', 'token-x')).rejects.toThrow(
+          '파생 파일 내려받기 실패 (404)',
+        );
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
 });

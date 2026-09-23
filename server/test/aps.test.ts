@@ -16,6 +16,7 @@ function fakeClients(overrides: Partial<ApsClients> = {}): ApsClients {
     })),
     startJob: vi.fn(async () => ({})),
     getManifest: vi.fn(async () => ({ status: 'inprogress', progress: '10% complete' })),
+    downloadDerivative: vi.fn(async () => Buffer.from('data')),
     ...overrides,
   };
 }
@@ -166,5 +167,24 @@ describe('ApsService 업로드와 변환', () => {
 
     const broken = fakeClients({ getManifest: vi.fn(async () => { throw apiError(500); }) });
     await expect(new ApsService(broken, 'bucket').getTranslationStatus('urn-1')).rejects.toThrow('HTTP 500');
+  });
+});
+
+// 오프라인 모드(설계 3.1): getTranslationStatus와 달리 가공 없이 manifest 그대로 돌려주고,
+// 파생 파일 바이트를 받는다.
+describe('ApsService 오프라인 파생 파일', () => {
+  it('getRawManifest은 클라이언트의 manifest를 그대로 돌려준다', async () => {
+    const manifest = { status: 'success', derivatives: [{ outputType: 'svf', children: [] }] };
+    const clients = fakeClients({ getManifest: vi.fn(async () => manifest) });
+    const result = await new ApsService(clients, 'bucket').getRawManifest('urn-1');
+    expect(result).toBe(manifest);
+    expect(clients.getManifest).toHaveBeenCalledWith('urn-1', 'tok-1');
+  });
+
+  it('downloadDerivative는 토큰과 함께 파생 urn을 넘긴다', async () => {
+    const clients = fakeClients({ downloadDerivative: vi.fn(async () => Buffer.from('bytes')) });
+    const result = await new ApsService(clients, 'bucket').downloadDerivative('urn-1', 'deriv-urn');
+    expect(result.toString('utf8')).toBe('bytes');
+    expect(clients.downloadDerivative).toHaveBeenCalledWith('urn-1', 'deriv-urn', 'tok-1');
   });
 });

@@ -50,5 +50,17 @@ export function createSdkClients(clientId: string, clientSecret: string): ApsCli
       ),
     getManifest: async (urn, accessToken) =>
       (await modelDerivativeClient.getManifest(urn, { accessToken })) as unknown as ManifestLike,
+    // 오프라인 모드(설계 3.1): APS SDK에는 파생 파일 바이트를 내려받는 메서드가 없어 raw fetch로 부른다
+    // (Node 24 전역 fetch). Model Derivative의 manifest 하위 파생 경로 GET이 바이트를 그대로 준다.
+    downloadDerivative: async (urn, derivativeUrn, accessToken) => {
+      const response = await fetch(
+        `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest/${encodeURIComponent(derivativeUrn)}`,
+        { headers: { authorization: `Bearer ${accessToken}` } },
+      );
+      if (response.status !== 200) {
+        throw new Error(`파생 파일 내려받기 실패 (${response.status})`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    },
   };
 }
