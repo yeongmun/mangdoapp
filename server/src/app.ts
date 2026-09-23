@@ -428,7 +428,9 @@ export function createApp(deps: AppDeps) {
       res.status(502).json({ error: `변환 재요청에 실패했습니다: ${messageOf(err)}` });
       return;
     }
-    const updated = await deps.drawings.update(drawing.id, { status: 'pending', progress: '', error: null });
+    // 변환 작업은 이제 항상 SVF를 만든다(설계 2장). 옛 SVF2 도면을 다시 시도해도 결과는 SVF이므로
+    // 레코드도 그렇게 적는다 — 안 적으면 offlineReady가 영영 false다(Task 1 검토).
+    const updated = await deps.drawings.update(drawing.id, { status: 'pending', progress: '', error: null, viewFormat: 'svf' });
     // 옛 레코드(frames 없음)를 재시도할 수도 있으니, GET과 같은 헬퍼로 frames를 채워 보낸다.
     res.json(withOfflineReady(await ensureFrames(deps, updated ?? drawing)));
   });

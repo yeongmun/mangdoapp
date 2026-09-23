@@ -563,8 +563,10 @@ describe('POST /api/drawings/:id/retry', () => {
     const failed = await seed(drawings, { status: 'failed', progress: 'complete', error: '파일 오류' });
     const res = await request(app).post(`/api/drawings/${failed.id}/retry`).set('x-access-key', KEY);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ...failed, status: 'pending', progress: '', error: null, frames: [], offlineReady: false });
+    // 변환 작업은 이제 SVF를 만드므로 다시 시도한 도면도 viewFormat이 svf가 된다(오프라인 설계 2장).
+    expect(res.body).toEqual({ ...failed, status: 'pending', progress: '', error: null, frames: [], viewFormat: 'svf', offlineReady: false });
     expect(aps.startTranslation).toHaveBeenCalledWith(failed.urn);
+    expect((await drawings.get(failed.id))?.viewFormat).toBe('svf');
   });
 
   it('frames 없는 옛 레코드를 재시도해도 응답에 frames가 채워진다', async () => {

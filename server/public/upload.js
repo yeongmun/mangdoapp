@@ -156,6 +156,9 @@ function renderRows(drawings) {
     tr.append(moveSelectCell(drawing));
 
     const actionTd = document.createElement('td');
+    const isSvf = (drawing.viewFormat ?? 'svf2') === 'svf';
+    // 실패한 도면의 "다시 시도"는 변환을 다시 거는 것이라 결과가 SVF가 된다(서버가 viewFormat도 svf로
+    // 적는다). 그래서 실패한 옛 도면에는 "다시 변환"을 따로 두지 않는다 — 버튼 둘이 같은 일을 한다.
     if (drawing.status === 'failed') {
       const button = document.createElement('button');
       button.type = 'button';
@@ -163,9 +166,9 @@ function renderRows(drawings) {
       button.addEventListener('click', () => retry(drawing.id, button));
       actionTd.append(button);
     }
-    // 오프라인 모드(설계 4장): SVF2(또는 이 기능 전에 올린 도면)만 다시 변환할 수 있고,
-    // 변환 중에는 눌러도 서버가 409를 주므로 완료·실패 상태에서만 보인다.
-    if ((drawing.viewFormat ?? 'svf2') !== 'svf' && (drawing.status === 'success' || drawing.status === 'failed')) {
+    // 오프라인 모드(설계 4장): 변환이 끝난 SVF2(또는 이 기능 전에 올린) 도면만 다시 변환할 수 있고,
+    // 변환 중에는 눌러도 서버가 409를 준다.
+    if (!isSvf && drawing.status === 'success') {
       const retranslateButton = document.createElement('button');
       retranslateButton.type = 'button';
       retranslateButton.textContent = '다시 변환';
