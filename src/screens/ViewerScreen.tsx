@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
 import { viewerUrl, type DamageDoc, type Drawing } from '../api';
 import {
@@ -75,6 +76,7 @@ function buildOfflineSource(drawing: Drawing): OfflineSource | null {
 }
 
 export function ViewerScreen({ drawing, onBack }: Props) {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -180,6 +182,10 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       viewerReadyRef.current = true;
     } else if (type === 'flushResult') {
       pendingFlushRef.current?.(saved === true);
+    } else if (type === 'offlineLog') {
+      // 오프라인 뷰어의 진행 단계(진단용). Metro 콘솔에서 어디까지 갔는지 본다.
+      const { step, detail } = message as { step?: unknown; detail?: unknown };
+      console.log('[offline-viewer]', String(step ?? ''), String(detail ?? ''));
     } else if (type === 'offlineSave') {
       // 오프라인 뷰어의 저장 요청(설계 3.4). 뷰어는 3초 안에 회신을 기다리므로 파일에 쓰고
       // 바로 답한다 — writeDamages는 동기(tmp→move)라 늦어지지 않는다. 쓰지 못했으면 답하지
@@ -308,7 +314,13 @@ export function ViewerScreen({ drawing, onBack }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      {/* 노치·상태바·가로 모드의 모서리를 피해 머리띠와 본문을 안전영역 안에 둔다 */}
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top + 8, paddingLeft: 16 + insets.left, paddingRight: 16 + insets.right },
+        ]}
+      >
         <Pressable onPress={requestLeave} hitSlop={12}>
           <Text style={styles.back}>‹ 목록</Text>
         </Pressable>
@@ -318,7 +330,7 @@ export function ViewerScreen({ drawing, onBack }: Props) {
         {offline && <Text style={styles.offlineTag}>기기 파일</Text>}
       </View>
 
-      <View style={styles.body}>
+      <View style={[styles.body, { paddingLeft: insets.left, paddingRight: insets.right, paddingBottom: insets.bottom }]}>
         <WebView
           key={reloadKey}
           ref={webViewRef}
@@ -361,9 +373,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 40,
     paddingBottom: 10,
-    paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#d0d3d9',
   },

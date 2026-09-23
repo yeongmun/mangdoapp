@@ -82,6 +82,25 @@ function postToApp(message) {
   window.ReactNativeWebView?.postMessage(JSON.stringify(message));
 }
 
+// 오프라인 진단(2026-09-23 실기기: 아이폰에서 '도면을 불러오는 중'에서 멈춤). 어느 단계까지 갔는지를
+// 앱(Metro 콘솔)으로 보내고, 45초 안에 도면이 안 뜨면 마지막 단계와 함께 오류를 보인다.
+let lastOfflineStep = '시작';
+function offlineStep(step, detail) {
+  if (!offline) return;
+  lastOfflineStep = step;
+  postToApp({ type: 'offlineLog', step, detail: detail === undefined ? '' : String(detail) });
+}
+if (offline) {
+  window.addEventListener('error', (event) => {
+    offlineStep('스크립트 오류', `${event.message} @ ${event.filename ?? ''}:${event.lineno ?? ''}`);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    offlineStep('약속 거부', reason instanceof Error ? `${reason.message}
+${reason.stack ?? ''}` : String(reason));
+  });
+}
+
 function showError(message) {
   $('loading').hidden = true;
   $('toolbar').hidden = true;
@@ -102,7 +121,11 @@ function initializeViewer() {
     // 오프라인은 로컬 파일만 읽으므로 토큰이 필요 없다(설계 3.4장). 뷰어 버전은 viewer.html이
     // 온라인·오프라인 모두 같은 것을 쓰므로(3.1장) 코드 경로는 여기서만 갈린다.
     if (offline) {
-      Autodesk.Viewing.Initializer({ env: 'Local', useADP: false, language: 'ko' }, resolve);
+      offlineStep('뷰어 초기화 요청', typeof Autodesk === 'undefined' ? 'Autodesk 전역 없음' : Autodesk.Viewing?.Private?.LMV_VIEWER_VERSION);
+      Autodesk.Viewing.Initializer({ env: 'Local', useADP: false, language: 'ko' }, () => {
+        offlineStep('뷰어 초기화 완료');
+        resolve();
+      });
       return;
     }
     Autodesk.Viewing.Initializer(
@@ -131,12 +154,19 @@ function loadDocument(urn) {
 // 오프라인은 Document.load 없이 파생 파일(f2d)을 바로 연다(설계 3.2·3.4장). modelUrl은 앱이
 // 주입한 file:// 경로다.
 function loadOfflineModel(viewer, modelUrl) {
+  offlineStep('도면 파일 요청', modelUrl);
   return new Promise((resolve, reject) => {
     viewer.loadModel(
       modelUrl,
       {},
-      (model) => resolve(model),
-      (code, message) => reject(new Error(`도면을 불러오지 못했습니다 (오류 ${code}) ${message ?? ''}`)),
+      (model) => {
+        offlineStep('도면 파일 읽음', `is2d=${model?.is2d?.()}`);
+        resolve(model);
+      },
+      (code, message) => {
+        offlineStep('도면 파일 실패', `${code} ${message ?? ''}`);
+        reject(new Error(`도면을 불러오지 못했습니다 (오류 ${code}) ${message ?? ''}`));
+      },
     );
   });
 }
@@ -175,9 +205,16 @@ async function start() {
   if (!drawing) throw new Error('도면을 찾을 수 없습니다.');
   if (drawing.status !== 'success') throw new Error('아직 변환이 끝나지 않은 도면입니다.');
 
+  offlineStep('데이터 준비', `damages=${serverDocV3?.damages?.length ?? '?'}`);
   await initializeViewer();
   const viewer = new Autodesk.Viewing.Viewer3D($('viewer'));
-  if (viewer.start() > 0) throw new Error('이 기기에서 WebGL을 사용할 수 없습니다.');
+  const startCode = viewer.start();
+  offlineStep('viewer.start', startCode);
+  if (startCode > 0) throw new Error('이 기기에서 WebGL을 사용할 수 없습니다.');
+  // 오프라인 감시: 45초 안에 도면이 안 그려지면 마지막 단계와 함께 오류를 보인다(무한 로딩 방지).
+  const watchdog = offline
+    ? setTimeout(() => showError(`도면을 불러오지 못했습니다 (오프라인, 마지막 단계: ${lastOfflineStep})`), 45000)
+    : null;
   let offlineModel = null;
   if (offline) {
     offlineModel = await loadOfflineModel(viewer, window.mangdoOffline.modelUrl);
@@ -188,6 +225,8 @@ async function start() {
     await viewer.loadDocumentNode(doc, viewable);
   }
   await waitForGeometry(viewer, offlineModel);
+  if (watchdog !== null) clearTimeout(watchdog);
+  offlineStep('도형 로드 완료');
 
   const mapper = createCoordinateMapper(viewer);
   console.info('[mangdo] DWG 좌표 변환:', mapper.dwgStatus.reason);
