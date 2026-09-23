@@ -78,6 +78,9 @@ export class ViewerBundle {
       ownFiles.push({ path, size: data.length });
       buffers.push(data);
     }
+    // 보정 코드(FILE_URL_SHIM)가 바뀌면 기기가 새 꾸러미를 받아야 하므로 해시에 함께 넣는다 —
+    // 안 넣으면 버전이 같아 보여 고친 뷰어 스크립트가 기기에 내려가지 않는다.
+    buffers.push(Buffer.from(FILE_URL_SHIM, 'utf8'));
     const version = `${this.hashOf(buffers)}-${AUTODESK_VIEWER_VERSION}`;
 
     const autodeskFiles: BundleFile[] = [];
