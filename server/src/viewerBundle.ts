@@ -143,7 +143,11 @@ export class ViewerBundle {
     if (res.status !== 200) {
       throw new Error(`뷰어 파일을 받지 못했습니다 (${res.status}): ${path}`);
     }
-    const data = res.contentEncoding === 'gzip' ? gunzipSync(res.body) : res.body;
+    // 실서버(2026-09-23): Node의 fetch는 본문을 이미 풀어 주면서도 content-encoding 헤더를 그대로
+    // 남긴다 → 헤더만 믿고 다시 풀면 'incorrect header check'. 헤더가 아니라 **바이트**(gzip 매직
+    // 1f 8b)로 판단한다. 헤더는 참고용으로만 남긴다.
+    const looksGzip = res.body.length >= 2 && res.body[0] === 0x1f && res.body[1] === 0x8b;
+    const data = looksGzip ? gunzipSync(res.body) : res.body;
     await writeFileAtomic(filePath, data);
     return data.length;
   }

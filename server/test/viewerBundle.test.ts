@@ -74,6 +74,12 @@ describe('ViewerBundle.listing', () => {
 });
 
 describe('ViewerBundle.read', () => {
+  it('Node fetch가 이미 풀어 준 본문은 content-encoding 헤더가 남아 있어도 다시 풀지 않는다 (실서버 502 원인)', async () => {
+    const fetchCdn = fakeFetchCdn(async () => ({ status: 200, body: Buffer.from('already-plain'), contentEncoding: 'gzip' }));
+    const bundle = new ViewerBundle(publicDir, cacheDir, fetchCdn);
+    expect((await bundle.read('autodesk/viewer3D.min.js'))?.toString('utf8')).toBe('already-plain');
+  });
+
   it('오토데스크 파일: CDN 가짜를 한 번만 부르고 gzip을 풀어 저장한다', async () => {
     const gz = gzipSync(Buffer.from('viewer3d-content'));
     const fetchCdn = fakeFetchCdn(async () => ({ status: 200, body: gz, contentEncoding: 'gzip' }));
