@@ -29,11 +29,16 @@ import {
   withPhotoNumber,
 } from './quantities.js';
 import { blocksDrawing, photoStripItems } from './photoStrip.js';
+import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlineApi.js';
 
 const $ = (id) => document.getElementById(id);
 const drawingId = new URLSearchParams(location.search).get('id') ?? '';
 const accessKey = new URLSearchParams(location.hash.slice(1)).get('key') ?? '';
-const STATUS_LABELS = { saved: '저장됨', saving: '저장 중', pending: '저장 대기', error: '저장 실패' };
+// 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다.
+const offline = isOfflineMode(location.search);
+const STATUS_LABELS = offline
+  ? OFFLINE_STATUS_LABELS
+  : { saved: '저장됨', saving: '저장 중', pending: '저장 대기', error: '저장 실패' };
 
 function errorMessage(status, body) {
   if (status === 401) return '접근키를 확인하세요.';
@@ -43,7 +48,7 @@ function errorMessage(status, body) {
 
 // 응답 오류는 status와 retryable(4xx는 다시 보내도 같으므로 false)을 붙여 던진다.
 // fetch 자체가 실패한 네트워크 오류에는 retryable이 없으므로 재시도 대상이다.
-async function api(path, options = {}) {
+async function onlineApi(path, options = {}) {
   const res = await fetch(`/api${path}`, {
     ...options,
     headers: { 'content-type': 'application/json', ...(options.headers ?? {}), 'x-access-key': accessKey },
@@ -57,6 +62,17 @@ async function api(path, options = {}) {
   }
   return body;
 }
+
+// 오프라인이면 서버를 전혀 부르지 않는다 — 앱이 미리 주입한 window.mangdoOffline과
+// postToApp('offlineSave')/window.mangdoOfflineSaved 왕복만으로 답한다(설계 3.3~3.4장).
+const api = offline
+  ? createOfflineApi(window.mangdoOffline, {
+      post: postToApp,
+      onSaved: (cb) => {
+        window.mangdoOfflineSaved = cb;
+      },
+    })
+  : onlineApi;
 
 // 앱(React Native WebView)으로 메시지를 보낸다. 브라우저에서 직접 열면 아무것도 하지 않는다.
 function postToApp(message) {
@@ -80,6 +96,12 @@ function safeStorage() {
 
 function initializeViewer() {
   return new Promise((resolve) => {
+    // 오프라인은 로컬 파일만 읽으므로 토큰이 필요 없다(설계 3.4장). 뷰어 버전은 viewer.html이
+    // 온라인·오프라인 모두 같은 것을 쓰므로(3.1장) 코드 경로는 여기서만 갈린다.
+    if (offline) {
+      Autodesk.Viewing.Initializer({ env: 'Local', useADP: false, language: 'ko' }, resolve);
+      return;
+    }
     Autodesk.Viewing.Initializer(
       {
         env: 'AutodeskProduction2',
@@ -103,15 +125,31 @@ function loadDocument(urn) {
   });
 }
 
+// 오프라인은 Document.load 없이 파생 파일(f2d)을 바로 연다(설계 3.2·3.4장). modelUrl은 앱이
+// 주입한 file:// 경로다.
+function loadOfflineModel(viewer, modelUrl) {
+  return new Promise((resolve, reject) => {
+    viewer.loadModel(
+      modelUrl,
+      {},
+      (model) => resolve(model),
+      (code, message) => reject(new Error(`도면을 불러오지 못했습니다 (오류 ${code}) ${message ?? ''}`)),
+    );
+  });
+}
+
 // DWG의 모델 공간 2D 뷰는 이름이 "Model"이다. 없으면 첫 2D 뷰를 쓴다.
 function pick2dViewable(doc) {
   const views = doc.getRoot().search({ type: 'geometry', role: '2d' });
   return views.find((node) => node.name() === 'Model') ?? views[0] ?? null;
 }
 
-function waitForGeometry(viewer) {
+// model은 오프라인 경로에서 loadOfflineModel이 돌려준 모델이다 — viewer.loadDocumentNode를 거치지
+// 않으므로 이 시점엔 viewer.model이 아직 안 채워져 있을 수 있어 직접 받아 쓴다(설계 3.4장).
+function waitForGeometry(viewer, model) {
   return new Promise((resolve) => {
-    if (viewer.model?.isLoadDone()) {
+    const target = model ?? viewer.model;
+    if (target?.isLoadDone()) {
       resolve();
       return;
     }
@@ -125,7 +163,8 @@ function waitForGeometry(viewer) {
 
 async function start() {
   if (!/^d_[0-9a-f]{32}$/.test(drawingId)) throw new Error('도면 id가 올바르지 않습니다.');
-  if (!accessKey) throw new Error('접근키가 없습니다. 앱 설정을 확인하세요.');
+  // 접근키는 서버 API를 부를 때만 쓴다 — 오프라인은 서버를 부르지 않으므로 없어도 된다.
+  if (!offline && !accessKey) throw new Error('접근키가 없습니다. 앱 설정을 확인하세요.');
 
   const [drawings, serverDoc] = await Promise.all([api('/drawings'), api(`/drawings/${drawingId}/damages`)]);
   const serverDocV3 = migrateDoc(serverDoc, drawingId) ?? serverDoc;
@@ -136,11 +175,16 @@ async function start() {
   await initializeViewer();
   const viewer = new Autodesk.Viewing.Viewer3D($('viewer'));
   if (viewer.start() > 0) throw new Error('이 기기에서 WebGL을 사용할 수 없습니다.');
-  const doc = await loadDocument(drawing.urn);
-  const viewable = pick2dViewable(doc);
-  if (!viewable) throw new Error('이 도면에는 2D 뷰가 없습니다.');
-  await viewer.loadDocumentNode(doc, viewable);
-  await waitForGeometry(viewer);
+  let offlineModel = null;
+  if (offline) {
+    offlineModel = await loadOfflineModel(viewer, window.mangdoOffline.modelUrl);
+  } else {
+    const doc = await loadDocument(drawing.urn);
+    const viewable = pick2dViewable(doc);
+    if (!viewable) throw new Error('이 도면에는 2D 뷰가 없습니다.');
+    await viewer.loadDocumentNode(doc, viewable);
+  }
+  await waitForGeometry(viewer, offlineModel);
 
   const mapper = createCoordinateMapper(viewer);
   console.info('[mangdo] DWG 좌표 변환:', mapper.dwgStatus.reason);
@@ -157,7 +201,9 @@ async function start() {
 
   const syncer = createSyncer({
     drawingId,
-    storage: safeStorage(),
+    // file://의 localStorage는 iOS에서 못 믿는다(설계 8장) — 오프라인은 백업을 아예 쓰지 않는다.
+    // 앱이 device의 damages.json을 곧 백업으로 갖고 있다.
+    storage: offline ? { getItem: () => null, setItem: () => undefined } : safeStorage(),
     save: (d) => {
       const errors = validateDamageDoc(d, drawingId);
       if (errors.length > 0) {
@@ -499,6 +545,14 @@ async function start() {
     closePhotoStrip();
     photoStripDamageId = damageId;
     const generation = ++photoStripGeneration;
+    if (offline) {
+      // 오프라인은 서버 사진 목록을 모른다 — 칸에 적힌 번호마다 자리표시 칩만 보인다(설계 3.4장).
+      // 📷 촬영은 지금처럼 앱의 대기열에 맡기고, 연결되면 mangdoPhotoUploaded가 다시 부른다.
+      const numbers = parsePhotoNumbers($('photoInput').value);
+      for (const number of numbers) strip.append(chip(`${number} (연결되면 보임)`));
+      strip.hidden = numbers.length === 0;
+      return;
+    }
     let list = [];
     try {
       list = await api(`/drawings/${drawingId}/damages/${damageId}/photos`);
