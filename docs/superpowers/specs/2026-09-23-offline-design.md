@@ -52,7 +52,7 @@ Paths.document/
 
 - `index.json`에 있는 도면은 **인터넷과 상관없이** 기기 파일로 연다. 없는 도면은 지금처럼 서버 페이지를 연다(인터넷 필요).
 - WebView: `source={{ uri: 'file://<document>/offline/bundle/<version>/viewer.html?id=<drawingId>&offline=1' }}`, `originWhitelist={['*']}`, `allowFileAccess`, `allowFileAccessFromFileURLs`, `allowUniversalAccessFromFileURLs`, iOS `allowingReadAccessToURL=<document>/offline/`. 뷰어 페이지는 `injectedJavaScriptBeforeContentLoaded`로 `window.mangdoOffline = { drawing, doc, modelUrl }`을 받는다(`modelUrl`은 `file://…/primaryGraphics.f2d`).
-- **실기기 관문(Task 5)**: 아이폰·갤럭시 Expo Go에서 이 방식으로 도면이 그려지는지. 안 되면 대안은 `source={{ html, baseUrl }}`로 페이지를 문자열로 넣고 파일은 `file://`로 두는 것이며, 그래도 안 되면 설계를 다시 한다 — 이 관문 전에는 4·6장을 만들지 않는다(계획의 Task 순서).
+- **실기기 관문(Task 5)**: 아이폰·갤럭시 Expo Go에서 이 방식으로 도면이 그려지는지. 안 되면 대안은 (a) `source={{ html, baseUrl }}`로 페이지를 문자열로 넣고 파일은 `file://`로 두기, (b) 그래도 Worker(`lmvworker.min.js`)·XHR(`.f2d`·`.json.gz`·locale)이 `file://`에서 막히면 뷰어 JS를 Blob Worker로 띄우고 파일을 앱이 base64로 주입하는 방식이며, 그래도 안 되면 설계를 다시 한다. 스파이크는 로컬 HTTP 서버로 검증했지 진짜 `file://`로는 아니므로 이 관문이 진짜 위험이다(최종 검토) — 이 관문 전에는 4·6장을 만들지 않는다(계획의 Task 순서).
 
 ### 3.4 뷰어 (`main.js`) — 오프라인 모드
 

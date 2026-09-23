@@ -48,10 +48,19 @@ async function ensureBundle(index: OfflineIndex): Promise<{ index: OfflineIndex;
     console.error('[offlineDownload] 뷰어 꾸러미 목록을 가져오지 못했습니다', err);
     return { index, ok: false };
   }
-  if (!bundleNeedsUpdate(index.bundleVersion, listing.version)) {
+  const dir = bundleDir(listing.version);
+  // 버전이 같아도 폴더가 없으면(지워졌거나 반쯤 받다 죽음) 다시 받는다 — 안 그러면 내려받은
+  // 도면이 전부 안 열리는데 고칠 길이 없다(최종 검토 Important 1).
+  const pageExists = (() => {
+    try {
+      return new File(dir, 'viewer.html').exists;
+    } catch {
+      return false;
+    }
+  })();
+  if (!bundleNeedsUpdate(index.bundleVersion, listing.version) && pageExists) {
     return { index, ok: true };
   }
-  const dir = bundleDir(listing.version);
   try {
     dir.create({ intermediates: true, idempotent: true });
     for (const file of listing.files) {

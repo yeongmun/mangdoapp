@@ -56,9 +56,11 @@ export function pendingPushCount(entries: { localUpdatedAt: string; serverUpdate
 // 바꿔 저장한다. 오토데스크 뷰어 JS는 자신의 <script src> 위치를 리소스 루트로 삼으므로(브리프
 // 근거), lmvworker.min.js·res/locales/... 같은 나머지 오토데스크 파일도 이 한 줄 치환만으로 함께
 // 풀린다 — 온라인 뷰어(server/public/viewer.html)는 그대로 두고, 앱이 내려받은 사본만 고친다.
-const AUTODESK_CDN_PREFIX = 'https://developer.api.autodesk.com/modelderivative/v2/viewers/7.126.0/';
+// 버전 조각은 무엇이든 받는다 — 서버가 뷰어 버전을 올려도 이 치환이 조용히 비켜가지 않게(최종 검토
+// Important 2: 그러면 기기 페이지가 인터넷의 JS를 부르려다 현장에서만 죽는다).
+const AUTODESK_CDN_PREFIX = /https:\/\/developer\.api\.autodesk\.com\/modelderivative\/v2\/viewers\/[^/"']+\//g;
 const AUTODESK_LOCAL_PREFIX = 'autodesk/';
 
 export function rewriteViewerHtml(html: string): string {
-  return html.split(AUTODESK_CDN_PREFIX).join(AUTODESK_LOCAL_PREFIX);
+  return html.replace(AUTODESK_CDN_PREFIX, AUTODESK_LOCAL_PREFIX);
 }

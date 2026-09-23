@@ -140,7 +140,11 @@ export function DrawingListScreen({ onOpen }: Props) {
       setDrawings((prev) => (prev.length > 0 ? prev : offlineDrawingsOf(deviceIndex)));
       return;
     }
-    setDrawings(drawingsResult.value);
+    // 서버 목록에 없는데 기기에는 있는 도면(서버에서 휴지통으로 간 것)은 기기 항목으로 덧붙여 보인다 —
+    // 안 그러면 줄이 사라져 '기기에서 지우기'를 할 수 없고 못 올린 손상 배지만 남는다.
+    const serverIds = new Set(drawingsResult.value.map((d) => d.id));
+    const deviceOnly = offlineDrawingsOf(deviceIndex).filter((d) => !serverIds.has(d.id));
+    setDrawings([...drawingsResult.value, ...deviceOnly]);
     if (projectsResult.status === 'rejected') {
       // 프로젝트만 실패하면 막지 않는다 — 오류 배너를 보이고 도면을 평평한 목록으로 대신 보인다
       // (프로젝트가 하나도 없을 때와 같은 모양).

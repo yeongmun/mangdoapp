@@ -108,6 +108,11 @@ describe('rewriteViewerHtml', () => {
     expect(rewritten).not.toContain('https://developer.api.autodesk.com');
   });
 
+  it('뷰어 버전이 달라도 바꾼다 (서버가 버전을 올려도 기기 페이지가 인터넷을 부르지 않게)', () => {
+    const html = '<script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.130.2/viewer3D.min.js"></script>';
+    expect(rewriteViewerHtml(html)).toBe('<script src="autodesk/viewer3D.min.js"></script>');
+  });
+
   it('그 밖의 내용은 그대로 둔다', () => {
     expect(rewriteViewerHtml('<div>바뀌지 않음</div>')).toBe('<div>바뀌지 않음</div>');
   });

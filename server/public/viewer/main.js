@@ -32,10 +32,13 @@ import { blocksDrawing, photoStripItems } from './photoStrip.js';
 import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlineApi.js';
 
 const $ = (id) => document.getElementById(id);
-const drawingId = new URLSearchParams(location.search).get('id') ?? '';
+// 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다. 어떤 WebView가
+// file:// 주소의 질의 문자열을 떼어내더라도 앱이 주입한 window.mangdoOffline이 있으면 오프라인이다
+// (최종 검토 Important 4). 도면 id도 같은 순서로 찾는다.
+const injectedOffline = typeof window.mangdoOffline === 'object' && window.mangdoOffline !== null ? window.mangdoOffline : null;
+const offline = isOfflineMode(location.search) || injectedOffline !== null;
+const drawingId = new URLSearchParams(location.search).get('id') || injectedOffline?.drawing?.id || '';
 const accessKey = new URLSearchParams(location.hash.slice(1)).get('key') ?? '';
-// 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다.
-const offline = isOfflineMode(location.search);
 const STATUS_LABELS = offline
   ? OFFLINE_STATUS_LABELS
   : { saved: '저장됨', saving: '저장 중', pending: '저장 대기', error: '저장 실패' };

@@ -6,6 +6,9 @@ import { fetchDamages, putDamages, type DamageDoc } from './api';
 import { syncDecision } from './offlineRules';
 import { readDamages, readIndex, writeDamages, writeIndex, type OfflineDrawingEntry, type OfflineIndex } from './offlineStore';
 
+/** 서버에 없는(휴지통으로 간) 도면에 적는 사유. 목록 화면이 그대로 보인다. */
+export const SERVER_GONE = '서버에 없는 도면입니다(휴지통). PC에서 복구하거나 기기에서 지우세요';
+
 export interface SyncResult {
   pushed: number;
   pulled: number;
@@ -48,7 +51,15 @@ async function runSync(): Promise<SyncResult> {
         continue;
       }
       // 도면이 서버에서 없어졌으면(휴지통행) 이 도면은 건너뛴다 — 범위 밖(설계 1장).
-      if (!serverDoc) continue;
+      if (!serverDoc) {
+        // 서버에서 지워진(휴지통) 도면. 못 올린 손상이 있으면 배지가 영영 남으므로 사유를 적어
+        // 목록 줄에 보이고, 사용자가 PC에서 복구하거나 기기에서 지우게 한다(최종 검토 Important 3).
+        if (entry.syncError !== SERVER_GONE) {
+          index = updateEntry(index, id, { syncError: SERVER_GONE });
+          writeIndex(index);
+        }
+        continue;
+      }
 
       const decision = syncDecision(entry.damagesUpdatedAt, serverDoc.updatedAt);
       if (decision === 'push') {

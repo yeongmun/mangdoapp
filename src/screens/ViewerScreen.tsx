@@ -46,15 +46,14 @@ function buildOfflineSource(drawing: Drawing): OfflineSource | null {
   const index = readIndex();
   const entry = index.drawings[drawing.id];
   if (entry === undefined || index.bundleVersion === null) return null;
-  const stored = readDamages(drawing.id) as DamageDoc | null;
-  // 기기에 손상 파일이 아직 없으면(내려받기 도중 사라진 경우 등) 빈 문서로 연다 — 뷰어는
-  // 이 문서를 그대로 편집 출발점으로 삼고, 저장하면 서버 것보다 새것이 되어 push된다.
-  const doc: DamageDoc = stored ?? {
-    schemaVersion: 5,
-    drawingId: drawing.id,
-    updatedAt: new Date(0).toISOString(),
-    damages: [],
-  };
+  const doc = readDamages(drawing.id) as DamageDoc | null;
+  // 기기에 손상 파일이 없으면(내려받기 도중 앱이 죽은 경우 등) 오프라인으로 열지 않는다. 빈 문서로
+  // 열면 첫 편집이 서버의 진짜 손상 기록을 통째로 덮어쓴다(최종 검토 Critical). 온라인 페이지로
+  // 대신 열고, 인터넷이 없으면 그 화면의 오류가 "다시 내려받으라"고 안내한다.
+  if (doc === null) {
+    console.error('[offline] index에는 있는데 손상 파일이 없습니다 — 온라인으로 엽니다', drawing.id);
+    return null;
+  }
   // 뷰어(main.js)는 이 레코드에서 id·status·frames를 본다. 내려받은 도면은 언제나 변환이 끝난
   // SVF이고, frames는 목록 레코드에 없으면(오프라인 목록) 내려받을 때 저장해 둔 것을 쓴다.
   const record: Drawing = {
