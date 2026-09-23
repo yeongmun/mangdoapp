@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTODESK_VIEWER_FILES, AUTODESK_VIEWER_VERSION, ViewerBundle } from '../src/viewerBundle.js';
+import { AUTODESK_VIEWER_FILES, AUTODESK_VIEWER_VERSION, FILE_URL_SHIM, ViewerBundle } from '../src/viewerBundle.js';
 
 let dir: string;
 let publicDir: string;
@@ -74,10 +74,28 @@ describe('ViewerBundle.listing', () => {
 });
 
 describe('ViewerBundle.read', () => {
+  it('뷰어 본체와 작업자 스크립트에는 file:// 보정 코드를 앞에 붙이고, 다른 파일은 그대로다', async () => {
+    const fetchCdn = fakeFetchCdn(async () => ({ status: 200, body: Buffer.from('X'), contentEncoding: null }));
+    const bundle = new ViewerBundle(publicDir, cacheDir, fetchCdn);
+    const main = (await bundle.read('autodesk/viewer3D.min.js'))!.toString('utf8');
+    const worker = (await bundle.read('autodesk/lmvworker.min.js'))!.toString('utf8');
+    const locale = (await bundle.read('autodesk/res/locales/ko/allstrings.json'))!.toString('utf8');
+    expect(main.startsWith(FILE_URL_SHIM)).toBe(true);
+    expect(main.endsWith('X')).toBe(true);
+    expect(worker.startsWith(FILE_URL_SHIM)).toBe(true);
+    expect(locale).toBe('X');
+    // 보정 코드는 그 자체로 문법이 맞아야 한다(붙인 파일이 통째로 깨지면 안 된다).
+    expect(() => new Function(FILE_URL_SHIM)).not.toThrow();
+    // 목록의 size도 보정 코드를 포함한 실제 응답 크기다.
+    const listing = await bundle.listing();
+    const entry = listing.files.find((f) => f.path === 'autodesk/viewer3D.min.js')!;
+    expect(entry.size).toBe(Buffer.byteLength(FILE_URL_SHIM) + 1);
+  });
+
   it('Node fetch가 이미 풀어 준 본문은 content-encoding 헤더가 남아 있어도 다시 풀지 않는다 (실서버 502 원인)', async () => {
     const fetchCdn = fakeFetchCdn(async () => ({ status: 200, body: Buffer.from('already-plain'), contentEncoding: 'gzip' }));
     const bundle = new ViewerBundle(publicDir, cacheDir, fetchCdn);
-    expect((await bundle.read('autodesk/viewer3D.min.js'))?.toString('utf8')).toBe('already-plain');
+    expect((await bundle.read('autodesk/viewer3D.min.js'))?.toString('utf8')).toBe(FILE_URL_SHIM + 'already-plain');
   });
 
   it('오토데스크 파일: CDN 가짜를 한 번만 부르고 gzip을 풀어 저장한다', async () => {
@@ -86,11 +104,11 @@ describe('ViewerBundle.read', () => {
     const bundle = new ViewerBundle(publicDir, cacheDir, fetchCdn);
 
     const data1 = await bundle.read('autodesk/viewer3D.min.js');
-    expect(data1?.toString('utf8')).toBe('viewer3d-content');
+    expect(data1?.toString('utf8')).toBe(FILE_URL_SHIM + 'viewer3d-content');
     expect(fetchCdn).toHaveBeenCalledTimes(1);
 
     const data2 = await bundle.read('autodesk/viewer3D.min.js');
-    expect(data2?.toString('utf8')).toBe('viewer3d-content');
+    expect(data2?.toString('utf8')).toBe(FILE_URL_SHIM + 'viewer3d-content');
     expect(fetchCdn).toHaveBeenCalledTimes(1);
 
     // 디스크에 실제로 풀어서 저장됐다.

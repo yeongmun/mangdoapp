@@ -14,6 +14,7 @@ import { DrawingTrash } from '../src/drawingTrash.js';
 import { OfflineFilesStore } from '../src/offlineFiles.js';
 import { OriginalsStore } from '../src/originalsStore.js';
 import { PhotosStore } from '../src/photosStore.js';
+import { FILE_URL_SHIM } from '../src/viewerBundle.js';
 import { newProjectId, ProjectsStore } from '../src/projectsStore.js';
 import { AUTODESK_VIEWER_FILES, AUTODESK_VIEWER_VERSION, ViewerBundle } from '../src/viewerBundle.js';
 
@@ -1879,12 +1880,13 @@ describe('GET /api/viewer-bundle/files/*path', () => {
     expect(first.status).toBe(200);
     expect(first.headers['content-type']).toBe('application/octet-stream');
     expect(first.headers['cache-control']).toBe('private, max-age=86400');
-    expect(Buffer.from(first.body).toString('utf8')).toBe('viewer3d-content');
+    // 뷰어 본체에는 file:// 보정 코드가 앞에 붙어 온다(viewerBundle.ts FILE_URL_SHIM).
+    expect(Buffer.from(first.body).toString('utf8')).toBe(FILE_URL_SHIM + 'viewer3d-content');
 
     const second = await request(app)
       .get('/api/viewer-bundle/files/autodesk/viewer3D.min.js')
       .set('x-access-key', KEY);
-    expect(Buffer.from(second.body).toString('utf8')).toBe('viewer3d-content');
+    expect(Buffer.from(second.body).toString('utf8')).toBe(FILE_URL_SHIM + 'viewer3d-content');
     expect(fetchCdn).toHaveBeenCalledTimes(1);
   });
 

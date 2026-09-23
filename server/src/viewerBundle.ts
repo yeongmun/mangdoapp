@@ -9,6 +9,20 @@ import { writeFileAtomic } from './jsonFile.js';
 export const AUTODESK_VIEWER_VERSION = '7.126.0';
 
 // 스파이크에서 실측한, 오프라인 뷰어가 실제로 쓰는 오토데스크 뷰어 파일 7개(설계 3.1).
+/**
+ * file://에서 도는 뷰어에 앞에 붙이는 보정 코드(2026-09-23 실기기: 아이폰 WebView가 `file://` XHR·fetch에
+ * status 0을 주어 오토데스크 뷰어가 "오류 7 Unhandled response code"로 멈췄다). file: 주소의 응답만
+ * status 200으로 보이게 하고, 그 밖의 요청은 손대지 않는다. 뷰어 본체와 작업자(worker) 스크립트
+ * 둘 다 앞에 붙는다 — 작업자는 자기 전역에서 XHR을 쓰므로 페이지에 주입한 것으로는 닿지 않는다.
+ * 온라인 뷰어는 이 꾸러미를 쓰지 않으므로 영향이 없다.
+ */
+export const FILE_URL_SHIM = `/* mangdo offline shim: file:// 응답 status 0 → 200 */
+(function(g){try{var X=g.XMLHttpRequest;if(X){var P=X.prototype,o=P.open,d=Object.getOwnPropertyDescriptor(P,'status'),t=Object.getOwnPropertyDescriptor(P,'statusText');P.open=function(m,u){var h=typeof u==='string'?u:(u&&u.href)||'';this.__mangdoFile=String(h).indexOf('file:')===0;return o.apply(this,arguments)};if(d&&d.get){Object.defineProperty(P,'status',{configurable:true,get:function(){var s=d.get.call(this);return s===0&&this.__mangdoFile&&this.readyState===4?200:s}})}if(t&&t.get){Object.defineProperty(P,'statusText',{configurable:true,get:function(){var s=t.get.call(this);return this.__mangdoFile&&this.readyState===4&&!s?'OK':s}})}}var f=g.fetch;if(f){g.fetch=function(u,i){var url=typeof u==='string'?u:(u&&u.url)||'';if(String(url).indexOf('file:')!==0)return f.apply(this,arguments);return f.apply(this,arguments).then(function(r){if(r.status!==0)return r;return r.arrayBuffer().then(function(b){return new Response(b,{status:200,statusText:'OK',headers:r.headers})})})}}}catch(e){}})(typeof self!=='undefined'?self:this);
+`;
+
+/** 보정 코드를 앞에 붙이는 오토데스크 파일. */
+export const SHIMMED_AUTODESK_FILES = ['viewer3D.min.js', 'lmvworker.min.js'];
+
 export const AUTODESK_VIEWER_FILES = [
   'viewer3D.min.js',
   'style.min.css',
@@ -69,7 +83,10 @@ export class ViewerBundle {
     const autodeskFiles: BundleFile[] = [];
     for (const path of AUTODESK_VIEWER_FILES) {
       const size = await this.ensureAutodeskCached(path);
-      autodeskFiles.push({ path: `${AUTODESK_PREFIX}${path}`, size });
+      autodeskFiles.push({
+        path: `${AUTODESK_PREFIX}${path}`,
+        size: size + (SHIMMED_AUTODESK_FILES.includes(path) ? Buffer.byteLength(FILE_URL_SHIM) : 0),
+      });
     }
 
     return { version, files: [...ownFiles, ...autodeskFiles] };
@@ -84,7 +101,8 @@ export class ViewerBundle {
       if (!AUTODESK_VIEWER_FILES.includes(rel)) return null;
       await this.ensureAutodeskCached(rel);
       try {
-        return await readFile(this.autodeskFilePath(rel));
+        const data = await readFile(this.autodeskFilePath(rel));
+        return SHIMMED_AUTODESK_FILES.includes(rel) ? Buffer.concat([Buffer.from(FILE_URL_SHIM, 'utf8'), data]) : data;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
         throw err;
