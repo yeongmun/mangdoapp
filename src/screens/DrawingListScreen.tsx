@@ -11,6 +11,7 @@ import {
   View,
   type AlertButton,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteDrawing, fetchDrawings, fetchProjects, type Drawing, type Project } from '../api';
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
@@ -99,6 +100,14 @@ interface Props {
 }
 
 export function DrawingListScreen({ onOpen }: Props) {
+  // 노치·상태바·홈 표시줄·가로 모드 모서리를 피하는 여백. 고정값이면 아이폰 노치에 제목이 가린다.
+  const insets = useSafeAreaInsets();
+  const safePadding = {
+    paddingTop: insets.top + 16,
+    paddingBottom: insets.bottom,
+    paddingLeft: 24 + insets.left,
+    paddingRight: 24 + insets.right,
+  };
   const problem = configProblem();
   const [projects, setProjects] = useState<Project[]>([]);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -342,7 +351,7 @@ export function DrawingListScreen({ onOpen }: Props) {
     : '이 프로젝트에는 도면이 없습니다.\nPC의 업로드 페이지에서 올려 주세요.';
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, safePadding]}>
       <View style={styles.titleRow}>
         {showBack && (
           <Pressable onPress={() => goTo(parentLocation(projects, location))} hitSlop={12}>
@@ -489,7 +498,7 @@ export function DrawingListScreen({ onOpen }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f5f7', paddingTop: 48, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: '#f4f5f7' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#f4f5f7' },
   titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   title: { fontSize: 24, fontWeight: '700', color: '#1a1a1a' },
