@@ -148,7 +148,12 @@ export function DrawingListScreen({ onOpen }: Props) {
     mountedRef.current = false;
   }, []);
 
+  // 눌러서 받는 중인 도면. 받는 사이 사용자가 다른 목록으로 옮겨 가면 비운다 — 다 받은 뒤 사용자가
+  // 떠난 도면을 억지로 열지 않기 위해서다(Task 1 검토 Major).
+  const openIntentRef = useRef<string | null>(null);
+
   const goTo = useCallback((next: ListLocation) => {
+    openIntentRef.current = null;
     setLocation(next);
     writeLastLocation(next);
   }, []);
@@ -261,6 +266,7 @@ export function DrawingListScreen({ onOpen }: Props) {
       downloadingRef.current = true;
       setDownloadResult(null);
       setOpening(drawing.name);
+      openIntentRef.current = drawing.id;
       let ready = false;
       try {
         await waitForSync();
@@ -278,7 +284,9 @@ export function DrawingListScreen({ onOpen }: Props) {
         if (mountedRef.current) setOpening(null);
       }
       // 잠금을 푼 뒤에 연다 — 여는 순간 이 화면은 언마운트된다.
-      if (ready && mountedRef.current) onOpen(drawing);
+      const stillWanted = openIntentRef.current === drawing.id;
+      openIntentRef.current = null;
+      if (ready && stillWanted && mountedRef.current) onOpen(drawing);
     },
     [onOpen],
   );
