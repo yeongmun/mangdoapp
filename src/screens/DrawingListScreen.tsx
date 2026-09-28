@@ -16,7 +16,7 @@ import { deleteDrawing, fetchDrawings, fetchProjects, type Drawing, type Project
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
 import { downloadDrawings } from '../offlineDownload';
-import { drawingsToDownload, pendingPushCount, syncDecision } from '../offlineRules';
+import { drawingsToDownload, pendingPushCount, pendingSummary, syncDecision } from '../offlineRules';
 import { readIndex, removeDrawing, type OfflineIndex } from '../offlineStore';
 import { syncOffline, waitForSync } from '../offlineSync';
 import { flushPhotoQueue, PHOTO_FLUSH_INTERVAL_MS, pendingPhotoCount, retryPendingPhotos } from '../photoUpload';
@@ -28,6 +28,10 @@ const STATUS: Record<Drawing['status'], { label: string; color: string }> = {
   success: { label: '완료', color: '#2e7d32' },
   failed: { label: '실패', color: '#d32f2f' },
 };
+
+// downloadDrawings는 실패한 도면 이름만 돌려주고 사유는 콘솔에만 남긴다 — 사용자에게는 흔한 원인을
+// 묶어 알린다(2026-09-28 설계 1.1 `내려받지 못했습니다: <사유>`).
+const DOWNLOAD_FAIL_REASON = '서버에 연결할 수 없거나 파일을 받지 못했습니다';
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -65,8 +69,8 @@ function subtreeIds(projects: Project[], rootId: string): Set<string> {
 }
 
 // "이 목록"이 담고 있는 도면 전부 — 줄로 보이는 도면과, 프로젝트 줄 **안쪽**(하위 포함)의
-// 도면까지(설계 3.2 "프로젝트(하위 포함, offlineReady인 도면 전부)"). 내려받기 버튼의 N을
-// 이 목록으로 센다.
+// 도면까지(설계 3.2 "프로젝트(하위 포함, offlineReady인 도면 전부)"). `현장 가기 전 모두 받기`
+// 버튼의 N을 이 목록으로 센다.
 function scopedDrawings(items: ListItem<Project, Drawing>[], projects: Project[], drawings: Drawing[]): Drawing[] {
   const picked: Drawing[] = [];
   const seen = new Set<string>();
@@ -93,6 +97,17 @@ function scopedDrawings(items: ListItem<Project, Drawing>[], projects: Project[]
     }
   }
   return picked;
+}
+
+// 도면 줄 오른쪽의 상태 하나(2026-09-28 설계 1.2). 기기에 있으면 그것이 가장 중요하다 — 서버에서
+// 다시 변환 중이어도 기기 파일로 열린다. 그 밖에는 변환 상태(대기·변환 중·실패)를 먼저 보이고,
+// 변환이 끝났으면 받을 수 있는지(SVF)·PC에서 다시 변환해야 하는지(옛 SVF2)를 보인다.
+const GRAY = '#8a8f98';
+function rowChip(drawing: Drawing, downloaded: boolean, canFetch: boolean): { label: string; color: string } {
+  if (downloaded) return { label: '기기에 있음', color: '#2e7d32' };
+  if (drawing.status !== 'success') return STATUS[drawing.status];
+  if (canFetch) return { label: '받기 필요', color: GRAY };
+  return { label: 'PC에서 다시 변환 필요', color: GRAY };
 }
 
 interface Props {
@@ -123,6 +138,8 @@ export function DrawingListScreen({ onOpen }: Props) {
   const [index, setIndex] = useState<OfflineIndex>(() => readIndex());
   const [downloading, setDownloading] = useState<{ done: number; total: number; name: string } | null>(null);
   const [downloadResult, setDownloadResult] = useState<string | null>(null);
+  // 기기에 없는 도면을 눌러 받는 중이면 그 이름(배너 `여는 중 — <이름>`, 2026-09-28 설계 1.2).
+  const [opening, setOpening] = useState<string | null>(null);
   // 내려받는 동안에는 동기화를 돌리지 않는다 — 둘 다 index.json을 고치므로 겹치면 한쪽 갱신이
   // 사라질 수 있다(offlineDownload·offlineSync는 서로의 잠금을 모른다).
   const downloadingRef = useRef(false);
@@ -173,16 +190,15 @@ export function DrawingListScreen({ onOpen }: Props) {
     });
   }, []);
 
-  // 배지를 눌렀을 때: 10번 실패해 멈춘 항목까지 되돌린 뒤 바로 한 번 다시 보낸다.
-  const retryPhotos = useCallback(async () => {
+  // `서버에 아직 안 올라감` 배지를 눌렀을 때(2026-09-28 설계 1.2): 10번 실패해 멈춘 사진까지
+  // 되돌린 뒤 사진과 손상 기록을 바로 한 번 보내고 목록을 새로 고친다. 내려받는 중에는 손상
+  // 동기화를 건너뛴다(index.json을 둘이 함께 쓰면 안 된다) — 사진은 index와 상관없어 보낸다.
+  const sendNow = useCallback(async () => {
     retryPendingPhotos();
     setPendingPhotos(pendingPhotoCount());
     await flushPhotoQueue(() => undefined);
+    if (!mountedRef.current) return;
     setPendingPhotos(pendingPhotoCount());
-  }, []);
-
-  // 손상 기록 배지를 눌렀을 때: 바로 한 번 동기화하고 목록을 새로 고친다(설계 3.5).
-  const syncNow = useCallback(async () => {
     if (downloadingRef.current) return;
     await syncOffline();
     if (!mountedRef.current) return;
@@ -201,7 +217,7 @@ export function DrawingListScreen({ onOpen }: Props) {
     setIndex(readIndex());
   }, []);
 
-  // 내려받기(목록 전체 또는 도면 하나). 진행 배너 → 결과 문구(설계 5장).
+  // `현장 가기 전 모두 받기`. 진행 배너 → 결과 문구(설계 5장).
   const runDownload = useCallback(async (targets: Drawing[]) => {
     if (targets.length === 0 || downloadingRef.current) return;
     downloadingRef.current = true;
@@ -229,6 +245,44 @@ export function DrawingListScreen({ onOpen }: Props) {
     }
   }, []);
 
+  // 도면 줄을 눌렀을 때(2026-09-28 설계 1.1). 도면은 언제나 기기 파일로 연다 — 기기에 있으면 바로
+  // 열고, 없으면 그 자리에서 내려받은 뒤 연다. runDownload와 같은 잠금(downloadingRef)과
+  // waitForSync를 쓴다. 내려받는 중에는 어떤 도면도 열지 않는다 — 뷰어가 열리면 이 화면이 사라져
+  // 잠금을 아무도 모르는 채로 내려받기와 뷰어의 동기화가 index.json을 함께 쓰게 된다.
+  const openDrawing = useCallback(
+    async (drawing: Drawing) => {
+      if (downloadingRef.current) return;
+      if (readIndex().drawings[drawing.id] !== undefined) {
+        onOpen(drawing);
+        return;
+      }
+      // 옛 도면(SVF2)·변환 중·실패 도면은 기기로 받을 수 없어 누를 수 없다(설계 1.1).
+      if (drawing.status !== 'success' || drawing.offlineReady !== true) return;
+      downloadingRef.current = true;
+      setDownloadResult(null);
+      setOpening(drawing.name);
+      let ready = false;
+      try {
+        await waitForSync();
+        const result = await downloadDrawings([drawing], () => undefined);
+        const nextIndex = readIndex();
+        ready = result.failed.length === 0 && nextIndex.drawings[drawing.id] !== undefined;
+        if (mountedRef.current) {
+          setIndex(nextIndex);
+          if (!ready) setDownloadResult(`내려받지 못했습니다: ${DOWNLOAD_FAIL_REASON}`);
+        }
+      } catch (err) {
+        if (mountedRef.current) setDownloadResult(`내려받지 못했습니다: ${errMessage(err)}`);
+      } finally {
+        downloadingRef.current = false;
+        if (mountedRef.current) setOpening(null);
+      }
+      // 잠금을 푼 뒤에 연다 — 여는 순간 이 화면은 언마운트된다.
+      if (ready && mountedRef.current) onOpen(drawing);
+    },
+    [onOpen],
+  );
+
   // 기기에서 지우기(설계 3.2): 도면 폴더와 index 항목만 지운다. 서버 손상 기록·사진은 그대로다.
   const removeFromDevice = useCallback((drawing: Drawing) => {
     removeDrawing(drawing.id);
@@ -236,8 +290,8 @@ export function DrawingListScreen({ onOpen }: Props) {
   }, []);
 
   // 삭제는 서버 휴지통으로 옮기기다(복구는 PC 업로드 페이지). 현장에서 실수로 누르지 않도록 행을
-  // **길게 눌러야** 뜨고, 한 번 더 확인한다. 내려받은 도면이면 같은 창에 **기기에서 지우기**를
-  // 더한다(설계 3.2).
+  // **길게 눌러야** 뜨고, 한 번 더 확인한다. 버튼 순서는 `기기에서 지우기`(기기에 있을 때) ·
+  // `휴지통으로 보내기` · `취소`(2026-09-28 설계 1.2).
   const confirmDelete = useCallback(
     (drawing: Drawing) => {
       const entry = index.drawings[drawing.id];
@@ -248,12 +302,12 @@ export function DrawingListScreen({ onOpen }: Props) {
 도면과 그 손상 기록·사진이 서버 휴지통으로 옮겨집니다. PC 업로드 페이지의 휴지통에서 복구할 수 있습니다.${
         unsent ? '\n\n아직 서버에 올리지 못한 손상 기록이 있습니다.' : ''
       }`;
-      const buttons: AlertButton[] = [{ text: '취소', style: 'cancel' }];
+      const buttons: AlertButton[] = [];
       if (entry !== undefined) {
         buttons.push({ text: '기기에서 지우기', onPress: () => removeFromDevice(drawing) });
       }
       buttons.push({
-        text: '삭제',
+        text: '휴지통으로 보내기',
         style: 'destructive',
         onPress: () => {
           deleteDrawing(drawing.id)
@@ -261,6 +315,7 @@ export function DrawingListScreen({ onOpen }: Props) {
             .catch((err: unknown) => setError(errMessage(err)));
         },
       });
+      buttons.push({ text: '취소', style: 'cancel' });
       Alert.alert('도면 삭제', message, buttons);
     },
     [index, load, removeFromDevice],
@@ -311,7 +366,7 @@ export function DrawingListScreen({ onOpen }: Props) {
     () => drawingsToDownload(scoped, Object.keys(index.drawings)),
     [scoped, index],
   );
-  const pendingSync = useMemo(
+  const pendingDamages = useMemo(
     () =>
       pendingPushCount(
         Object.values(index.drawings).map((entry) => ({
@@ -321,6 +376,7 @@ export function DrawingListScreen({ onOpen }: Props) {
       ),
     [index],
   );
+  const pendingBadge = pendingSummary(pendingDamages, pendingPhotos);
 
   if (problem) {
     return (
@@ -343,7 +399,7 @@ export function DrawingListScreen({ onOpen }: Props) {
   const currentProject = !flat && location !== null && location !== 'unfiled' ? projects.find((p) => p.id === location) : undefined;
   const title = flat ? '도면 목록' : location === null ? '프로젝트' : location === 'unfiled' ? '미분류' : (currentProject?.path ?? '프로젝트');
   const hasDrawingRow = items.some((item) => item.kind === 'drawing');
-  // 내려받기 버튼은 도면이 든 목록(프로젝트 안·미분류·프로젝트가 없는 평평한 목록)에만 둔다
+  // `현장 가기 전 모두 받기` 버튼은 도면이 든 목록(프로젝트 안·미분류·프로젝트가 없는 평평한 목록)에만 둔다
   // — 맨 위 프로젝트 목록에서는 무엇을 받는지 알기 어렵다(설계 5장 "프로젝트 안(및 미분류)").
   const showListDownload = scoped.length > 0 && (flat || location !== null);
   const emptyText = flat
@@ -360,21 +416,13 @@ export function DrawingListScreen({ onOpen }: Props) {
         )}
         <Text style={styles.title}>{title}</Text>
       </View>
-      {(pendingPhotos > 0 || pendingSync > 0) && (
-        <View style={styles.badgeRow}>
-          {pendingPhotos > 0 && (
-            <Pressable style={styles.badgeCell} onPress={retryPhotos}>
-              <Text style={styles.photoBanner}>보내지 못한 사진 {pendingPhotos}장 — 눌러서 다시 시도</Text>
-            </Pressable>
-          )}
-          {pendingSync > 0 && (
-            <Pressable style={styles.badgeCell} onPress={() => void syncNow()}>
-              <Text style={styles.syncBanner}>서버에 올리지 못한 손상 기록 {pendingSync}개</Text>
-            </Pressable>
-          )}
-        </View>
+      {pendingBadge !== null && (
+        <Pressable onPress={() => void sendNow()}>
+          <Text style={styles.pendingBanner}>{pendingBadge}</Text>
+        </Pressable>
       )}
       {error && <Text style={styles.errorBanner}>{error}</Text>}
+      {opening !== null && <Text style={styles.progressBanner}>여는 중 — {opening}</Text>}
       {downloading && (
         <Text style={styles.progressBanner}>
           {downloading.name
@@ -382,7 +430,7 @@ export function DrawingListScreen({ onOpen }: Props) {
             : `내려받는 중 ${downloading.total}/${downloading.total}`}
         </Text>
       )}
-      {!downloading && downloadResult && (
+      {!downloading && opening === null && downloadResult && (
         <Pressable onPress={() => setDownloadResult(null)}>
           <Text style={styles.resultBanner}>{downloadResult}</Text>
         </Pressable>
@@ -394,15 +442,15 @@ export function DrawingListScreen({ onOpen }: Props) {
             toDownload.length === 0 && styles.listDownloadDone,
             pressed && toDownload.length > 0 && styles.listDownloadPressed,
           ]}
-          disabled={toDownload.length === 0 || downloading !== null}
+          disabled={toDownload.length === 0 || downloading !== null || opening !== null}
           onPress={() => void runDownload(toDownload)}
         >
           <Text style={toDownload.length === 0 ? styles.listDownloadDoneText : styles.listDownloadText}>
-            {toDownload.length === 0 ? '모두 기기에 있음' : `이 목록 내려받기 (${toDownload.length}장)`}
+            {toDownload.length === 0 ? '모두 기기에 있음' : `현장 가기 전 모두 받기 (${toDownload.length}장)`}
           </Text>
         </Pressable>
       )}
-      {hasDrawingRow && <Text style={styles.hint}>도면을 길게 누르면 삭제하거나 기기에서 지울 수 있습니다.</Text>}
+      {hasDrawingRow && <Text style={styles.hint}>도면을 길게 누르면 휴지통으로 보내거나 기기에서 지울 수 있습니다.</Text>}
       <FlatList
         data={items}
         keyExtractor={(item) =>
@@ -448,20 +496,19 @@ export function DrawingListScreen({ onOpen }: Props) {
             );
           }
           const drawing = item.drawing;
-          const status = STATUS[drawing.status];
-          const openable = drawing.status === 'success';
           const downloaded = index.drawings[drawing.id] !== undefined;
-          // 아직 기기에 없고 오프라인용(SVF)으로 변환된 도면만 줄에서 바로 받을 수 있다.
-          // SVF2(옛 도면)는 PC에서 **다시 변환**을 해야 하므로 회색 글씨로 알린다(설계 5장).
-          const canDownload = !downloaded && drawing.offlineReady === true;
+          // 누르면 열리는 도면: 기기에 있거나, 눌렀을 때 받을 수 있는(변환이 끝난 SVF) 도면
+          // (2026-09-28 설계 1.1). 옛 도면(SVF2)·변환 중·실패 도면은 누를 수 없다.
+          const canFetch = drawing.status === 'success' && drawing.offlineReady === true;
+          const openable = downloaded || canFetch;
+          const chip = rowChip(drawing, downloaded, canFetch);
           const syncError = index.drawings[drawing.id]?.syncError ?? null;
-          const needsRetranslate = !downloaded && drawing.viewFormat !== 'svf';
           return (
             <Pressable
               style={({ pressed }) => [styles.row, !openable && styles.rowDisabled, pressed && openable && styles.rowPressed]}
               // disabled로 막으면 길게 누르기도 죽는다 — 변환 실패·대기 중인 도면도 지울 수 있어야 한다.
               onPress={() => {
-                if (openable) onOpen(drawing);
+                if (openable) void openDrawing(drawing);
               }}
               onLongPress={() => confirmDelete(drawing)}
               delayLongPress={600}
@@ -475,20 +522,7 @@ export function DrawingListScreen({ onOpen }: Props) {
                 {drawing.error && <Text style={styles.rowError}>{drawing.error}</Text>}
                 {syncError && <Text style={styles.rowError}>서버가 손상 기록을 받지 않았습니다: {syncError}</Text>}
               </View>
-              <View style={styles.rowRight}>
-                {downloaded && <Text style={styles.deviceChip}>기기</Text>}
-                {canDownload && (
-                  <Pressable
-                    style={({ pressed }) => [styles.rowDownload, pressed && styles.rowDownloadPressed]}
-                    disabled={downloading !== null}
-                    onPress={() => void runDownload([drawing])}
-                  >
-                    <Text style={styles.rowDownloadText}>내려받기</Text>
-                  </Pressable>
-                )}
-                {needsRetranslate && <Text style={styles.retranslateHint}>PC에서 다시 변환 필요</Text>}
-                <Text style={[styles.badge, { backgroundColor: status.color }]}>{status.label}</Text>
-              </View>
+              <Text style={[styles.badge, { backgroundColor: chip.color }]}>{chip.label}</Text>
             </Pressable>
           );
         }}
@@ -505,11 +539,7 @@ const styles = StyleSheet.create({
   backButton: { fontSize: 16, fontWeight: '600', color: '#1e66f5', marginRight: 12 },
   problem: { fontSize: 16, color: '#d32f2f', textAlign: 'center', lineHeight: 24 },
   errorBanner: { color: '#fff', backgroundColor: '#d32f2f', padding: 12, borderRadius: 8, marginBottom: 12 },
-  // 두 배지(사진·손상 기록)는 나란히 놓는다. 하나만 있으면 그 하나가 줄을 다 쓴다.
-  badgeRow: { flexDirection: 'row', gap: 8 },
-  badgeCell: { flex: 1 },
-  photoBanner: { color: '#fff', backgroundColor: '#ef6c00', padding: 12, borderRadius: 8, marginBottom: 12 },
-  syncBanner: { color: '#fff', backgroundColor: '#6a1b9a', padding: 12, borderRadius: 8, marginBottom: 12 },
+  pendingBanner: { color: '#fff', backgroundColor: '#ef6c00', padding: 12, borderRadius: 8, marginBottom: 12 },
   progressBanner: { color: '#fff', backgroundColor: '#1e66f5', padding: 12, borderRadius: 8, marginBottom: 12 },
   resultBanner: { color: '#1a1a1a', backgroundColor: '#e2e6ec', padding: 12, borderRadius: 8, marginBottom: 12 },
   listDownload: { backgroundColor: '#1e66f5', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
@@ -535,20 +565,6 @@ const styles = StyleSheet.create({
   memo: { fontSize: 13, color: '#8a8f98', marginTop: 2 },
   rowError: { fontSize: 13, color: '#d32f2f', marginTop: 4 },
   folderGlyph: { fontSize: 22, marginRight: 12 },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  deviceChip: {
-    color: '#fff',
-    backgroundColor: '#2e7d32',
-    fontSize: 13,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  rowDownload: { backgroundColor: '#1e66f5', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  rowDownloadPressed: { backgroundColor: '#1a56d0' },
-  rowDownloadText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  retranslateHint: { color: '#8a8f98', fontSize: 12 },
   chevron: { fontSize: 22, color: '#c4c8ce', marginLeft: 4 },
   badge: {
     color: '#fff',

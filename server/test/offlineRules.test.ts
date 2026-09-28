@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   bundleNeedsUpdate,
   drawingsToDownload,
+  effectiveDecision,
   pendingPushCount,
+  pendingSummary,
   rewriteViewerHtml,
   syncDecision,
 } from '../../src/offlineRules.js';
@@ -115,5 +117,42 @@ describe('rewriteViewerHtml', () => {
 
   it('그 밖의 내용은 그대로 둔다', () => {
     expect(rewriteViewerHtml('<div>바뀌지 않음</div>')).toBe('<div>바뀌지 않음</div>');
+  });
+});
+
+describe('pendingSummary', () => {
+  it('손상과 사진이 둘 다 있으면 둘 다 쓴다', () => {
+    expect(pendingSummary(2, 3)).toBe('서버에 아직 안 올라감: 손상 2개 · 사진 3장');
+  });
+
+  it('사진만 있으면 손상은 뺀다', () => {
+    expect(pendingSummary(0, 3)).toBe('서버에 아직 안 올라감: 사진 3장');
+  });
+
+  it('손상만 있으면 사진은 뺀다', () => {
+    expect(pendingSummary(1, 0)).toBe('서버에 아직 안 올라감: 손상 1개');
+  });
+
+  it('둘 다 0이면 null(배지 숨김)', () => {
+    expect(pendingSummary(0, 0)).toBeNull();
+  });
+});
+
+describe('effectiveDecision', () => {
+  it('열어 둔 도면의 pull은 건너뛴다(none)', () => {
+    expect(effectiveDecision('pull', 'd1', 'd1')).toBe('none');
+  });
+
+  it('열어 둔 도면이라도 push는 한다', () => {
+    expect(effectiveDecision('push', 'd1', 'd1')).toBe('push');
+  });
+
+  it('다른 도면의 pull은 그대로 한다', () => {
+    expect(effectiveDecision('pull', 'd2', 'd1')).toBe('pull');
+  });
+
+  it('skipPullFor가 없으면 결정을 그대로 돌려준다', () => {
+    expect(effectiveDecision('pull', 'd1', undefined)).toBe('pull');
+    expect(effectiveDecision('none', 'd1', undefined)).toBe('none');
   });
 });

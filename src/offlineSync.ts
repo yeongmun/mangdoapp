@@ -3,7 +3,7 @@
 // 읽기·쓰기만 한다. photoUpload.flushPhotoQueue와 같은 단일 실행 잠금을 쓴다 — 목록 화면 진입·
 // 60초 타이머·배지 탭이 겹쳐 불려도 한 번만 돈다.
 import { fetchDamages, putDamages, type DamageDoc } from './api';
-import { syncDecision } from './offlineRules';
+import { effectiveDecision, syncDecision } from './offlineRules';
 import { readDamages, readIndex, writeDamages, writeIndex, type OfflineDrawingEntry, type OfflineIndex } from './offlineStore';
 
 /** 서버에 없는(휴지통으로 간) 도면에 적는 사유. 목록 화면이 그대로 보인다. */
@@ -24,17 +24,30 @@ export function waitForSync(): Promise<void> {
   return inFlight ? inFlight.then(() => undefined, () => undefined) : Promise.resolve();
 }
 
-export function syncOffline(): Promise<SyncResult> {
+export interface SyncOptions {
+  /** 뷰어에 열려 있는 도면 id — 이 도면은 push만 하고 pull은 건너뛴다(2026-09-28 설계 1.1). */
+  skipPullFor?: string;
+}
+
+// 이미 돌고 있으면 그 약속을 그대로 돌려준다(옵션이 달라도) — 겹쳐 돌면 index.json 갱신이
+// 사라질 수 있다. 목록 화면은 뷰어가 열려 있는 동안 언마운트되어 있으므로 옵션 없는 회차가 새로
+// 시작되지는 않는다. 다만 뷰어를 여는 순간 이미 돌던 목록의 회차 하나는 열어 둔 도면을 pull할 수
+// 있다(이전부터 있던 드문 경우) — 뷰어가 다음에 저장하면 로컬 시각이 더 새것이 되어 push된다.
+export function syncOffline(options: SyncOptions = {}): Promise<SyncResult> {
   if (inFlight) return inFlight;
-  inFlight = runSync().finally(() => {
+  inFlight = runSync(options.skipPullFor).finally(() => {
     inFlight = null;
   });
   return inFlight;
 }
 
-async function runSync(): Promise<SyncResult> {
+async function runSync(skipPullFor: string | undefined): Promise<SyncResult> {
   {
-    let index = readIndex();
+    // 도는 동안 index는 다시 쓰지 않고 도면 목록을 도는 데만 쓴다. 고칠 때는 patchEntry가 그 순간의
+    // index를 새로 읽어 고친다 — 뷰어가 열려 있으면 동기화 도중에도 저장(offlineSave)이
+    // damagesUpdatedAt을 올리므로, 처음 읽은 사본을 통째로 쓰면 그 값이 옛 값으로 되돌아가
+    // 방금 그린 손상이 "올릴 것 없음"이 되고 나중에 서버 것에 덮인다(2026-09-28 설계 1.1).
+    const index = readIndex();
     let pushed = 0;
     let pulled = 0;
     let failed = 0;
@@ -55,13 +68,12 @@ async function runSync(): Promise<SyncResult> {
         // 서버에서 지워진(휴지통) 도면. 못 올린 손상이 있으면 배지가 영영 남으므로 사유를 적어
         // 목록 줄에 보이고, 사용자가 PC에서 복구하거나 기기에서 지우게 한다(최종 검토 Important 3).
         if (entry.syncError !== SERVER_GONE) {
-          index = updateEntry(index, id, { syncError: SERVER_GONE });
-          writeIndex(index);
+          patchEntry(id, { syncError: SERVER_GONE });
         }
         continue;
       }
 
-      const decision = syncDecision(entry.damagesUpdatedAt, serverDoc.updatedAt);
+      const decision = effectiveDecision(syncDecision(entry.damagesUpdatedAt, serverDoc.updatedAt), id, skipPullFor);
       if (decision === 'push') {
         const localDoc = readDamages(id) as DamageDoc | null;
         if (!localDoc) {
@@ -70,8 +82,7 @@ async function runSync(): Promise<SyncResult> {
         }
         try {
           const result = await putDamages(id, localDoc);
-          index = updateEntry(index, id, { serverUpdatedAt: result.updatedAt, syncError: null });
-          writeIndex(index);
+          patchEntry(id, { serverUpdatedAt: result.updatedAt, syncError: null });
           pushed++;
         } catch (err) {
           // 연결 실패는 조용히 다음 기회로. 서버가 4xx로 거절한 것(형식 오류 등)은 다시 보내도
@@ -80,8 +91,7 @@ async function runSync(): Promise<SyncResult> {
           console.error('[offlineSync] 손상 기록을 올리지 못했습니다', id, err);
           const status = (err as { status?: unknown }).status;
           if (typeof status === 'number' && status >= 400 && status < 500) {
-            index = updateEntry(index, id, { syncError: err instanceof Error ? err.message : String(err) });
-            writeIndex(index);
+            patchEntry(id, { syncError: err instanceof Error ? err.message : String(err) });
           }
           failed++;
         }
@@ -90,8 +100,7 @@ async function runSync(): Promise<SyncResult> {
           failed++;
           continue;
         }
-        index = updateEntry(index, id, { damagesUpdatedAt: serverDoc.updatedAt, serverUpdatedAt: serverDoc.updatedAt });
-        writeIndex(index);
+        patchEntry(id, { damagesUpdatedAt: serverDoc.updatedAt, serverUpdatedAt: serverDoc.updatedAt });
         pulled++;
       }
       // decision === 'none'이면 할 일이 없다.
@@ -99,6 +108,12 @@ async function runSync(): Promise<SyncResult> {
 
     return { pushed, pulled, failed };
   }
+}
+
+// 그 순간의 index를 읽어 도면 하나만 고쳐 쓴다. readIndex·writeIndex가 동기라 둘 사이에 다른
+// 저장이 끼어들지 않는다.
+function patchEntry(id: string, patch: Partial<OfflineDrawingEntry>): void {
+  writeIndex(updateEntry(readIndex(), id, patch));
 }
 
 function updateEntry(index: OfflineIndex, id: string, patch: Partial<OfflineDrawingEntry>): OfflineIndex {

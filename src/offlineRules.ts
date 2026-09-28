@@ -50,6 +50,27 @@ export function pendingPushCount(entries: { localUpdatedAt: string; serverUpdate
   return entries.filter((e) => syncDecision(e.localUpdatedAt, e.serverUpdatedAt) === 'push').length;
 }
 
+// 뷰어를 연 채로 동기화할 때(2026-09-28 설계 1.1) 열어 둔 도면은 push만 하고 pull은 하지 않는다 —
+// 뷰어가 들고 있는 문서는 그대로인데 기기 파일만 서버 것으로 바뀌면, 다음 저장이 서버 것을 덮거나
+// 둘이 갈라진다. 그래서 그 도면의 pull 결정만 none으로 바꾸고 나머지는 그대로 둔다.
+export function effectiveDecision(
+  decision: SyncDecision,
+  drawingId: string,
+  skipPullFor: string | undefined,
+): SyncDecision {
+  if (decision === 'pull' && skipPullFor !== undefined && drawingId === skipPullFor) return 'none';
+  return decision;
+}
+
+// 목록 화면 위쪽의 배지 하나(2026-09-28 설계 1.2). 손상·사진 중 0인 쪽은 빼고 쓴다 — 현장에서
+// "손상 0개"까지 읽을 필요가 없다. 둘 다 0이면 배지를 숨기도록 null.
+export function pendingSummary(damages: number, photos: number): string | null {
+  const parts: string[] = [];
+  if (damages > 0) parts.push(`손상 ${damages}개`);
+  if (photos > 0) parts.push(`사진 ${photos}장`);
+  return parts.length === 0 ? null : `서버에 아직 안 올라감: ${parts.join(' · ')}`;
+}
+
 // 오프라인 꾸러미의 viewer.html은 서버가 오토데스크 CDN 절대 URL로 style.min.css·viewer3D.min.js를
 // 부른다(server/public/viewer.html) — 기기는 인터넷이 없을 수 있으므로 그대로 두면 열리지 않는다.
 // offlineDownload.ts가 꾸러미를 받은 직후 이 함수로 그 두 줄만 내려받은 상대 경로(autodesk/...)로

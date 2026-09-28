@@ -106,10 +106,6 @@ export async function deleteDrawing(drawingId: string): Promise<void> {
   if (!res.ok) throw new Error(`도면을 삭제하지 못했습니다 (${res.status}).`);
 }
 
-export function viewerUrl(drawingId: string): string {
-  return `${API_URL}/viewer.html?id=${encodeURIComponent(drawingId)}#key=${encodeURIComponent(ACCESS_KEY)}`;
-}
-
 // GET 요청 하나의 공통 뼈대(접근키 헤더·연결 실패 문구). 오프라인 API 넷이 똑같이 쓴다.
 async function apiGet(path: string): Promise<Response> {
   try {
