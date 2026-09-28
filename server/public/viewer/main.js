@@ -944,7 +944,15 @@ async function start() {
   syncToolbarHeight();
   renderPageControls();
   // 페이지로 시작하면 뷰어가 도형을 다 그린 다음 틀에 맞춘다(첫 fitToView 뒤에 오도록 한 박자 늦춘다).
-  if (viewMode === 'page') requestAnimationFrame(() => fitPage(pageIndex));
+  if (viewMode === 'page') {
+    // 뷰어가 처음 도면 전체로 맞추는 동작이 기기에 따라 늦게 끝날 수 있다 — 한 프레임 뒤에 한 번,
+    // 그리고 조금 뒤에 한 번 더 맞춘다. 그 사이 사용자가 페이지를 바꾸거나 전체로 돌렸으면 두 번째는 하지 않는다.
+    const startPage = pageIndex;
+    requestAnimationFrame(() => fitPage(startPage));
+    setTimeout(() => {
+      if (viewMode === 'page' && pageIndex === startPage) fitPage(startPage);
+    }, 600);
+  }
   postToApp({ type: 'ready' });
 }
 
