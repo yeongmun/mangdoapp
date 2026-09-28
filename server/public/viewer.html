@@ -14,6 +14,7 @@
     <svg id="overlay" aria-hidden="true"></svg>
 
     <div id="toolbar" hidden>
+      <span id="viewModeGroup" role="group" aria-label="보기 방식"><button id="viewAll" type="button" aria-pressed="true">전체</button><button id="viewPage" type="button" aria-pressed="false">페이지</button></span>
       <select id="damageType" aria-label="손상 유형"></select>
       <button id="props" type="button" disabled>속성</button>
       <button id="fingerDraw" type="button" aria-pressed="false">손가락 그리기</button>
@@ -52,6 +53,8 @@
       <p id="errorText"></p>
       <button id="retry" type="button">다시 시도</button>
     </div>
+
+    <div id="pageNav" hidden><button id="pagePrev" type="button">◀ 이전</button><span id="pageLabel"></span><button id="pageNext" type="button">다음 ▶</button></div>
 
     <script type="module" src="viewer/main.js"></script>
   </body>

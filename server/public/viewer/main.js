@@ -30,6 +30,7 @@ import {
 } from './quantities.js';
 import { blocksDrawing, photoStripItems } from './photoStrip.js';
 import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlineApi.js';
+import { clampPage, frameWorldBox, pageCount, pageLabel } from './pageView.js';
 
 const $ = (id) => document.getElementById(id);
 // 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다. 어떤 WebView가
@@ -237,7 +238,8 @@ async function start() {
 
   const overlay = createOverlay($('overlay'), mapper);
   // 레코드에 frames가 없으면(옛 도면·DWG) 빈 배열이고, 그때는 도면 전체에서 1번부터 매긴다.
-  overlay.setFrames(Array.isArray(drawing.frames) ? drawing.frames : []);
+  const frames = Array.isArray(drawing.frames) ? drawing.frames : [];
+  overlay.setFrames(frames);
   viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => overlay.requestRender());
   window.addEventListener('resize', () => overlay.requestRender());
 
@@ -877,10 +879,72 @@ async function start() {
     if (document.visibilityState === 'hidden') void syncer.flushNow();
   });
 
+  // 망도틀 한 페이지씩 보기(2026-09-28 설계 2장) ─────────────────────────────
+  // 카메라만 옮긴다 — 그 뒤는 CAMERA_CHANGE_EVENT → overlay.requestRender 흐름이 그대로 다시 그린다.
+  // 틀이 없거나 첫 틀조차 뷰어 좌표로 못 바꾸면(DWG 좌표 변환 불가) 페이지 모드를 끈다.
+  const pagesAvailable = pageCount(frames) > 0 && frameWorldBox(frames[0], mapper.dwgToWorld) !== null;
+  let viewMode = pagesAvailable && injectedOffline?.viewMode === 'page' ? 'page' : 'all';
+  let pageIndex = clampPage(injectedOffline?.pageIndex ?? 0, frames);
+
+  function fitPage(index) {
+    const box = frameWorldBox(frames[index], mapper.dwgToWorld);
+    if (!box) return false;
+    const bounds = new THREE.Box3(new THREE.Vector3(box.minX, box.minY, 0), new THREE.Vector3(box.maxX, box.maxY, 0));
+    viewer.navigation.fitBounds(false, bounds);
+    return true;
+  }
+
+  function renderPageControls() {
+    const count = pageCount(frames);
+    $('viewAll').setAttribute('aria-pressed', String(viewMode === 'all'));
+    $('viewPage').setAttribute('aria-pressed', String(viewMode === 'page'));
+    $('viewPage').disabled = !pagesAvailable;
+    $('pageNav').hidden = viewMode !== 'page';
+    $('pageLabel').textContent = count > 0 ? pageLabel(pageIndex, count) : '';
+    $('pagePrev').disabled = pageIndex <= 0;
+    $('pageNext').disabled = pageIndex >= count - 1;
+  }
+
+  function postViewPrefs() {
+    postToApp({ type: 'viewPrefs', viewMode, pageIndex });
+  }
+
+  function showPage(index) {
+    pageIndex = clampPage(index, frames);
+    fitPage(pageIndex);
+    renderPageControls();
+    postViewPrefs();
+  }
+
+  $('viewAll').addEventListener('click', () => {
+    if (viewMode === 'all') return;
+    viewMode = 'all';
+    viewer.fitToView();
+    renderPageControls();
+    postViewPrefs();
+  });
+  $('viewPage').addEventListener('click', () => {
+    if (!pagesAvailable || viewMode === 'page') return;
+    viewMode = 'page';
+    showPage(pageIndex);
+  });
+  $('pagePrev').addEventListener('click', () => showPage(pageIndex - 1));
+  $('pageNext').addEventListener('click', () => showPage(pageIndex + 1));
+
+  // 폰 세로에서 도구막대가 두 줄로 감기면 높이가 바뀐다 — 페이지 이동 줄이 그 바로 위에 오도록 알린다.
+  const syncToolbarHeight = () =>
+    document.documentElement.style.setProperty('--toolbar-h', `${$('toolbar').offsetHeight}px`);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncToolbarHeight).observe($('toolbar'));
+  window.addEventListener('resize', syncToolbarHeight);
+
   if (initial.needsUpload) syncer.change(initial.doc);
   refresh();
   $('loading').hidden = true;
   $('toolbar').hidden = false;
+  syncToolbarHeight();
+  renderPageControls();
+  // 페이지로 시작하면 뷰어가 도형을 다 그린 다음 틀에 맞춘다(첫 fitToView 뒤에 오도록 한 박자 늦춘다).
+  if (viewMode === 'page') requestAnimationFrame(() => fitPage(pageIndex));
   postToApp({ type: 'ready' });
 }
 

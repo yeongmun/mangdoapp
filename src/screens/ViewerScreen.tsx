@@ -16,6 +16,7 @@ import {
 import { syncOffline } from '../offlineSync';
 import { takePhotoAndSave } from '../photo';
 import { enqueuePhoto, flushPhotoQueue, pendingPhotoCountFor, type UploadNotice } from '../photoUpload';
+import { readViewerPrefs, writeViewerPrefs } from '../viewerPrefs';
 
 interface Props {
   drawing: Drawing;
@@ -71,6 +72,8 @@ function buildOfflineSource(drawing: Drawing): OfflineSource | null {
     frames: drawing.frames ?? entry.frames,
   };
   const root = offlineRoot().uri;
+  // 보기 방식과 이 도면의 마지막 페이지(설계 2.1). 뷰어가 틀 수에 맞춰 다시 자른다(clampPage).
+  const prefs = readViewerPrefs();
   return {
     pageUri: viewerPageUri(index.bundleVersion, drawing.id),
     readAccessUri: root.endsWith('/') ? root : `${root}/`,
@@ -78,6 +81,8 @@ function buildOfflineSource(drawing: Drawing): OfflineSource | null {
       drawing: record,
       doc,
       modelUrl: modelUri(drawing.id, entry.model),
+      viewMode: prefs.viewMode,
+      pageIndex: prefs.pages[drawing.id] ?? 0,
     })}; true;`,
   };
 }
@@ -223,6 +228,16 @@ export function ViewerScreen({ drawing, onBack }: Props) {
       // 오프라인 뷰어의 진행 단계(진단용). Metro 콘솔에서 어디까지 갔는지 본다.
       const { step, detail } = message as { step?: unknown; detail?: unknown };
       console.log('[offline-viewer]', String(step ?? ''), String(detail ?? ''));
+    } else if (type === 'viewPrefs') {
+      // 뷰어에서 보기 방식이나 페이지가 바뀌었다(설계 2.1). 앱을 껐다 켜도 이어 보도록 저장한다.
+      const { viewMode, pageIndex } = message as { viewMode?: unknown; pageIndex?: unknown };
+      if (viewMode !== 'all' && viewMode !== 'page') return;
+      const prefs = readViewerPrefs();
+      const pages = { ...prefs.pages };
+      if (typeof pageIndex === 'number' && Number.isInteger(pageIndex) && pageIndex >= 0) {
+        pages[drawing.id] = pageIndex;
+      }
+      writeViewerPrefs({ viewMode, pages });
     } else if (type === 'offlineSave') {
       // 오프라인 뷰어의 저장 요청(설계 3.4). 뷰어는 3초 안에 회신을 기다리므로 파일에 쓰고
       // 바로 답한다 — writeDamages는 동기(tmp→move)라 늦어지지 않는다. 쓰지 못했으면 답하지
