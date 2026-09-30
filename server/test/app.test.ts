@@ -1239,7 +1239,7 @@ describe('GET /api/drawings/:id/damages/:damageId/photos/:number', () => {
 });
 
 describe('GET /api/drawings/:id/photos.zip', () => {
-  it('사진을 zip으로 묶어 보낸다 (이름은 번호_손상현황_사진번호)', async () => {
+  it('사진을 zip으로 묶어 보낸다 (이름은 망도틀번호_손상현황_사진번호)', async () => {
     const { app, drawings, damages, photos } = setup();
     const drawing = await seed(drawings, { name: '교량 A.dwg' });
     await damages.save(photoDoc(drawing.id));
@@ -1259,7 +1259,8 @@ describe('GET /api/drawings/:id/photos.zip', () => {
     // 진짜 zip인지: 첫 항목 머리글 서명 PK\x03\x04
     expect(body.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
     // 항목 이름은 머리글에 UTF-8 그대로 들어가고, store 방식이라 내용도 그대로 들어간다.
-    expect(body.includes(Buffer.from('1_균열(0.3mm미만)_101530.jpg', 'utf8'))).toBe(true);
+    // 이 시험 도면은 틀이 없으므로 망도틀 번호 자리가 000이다.
+    expect(body.includes(Buffer.from('000_균열(0.3mm미만)_101530.jpg', 'utf8'))).toBe(true);
     expect(body.includes(Buffer.from('photo-one', 'utf8'))).toBe(true);
   });
 
