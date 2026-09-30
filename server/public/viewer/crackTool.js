@@ -215,6 +215,10 @@ export function createCrackInput({
   // 모서리·회전 핸들 판정(hitHandle)은 kind === 'rect'일 때만 하고, 몸통 이동 판정(hitSelectedShape)은
   // 두 kind 모두에서 한다.
   getSelectedScreenShape,
+  // getSelectedDamageScreenShapes(): [{ shapeIndex, kind, points }] — 선택된 손상의 모든 도형(없으면 []).
+  // onPickShape(shapeIndex): 선택된 손상 안에서 다른 도형을 끌기 시작했을 때 그 도형을 선택하게 한다.
+  getSelectedDamageScreenShapes = () => [],
+  onPickShape = () => undefined,
   onDraft,
   onStroke,
   onRect,
@@ -271,6 +275,13 @@ export function createCrackInput({
     }
     if (hitSelectedShape(point, selectedShape)) {
       gesture = { kind: 'move', start: point, points: selectedShape.points };
+      return;
+    }
+    // 같은 손상의 다른 도형(원본·복제본)을 끌면 그 도형으로 선택을 옮기고 이동한다.
+    const other = getSelectedDamageScreenShapes().find((shape) => hitSelectedShape(point, shape));
+    if (other) {
+      onPickShape(other.shapeIndex);
+      gesture = { kind: 'move', start: point, points: other.points };
       return;
     }
     if (getActiveTypeKind() === 'area') {

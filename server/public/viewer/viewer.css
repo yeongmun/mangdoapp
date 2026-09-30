@@ -60,22 +60,6 @@ body {
   opacity: 0.4;
 }
 
-/* 전체 | 페이지 전환(2026-09-28 설계 2.1): 두 버튼을 붙인 한 덩어리, 고른 쪽이 파랗게(aria-pressed). */
-#viewModeGroup {
-  display: inline-flex;
-  flex: none;
-}
-#viewModeGroup button {
-  border-radius: 0;
-}
-#viewModeGroup button:first-child {
-  border-radius: 8px 0 0 8px;
-}
-#viewModeGroup button:last-child {
-  border-radius: 0 8px 8px 0;
-  border-left: none;
-}
-
 /* 페이지 이동(◀ 이전 · 3 / 7 · 다음 ▶): 화면 아래 가운데, 도구막대 바로 위. 도구막대 높이는
    main.js가 --toolbar-h로 알려 준다(폰 세로에서 두 줄로 감기면 높아진다). 자기 상자만 누름을 받는다 —
    나머지 화면에서는 그대로 그린다. */
@@ -342,8 +326,6 @@ body {
   }
   .status { font-size: 12px; text-align: center; }
   /* 도구막대가 오른쪽 기둥이라 아래는 비어 있다 — 페이지 이동은 맨 아래에 붙인다. */
-  #viewModeGroup { align-self: stretch; }
-  #viewModeGroup button { flex: 1; }
   #pageNav {
     bottom: calc(8px + env(safe-area-inset-bottom));
     padding: 4px;

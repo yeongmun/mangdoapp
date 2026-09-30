@@ -305,6 +305,16 @@ async function start() {
   // 선택된 **도형**의 화면 좌표. crackTool의 getSelectedScreenShape로 넘긴다 — 모서리·회전 핸들
   // 판정은 kind === 'rect'일 때만 하고, 몸통을 끌어 옮기는 판정(hitSelectedShape)은 선·사각형
   // 모두에서 한다(설계 §4 "선택한 손상 이동"). 복제본도 첫 도형과 똑같이 끌 수 있다.
+  function selectedDamageScreenShapes() {
+    const damage = selectedDamage();
+    if (!damage) return [];
+    return shapesOf(damage).map((shape, shapeIndex) => ({
+      shapeIndex,
+      kind: damage.geometry.kind,
+      points: shape.world.map((point) => mapper.worldToClient(point)),
+    }));
+  }
+
   function selectedScreenShape() {
     const damage = selectedDamage();
     if (!damage) return null;
@@ -387,6 +397,15 @@ async function start() {
     isPropsOpen: () => blocksDrawing(isPropsOpen(), isPhotoViewOpen()),
     getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
     getSelectedScreenShape: selectedScreenShape,
+    // 선택된 손상의 모든 도형(원본 + 복제본). 선택된 도형이 아니어도 같은 손상의 도형을 끌면 그 도형을
+    // 옮긴다(2026-09-30 사용자 요청: 복제한 뒤 원본도 바로 옮길 수 있게). 다른 손상의 도형은 그대로
+    // 새로 그리기다 — 기존 손상 위에 겹쳐 그리려다 실수로 옮기지 않게.
+    getSelectedDamageScreenShapes: selectedDamageScreenShapes,
+    onPickShape: (shapeIndex) => {
+      if (selectedId === null) return;
+      selectedShape = shapeIndex;
+      refresh();
+    },
     onDraft: (draft) => overlay.setDraft(draft),
     onTap: handleTap,
     onStroke: (points) => {
@@ -882,8 +901,10 @@ async function start() {
   // 망도틀 한 페이지씩 보기(2026-09-28 설계 2장) ─────────────────────────────
   // 카메라만 옮긴다 — 그 뒤는 CAMERA_CHANGE_EVENT → overlay.requestRender 흐름이 그대로 다시 그린다.
   // 틀이 없거나 첫 틀조차 뷰어 좌표로 못 바꾸면(DWG 좌표 변환 불가) 페이지 모드를 끈다.
+  // 2026-09-30 사용자 결정: 전체/페이지를 나눌 필요 없이 **페이지가 기본이자 유일한 방식**이다. 틀이 없는
+  // 도면(또는 좌표 변환 불가)만 예전처럼 도면 전체를 보인다.
   const pagesAvailable = pageCount(frames) > 0 && frameWorldBox(frames[0], mapper.dwgToWorld) !== null;
-  let viewMode = pagesAvailable && injectedOffline?.viewMode === 'page' ? 'page' : 'all';
+  const viewMode = pagesAvailable ? 'page' : 'all';
   let pageIndex = clampPage(injectedOffline?.pageIndex ?? 0, frames);
 
   function fitPage(index) {
@@ -896,9 +917,6 @@ async function start() {
 
   function renderPageControls() {
     const count = pageCount(frames);
-    $('viewAll').setAttribute('aria-pressed', String(viewMode === 'all'));
-    $('viewPage').setAttribute('aria-pressed', String(viewMode === 'page'));
-    $('viewPage').disabled = !pagesAvailable;
     $('pageNav').hidden = viewMode !== 'page';
     $('pageLabel').textContent = count > 0 ? pageLabel(pageIndex, count) : '';
     $('pagePrev').disabled = pageIndex <= 0;
@@ -916,18 +934,6 @@ async function start() {
     postViewPrefs();
   }
 
-  $('viewAll').addEventListener('click', () => {
-    if (viewMode === 'all') return;
-    viewMode = 'all';
-    viewer.fitToView();
-    renderPageControls();
-    postViewPrefs();
-  });
-  $('viewPage').addEventListener('click', () => {
-    if (!pagesAvailable || viewMode === 'page') return;
-    viewMode = 'page';
-    showPage(pageIndex);
-  });
   $('pagePrev').addEventListener('click', () => showPage(pageIndex - 1));
   $('pageNext').addEventListener('click', () => showPage(pageIndex + 1));
 
@@ -946,11 +952,11 @@ async function start() {
   // 페이지로 시작하면 뷰어가 도형을 다 그린 다음 틀에 맞춘다(첫 fitToView 뒤에 오도록 한 박자 늦춘다).
   if (viewMode === 'page') {
     // 뷰어가 처음 도면 전체로 맞추는 동작이 기기에 따라 늦게 끝날 수 있다 — 한 프레임 뒤에 한 번,
-    // 그리고 조금 뒤에 한 번 더 맞춘다. 그 사이 사용자가 페이지를 바꾸거나 전체로 돌렸으면 두 번째는 하지 않는다.
+    // 그리고 조금 뒤에 한 번 더 맞춘다. 그 사이 사용자가 페이지를 바꿨으면 두 번째는 하지 않는다.
     const startPage = pageIndex;
     requestAnimationFrame(() => fitPage(startPage));
     setTimeout(() => {
-      if (viewMode === 'page' && pageIndex === startPage) fitPage(startPage);
+      if (pageIndex === startPage) fitPage(startPage);
     }, 600);
   }
   postToApp({ type: 'ready' });
