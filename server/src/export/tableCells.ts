@@ -44,6 +44,14 @@ export function numberColumnWrites(grid: TableGrid, page: number): CellWrite[] {
   return writes;
 }
 
+/**
+ * 셀 값(1·302)과 글자 블록 MTEXT(1)는 MTEXT 서식 글자다. 역슬래시와 중괄호는 서식 기호로 읽히므로
+ * 앞에 역슬래시를 붙여 글자 그대로 보이게 한다. 긴 글자를 250자씩 나누지는 않는다.
+ */
+export function escapeMtext(text: string): string {
+  return text.replace(/[\\{}]/g, (ch) => `\\${ch}`);
+}
+
 // 셀 값 묶음(설계 2장). 93 플래그·90 자료형·값·94·302 표시 글자·304 끝.
 function valueGroup(value: string | number): DxfPair[] {
   if (typeof value === 'number') {
@@ -62,9 +70,9 @@ function valueGroup(value: string | number): DxfPair[] {
     pair(301, 'CELL_VALUE'),
     pair(93, '        0'),
     pair(90, '        4'),
-    pair(1, value),
+    pair(1, escapeMtext(value)),
     pair(94, '        0'),
-    pair(302, value),
+    pair(302, escapeMtext(value)),
     pair(304, 'ACVALUE_END'),
   ];
 }
@@ -118,7 +126,7 @@ export function cellMtextPairs(grid: TableGrid, write: CellWrite, handle: string
   const top = grid.rowBoundaries[write.row];
   const bottom = grid.rowBoundaries[write.row + 1];
   const width = Math.max(0, right - left - 2 * cellMargin(grid));
-  const text = typeof write.value === 'number' ? formatInt(write.value) : write.value;
+  const text = typeof write.value === 'number' ? formatInt(write.value) : escapeMtext(write.value);
   return [
     pair(0, 'MTEXT'),
     pair(5, handle),

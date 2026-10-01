@@ -6,6 +6,7 @@ import {
   cellMargin,
   cellMtextPairs,
   cellWritesFor,
+  escapeMtext,
   numberColumnWrites,
   stripGraphicsCache,
   writeCellValues,
@@ -124,5 +125,25 @@ describe('cellMargin · cellMtextPairs · appendBeforeEndblk', () => {
     const out = appendBeforeEndblk(block, [pair(0, 'MTEXT')]);
     expect(out.map((p) => p.value)).toEqual(['BLOCK', '*T1', 'LINE', 'MTEXT', 'ENDBLK', '9']);
     expect(() => appendBeforeEndblk([pair(0, 'BLOCK')], [])).toThrow(/ENDBLK/);
+  });
+});
+
+describe('escapeMtext', () => {
+  // 역슬래시·중괄호는 MTEXT 서식 기호라 그대로 두면 글자가 사라지거나 서식이 깨진다.
+  const RAW = 'a{b}\\c';
+  const ESCAPED = 'a\\{b\\}\\\\c';
+
+  it('역슬래시와 중괄호 앞에 역슬래시를 붙인다', () => {
+    expect(escapeMtext(RAW)).toBe(ESCAPED);
+    expect(escapeMtext('박락 1.2×1.5')).toBe('박락 1.2×1.5');
+  });
+
+  it('셀 값(1·302)과 글자 블록 MTEXT(1)에 이스케이프된 글자가 들어간다', async () => {
+    const { grid, tablePairs } = await setup();
+    const write = { row: 2, column: 2, value: RAW };
+    const group = cellGroup(writeCellValues(tablePairs, 8, [write]), 2 * 8 + 2);
+    expect(group.find((p) => p.code === 1)!.value).toBe(ESCAPED);
+    expect(group.find((p) => p.code === 302)!.value).toBe(ESCAPED);
+    expect(cellMtextPairs(grid, write, '1A4', '31').find((p) => p.code === 1)!.value).toBe(ESCAPED);
   });
 });
