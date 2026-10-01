@@ -298,6 +298,21 @@ describe('모델 공간 표가 있는 틀 (2026-10-02)', () => {
     expect(regions.inFrame[1]).toContain(ctx.ranges[frames[1].tableEntityIndex!]);
   });
 
+  // 위 테스트는 표 전체가 틀 한가운데 있어 삽입점만 봐도 결론이 같다 — 점 판정과 영역 판정이
+  // 갈리는 자리를 만들어야 resolvedBounds의 ACAD_TABLE 분기를 실제로 가른다(리뷰 1차 지적).
+  // 표 삽입점 x=950은 틀 영역(x 1000~5000) 밖이지만, 표 영역의 중심 x = 950+570(너비 1140의
+  // 절반) = 1520은 틀 안이다 — 삽입점만 보면 loose, 영역으로 보면 inFrame[0]이어야 한다.
+  it('표 삽입점이 틀 밖이어도 표 영역의 중심이 틀 안이면 inFrame이다(점 판정과 갈리는 경우)', async () => {
+    const original = await modelSpaceTemplate();
+    const moved = original.replace('\n 10\n2000.0\n 20\n3400.0\n', '\n 10\n950.0\n 20\n3400.0\n');
+    expect(moved).not.toBe(original); // 치환 대상이 실제로 있었는지 확인
+    const { frames, ctx } = await contextOf(moved);
+    const regions = indexRegions(ctx, frames);
+    const table = ctx.ranges[frames[0].tableEntityIndex!];
+    expect(regions.inFrame[0]).toContain(table);
+    expect(regions.loose.some((l) => l.range === table)).toBe(false);
+  });
+
   it('copyRegion은 exclude로 넘긴 표를 베끼지 않고 skipped에도 세지 않는다', async () => {
     const { frames, ctx } = await contextOf(await modelSpaceTemplate());
     const regions = indexRegions(ctx, frames);
