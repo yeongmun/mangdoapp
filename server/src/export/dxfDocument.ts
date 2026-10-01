@@ -262,3 +262,66 @@ export function ensureLayer(doc: DxfDocument, alloc: HandleAllocator, name: stri
   ];
   doc.pairs.splice(table.end, 0, ...record);
 }
+
+export interface BlockLocation {
+  /** (0, BLOCK) 쌍의 인덱스 */
+  start: number;
+  /** (0, ENDBLK) 쌍의 인덱스 — 이 앞에 엔티티를 끼워 넣는다 */
+  endblkIndex: number;
+  /** ENDBLK 엔티티 다음 (0, …) 쌍의 인덱스 — 여기에 다음 블록을 넣는다 */
+  end: number;
+  /** BLOCK 머리의 330 = 이 블록의 BLOCK_RECORD 핸들 */
+  recordHandle: string;
+}
+
+// BLOCKS 구역에서 이름이 name인 블록의 자리. 이름은 BLOCK 머리의 코드 2로 본다(코드 3도 같은
+// 이름이지만 2가 먼저 온다).
+export function findBlock(doc: DxfDocument, name: string): BlockLocation | null {
+  const section = findSection(doc, 'BLOCKS');
+  if (!section) return null;
+  const { pairs } = doc;
+  for (let i = section.start; i < section.end; i++) {
+    if (pairs[i].code !== 0 || pairs[i].value !== 'BLOCK') continue;
+    let recordHandle = '';
+    let found = false;
+    let j = i + 1;
+    for (; j < section.end && pairs[j].code !== 0; j++) {
+      if (pairs[j].code === 330 && !recordHandle) recordHandle = pairs[j].value.trim();
+      else if (pairs[j].code === 2 && pairs[j].value === name) found = true;
+    }
+    if (!found) continue;
+    let endblkIndex = -1;
+    for (let k = j; k < section.end; k++) {
+      if (pairs[k].code === 0 && pairs[k].value === 'ENDBLK') {
+        endblkIndex = k;
+        break;
+      }
+    }
+    if (endblkIndex < 0) return null;
+    let end = endblkIndex + 1;
+    while (end < pairs.length && pairs[end].code !== 0) end += 1;
+    return { start: i, endblkIndex, end, recordHandle };
+  }
+  return null;
+}
+
+export interface SymbolTableInfo {
+  /** 표 자신의 핸들(코드 5) — 새 레코드의 소유자(330) */
+  handle: string;
+  /** 표 머리의 (70, 개수) 쌍 인덱스. 없으면 -1 */
+  countIndex: number;
+  /** (0, ENDTAB) 쌍의 인덱스 — 새 레코드는 여기에 넣는다 */
+  end: number;
+}
+
+export function symbolTableInfo(doc: DxfDocument, tableName: string): SymbolTableInfo | null {
+  const table = findTable(doc, tableName);
+  if (!table) return null;
+  let handle = '';
+  let countIndex = -1;
+  for (let i = table.start + 2; i < table.end && doc.pairs[i].code !== 0; i++) {
+    if (doc.pairs[i].code === 5 && !handle) handle = doc.pairs[i].value.trim();
+    else if (doc.pairs[i].code === 70 && countIndex < 0) countIndex = i;
+  }
+  return { handle, countIndex, end: table.end };
+}
