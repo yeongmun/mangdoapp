@@ -104,3 +104,92 @@ const NESTED_INSERT = [
 export function withNestedInsert(text: string): string {
   return replaceOnce(text, '  0\nENDBLK\n  5\n52\n', NESTED_INSERT + '  0\nENDBLK\n  5\n52\n');
 }
+
+// ───────── 모델 공간 표 템플릿(2026-10-02 설계) ─────────
+// 새 사내 템플릿은 망도틀 블록 안에 표가 없고 모델 공간에 틀마다 ACAD_TABLE이 놓인다.
+// 픽스처 템플릿을 그 모양으로 바꾼다: 블록 안 표를 빼고 LINE 하나로 영역을 만들고, 틀마다
+// INSERT + 표(셀 묶음 포함)를 넣는다. 글자 블록은 틀 0이 *TX를 그대로 쓰고 틀 k≥1은 *TXk 사본.
+
+const CELL_ATTRS = ['171', '     1', '172', '     0', '173', '     0', '174', '     0', '175', '     1', '176', '     1', ' 91', '        32', '178', '     0', ' 92', '        0'];
+
+function stringCell(text: string): string[] {
+  return [...CELL_ATTRS, '301', 'CELL_VALUE', ' 93', '        0', ' 90', '        4', '  1', text, ' 94', '        0', '302', text, '304', 'ACVALUE_END'];
+}
+function intCell(n: number): string[] {
+  return [...CELL_ATTRS, '301', 'CELL_VALUE', ' 93', '        0', ' 90', '        1', ' 91', String(n).padStart(9, ' '), ' 94', '        0', '300', '', '302', String(n), '304', 'ACVALUE_END'];
+}
+function emptyCell(): string[] {
+  return [...CELL_ATTRS, '301', 'CELL_VALUE', ' 93', '        3', ' 90', '        0', ' 91', '        0', ' 94', '        0', '300', '', '302', '', '304', 'ACVALUE_END'];
+}
+
+const MODEL_TABLE_HEADERS = ['번호', '손상위치', '손상현황', '가로/폭', '세로/길이', '개소', '면적/연장', '단위'];
+
+// 모델 공간 ACAD_TABLE 한 벌. 5행 × 8열, 행 높이 40·20×4, 열 너비는 템플릿 표와 같다.
+function modelTableText(handle: string, x: number, blockName: string, recordHandle: string): string {
+  const cells: string[] = [];
+  for (let row = 0; row < 5; row++) {
+    for (let col = 0; col < 8; col++) {
+      if (row === 0) cells.push(...(col === 0 ? stringCell('손상물량표') : emptyCell()));
+      else if (row === 1) cells.push(...stringCell(MODEL_TABLE_HEADERS[col]));
+      else cells.push(...(col === 0 ? intCell(row - 1) : emptyCell()));
+    }
+  }
+  return [
+    '  0', 'ACAD_TABLE', '  5', handle, '102', '{ACAD_XDICTIONARY', '360', 'FF', '102', '}', '330', '1F',
+    '100', 'AcDbEntity', '  8', '0', '160', '                 4', '310', '00000000',
+    '100', 'AcDbBlockReference', '  2', blockName, ' 10', x.toFixed(1), ' 20', '3400.0', ' 30', '0.0',
+    '100', 'AcDbTable', '342', '88', '343', recordHandle, ' 11', '1.0', ' 21', '0.0', ' 31', '0.0',
+    ' 90', '       22', ' 91', '        5', ' 92', '        8', ' 93', '       24', ' 94', '        0',
+    '141', '40.0', '141', '20.0', '141', '20.0', '141', '20.0', '141', '20.0',
+    '142', '100.0', '142', '150.0', '142', '300.0', '142', '120.0', '142', '120.0', '142', '100.0', '142', '140.0', '142', '110.0',
+    ...cells, '',
+  ].join('\n');
+}
+
+// *TX 블록(BLOCK…ENDBLK)을 이름 *TXk·레코드 k31·핸들 k60~k76으로 베낀다.
+function tableBlockCopy(text: string, k: number): string {
+  const start = text.indexOf('  0\nBLOCK\n  5\n60\n');
+  const end = text.indexOf('  0\nENDSEC\n', start);
+  if (start < 0 || end < 0) throw new Error('픽스처의 *TX 블록을 찾지 못했습니다');
+  return text
+    .slice(start, end)
+    .replace(/\n  5\n([67][0-9A-F])\n/g, (_m, h: string) => `\n  5\n${k}${h}\n`)
+    .replace(/\n330\n31\n/g, `\n330\n${k}31\n`)
+    .replace(/\n  2\n\*TX\n/g, `\n  2\n*TX${k}\n`)
+    .replace(/\n  3\n\*TX\n/g, `\n  3\n*TX${k}\n`);
+}
+
+function blockRecordText(handle: string, name: string): string {
+  return ['  0', 'BLOCK_RECORD', '  5', handle, '330', '1', '100', 'AcDbSymbolTableRecord', '100', 'AcDbBlockTableRecord', '  2', name, ' 70', '     1', ''].join('\n');
+}
+
+/** 표가 블록 밖(모델 공간)에 있는 새 템플릿 모양. frameCount개의 틀을 x = 1000 + 50000k에 놓는다. */
+export async function modelSpaceTemplate(frameCount = 1): Promise<string> {
+  let text = await templateText();
+  // 블록 안 표를 빼고 LINE으로 영역을 만든다(블록 좌표 (0,0)-(2000,2000) → 모델 (1000,2000)-(5000,6000)).
+  const tableStart = text.indexOf('  0\nACAD_TABLE\n');
+  const tableEnd = text.indexOf('  0\nENDBLK\n  5\n52\n');
+  if (tableStart < 0 || tableEnd < tableStart) throw new Error('픽스처의 ACAD_TABLE을 찾지 못했습니다');
+  text = text.slice(0, tableStart) + FRAME_LINE + text.slice(tableEnd);
+  // 원본 INSERT(x 1000)를 지우고 틀마다 INSERT + 표를 LINE 81 앞에 넣는다.
+  text = replaceOnce(text, FRAME_INSERT, '');
+  let entities = '';
+  let blocks = '';
+  let records = '';
+  for (let k = 0; k < frameCount; k++) {
+    const x = 1000 + 50000 * k;
+    const insertHandle = k === 0 ? '80' : `8${k}0`;
+    entities += FRAME_INSERT.replace('\n80\n', `\n${insertHandle}\n`).replace('\n1000.0\n', `\n${x.toFixed(1)}\n`);
+    const blockName = k === 0 ? '*TX' : `*TX${k}`;
+    const record = k === 0 ? '31' : `${k}31`;
+    entities += modelTableText(`A${k}`, 2000 + 50000 * k, blockName, record);
+    if (k > 0) {
+      blocks += tableBlockCopy(text, k);
+      records += blockRecordText(record, blockName);
+    }
+  }
+  text = replaceOnce(text, '  0\nLINE\n  5\n81\n', entities + '  0\nLINE\n  5\n81\n');
+  if (blocks) text = replaceOnce(text, '  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n', blocks + '  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n');
+  if (records) text = replaceOnce(text, '  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nBLOCKS\n', records + '  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nBLOCKS\n');
+  return text;
+}

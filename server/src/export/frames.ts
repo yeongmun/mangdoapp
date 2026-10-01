@@ -1,4 +1,5 @@
-// 망도틀(= 안에 손상물량표가 든 삽입 블록)을 찾아 영역과 그 안의 표를 돌려준다.
+// 망도틀을 찾아 영역과 그 틀의 손상물량표를 돌려준다. 표는 블록 안에 들어 있거나(옛 구조)
+// 블록 영역 안의 모델 공간에 놓여 있다(새 구조, 2026-10-02 설계).
 // 블록 이름으로 찾지 않는다 — 다른 현장 도면에서도 동작해야 한다(설계 1장 사용자 결정).
 // 근거: docs/superpowers/specs/2026-09-16-frame-numbering-design.md 2장
 
@@ -7,11 +8,13 @@ import { arcExtentPoints } from './entityTransform.js';
 import type { Point } from './dxfEntities.js';
 import {
   applyTransform,
+  IDENTITY,
   insertTransform,
   numberAt,
   numbersAt,
   readModelSpace,
   tableCandidateOf,
+  tableCenter,
   textAt,
   walkInserts,
   type RawEntity,
@@ -39,6 +42,10 @@ export interface Frame {
   entityIndex: number;
   /** 틀 INSERT의 삽입 변환(블록 좌표 → 모델 좌표) */
   transform: Transform;
+  /** 표가 블록 안에 있는 옛 구조인지, 블록 밖 모델 공간에 놓인 새 구조인지(2026-10-02 설계 3장) */
+  tableKind: 'inBlock' | 'modelSpace';
+  /** modelSpace일 때 그 ACAD_TABLE의 모델 공간 최상위 순번. inBlock이면 null */
+  tableEntityIndex: number | null;
 }
 
 // 축 정렬 상자의 네 모서리. 회전한 삽입에서는 대각 두 점만으로 영역이 좁아진다.
@@ -104,6 +111,16 @@ export function findFrames(doc: DxfDocument): Frame[] {
   const model = readModelSpace(doc);
   if (!model) return [];
 
+  // 모델 공간 최상위 표(새 구조). 블록 안에 표가 없는 INSERT가 영역 안의 표를 고를 때 쓴다.
+  const looseTables: Array<{ entityIndex: number; candidate: TableCandidate; center: Point }> = [];
+  for (let i = 0; i < model.entities.length; i++) {
+    const entity = model.entities[i];
+    if (entity.type !== 'ACAD_TABLE') continue;
+    const candidate = tableCandidateOf(entity, IDENTITY);
+    if (candidate) looseTables.push({ entityIndex: i, candidate, center: tableCenter(candidate) });
+  }
+  const claimed = new Set<number>();
+
   const found: Array<Omit<Frame, 'index'>> = [];
   for (let entityIndex = 0; entityIndex < model.entities.length; entityIndex++) {
     const entity = model.entities[entityIndex];
@@ -137,13 +154,31 @@ export function findFrames(doc: DxfDocument): Frame[] {
       }
     });
 
-    if (tables.length === 0) continue;
+    if (tables.length > 0) {
+      found.push({ bounds: { minX, minY, maxX, maxY }, table: tables[0], blockName: name, entityIndex, transform, tableKind: 'inBlock', tableEntityIndex: null });
+      continue;
+    }
+    if (minX === Infinity) continue; // 점이 없는 블록은 영역이 없다
+
+    // 블록 안에 표가 없으면 영역 안(경계 포함)에 중심이 놓인 모델 공간 표를 찾는다. 여럿이면
+    // 왼쪽 것. 한 표는 한 틀에만 속한다.
+    let picked: (typeof looseTables)[number] | null = null;
+    for (const loose of looseTables) {
+      if (claimed.has(loose.entityIndex)) continue;
+      const [cx, cy] = loose.center;
+      if (cx < minX || cx > maxX || cy < minY || cy > maxY) continue;
+      if (!picked || cx < picked.center[0]) picked = loose;
+    }
+    if (!picked) continue;
+    claimed.add(picked.entityIndex);
     found.push({
       bounds: { minX, minY, maxX, maxY },
-      table: tables[0],
+      table: picked.candidate,
       blockName: name,
       entityIndex,
       transform,
+      tableKind: 'modelSpace',
+      tableEntityIndex: picked.entityIndex,
     });
   }
 

@@ -3,6 +3,7 @@ import { parseDxf } from '../src/export/dxfDocument.js';
 import { findFrames } from '../src/export/frames.js';
 import {
   flatTable,
+  modelSpaceTemplate,
   rotatedFrame,
   templateText,
   withFrameLine,
@@ -92,5 +93,40 @@ describe('findFrames', () => {
 
   it('ENTITIES 구역이 없으면 빈 배열', () => {
     expect(findFrames(parseDxf('  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n  0\nEOF\n'))).toEqual([]);
+  });
+});
+
+describe('findFrames — 표가 블록 밖(모델 공간)에 놓인 새 템플릿', () => {
+  it('블록 영역 안에 놓인 모델 공간 표를 틀의 표로 받는다', async () => {
+    const frames = await framesOf(await modelSpaceTemplate());
+    expect(frames).toHaveLength(1);
+    expect(frames[0].tableKind).toBe('modelSpace');
+    expect(frames[0].bounds).toEqual({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
+    expect(frames[0].table.blockName).toBe('*TX');
+    expect(frames[0].table.position).toEqual([2000, 3400]);
+    expect(frames[0].table.transform).toMatchObject({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotationRad: 0 });
+    expect(frames[0].entityIndex).toBe(0);
+    expect(frames[0].tableEntityIndex).toBe(1); // INSERT 다음이 그 틀의 표
+  });
+
+  it('틀마다 자기 영역 안의 표를 가진다 — 왼쪽부터 0번', async () => {
+    const frames = await framesOf(await modelSpaceTemplate(2));
+    expect(frames.map((f) => f.index)).toEqual([0, 1]);
+    expect(frames[1].bounds.minX).toBe(51000);
+    expect(frames[1].table.blockName).toBe('*TX1');
+    expect(frames[1].table.position).toEqual([52000, 3400]);
+    expect(frames[1].tableEntityIndex).toBe(3);
+  });
+
+  it('옛 구조(블록 안 표)는 inBlock이고 tableEntityIndex가 null이다', async () => {
+    const frames = await framesOf(await templateText());
+    expect(frames[0].tableKind).toBe('inBlock');
+    expect(frames[0].tableEntityIndex).toBeNull();
+  });
+
+  it('표 중심이 어느 블록 영역에도 없으면 틀이 아니다', async () => {
+    // 표 삽입점을 영역 밖(x 20000)으로 옮긴다.
+    const text = (await modelSpaceTemplate()).replace('\n 10\n2000.0\n 20\n3400.0\n', '\n 10\n20000.0\n 20\n3400.0\n');
+    expect(await framesOf(text)).toEqual([]);
   });
 });
