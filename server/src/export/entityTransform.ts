@@ -61,6 +61,10 @@ const ROLES: ReadonlyMap<string, CodeRoles> = new Map([
   // 모서리(72=2)를 isCopyable이 허용하면서 변환(transformEntityPairs)도 반지름에 배율을,
   // 각도에 회전을 옳게 적용해야 한다(원 중심은 10/20이라 xyRoleOf가 이미 점으로 다룬다).
   ['HATCH', { ...NONE, points: [[43, 44]], scaledVectors: [[45, 46]], lengths: [40, 41, 47, 49], angles: [50, 51, 52, 53] }],
+  // ACAD_TABLE의 10/20은 삽입점, 11/21은 가로 방향 벡터(1,0)다 — 일반 규칙은 11/21까지 점으로
+  // 보고 옮겨 표를 깨뜨린다(2026-10-02 설계 5.3). 열 너비·행 높이(141/142)는 배율과 무관한
+  // 표 로컬 값이라 lengths에 넣지 않는다(transform은 표에 쓰지 않는다 — 복제는 tableClone이 한다).
+  ['ACAD_TABLE', { ...NONE, points: [[10, 20]], vectors: [[11, 21]] }],
 ]);
 
 function typeOf(pairs: DxfPair[]): string {
@@ -393,6 +397,8 @@ function hasUnhandledReference(pairs: DxfPair[]): boolean {
 export function isCopyable(pairs: DxfPair[]): boolean {
   const type = typeOf(pairs);
   if (!ROLES.has(type)) return false;
+  // 표는 글자 블록·블록 레코드까지 한 벌이라 엔티티만 베끼면 안 된다 — tableClone.ts가 맡는다.
+  if (type === 'ACAD_TABLE') return false;
   // 속성(ATTRIB)이 따라오는 INSERT는 ATTRIB…SEQEND까지 한 벌이라 이 모듈이 다루지 못한다.
   if (type === 'INSERT' && intAt(pairs, 66) === 1) return false;
   if (type === 'HATCH') {

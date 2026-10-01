@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HandleAllocator, type DxfPair } from '../src/export/dxfDocument.js';
+import { HandleAllocator, pair, type DxfPair } from '../src/export/dxfDocument.js';
 import type { Transform } from '../src/export/tableGrid.js';
 import {
   arcExtentPoints,
   copyEntityPairs,
   entityBoundsOf,
+  entityPointsOf,
   isCopyable,
   transformEntityPairs,
   translateEntityPairs,
@@ -598,5 +599,30 @@ describe('arcExtentPoints · 원호의 실제 영역 (2026-10-01 곡선 교량 �
   it('원(CIRCLE)은 지금처럼 중심±반지름이다', () => {
     const circle = pairsOf([0, 'CIRCLE'], [10, '5'], [20, '5'], [40, '2']);
     expect(entityBoundsOf(circle)).toEqual({ minX: 3, minY: 3, maxX: 7, maxY: 7 });
+  });
+});
+
+describe('ACAD_TABLE — 삽입점만 옮기고 방향 벡터는 두며, 복사하지 않는다', () => {
+  const TABLE: DxfPair[] = [
+    pair(0, 'ACAD_TABLE'), pair(5, 'A0'), pair(330, '1F'), pair(100, 'AcDbEntity'), pair(8, '0'),
+    pair(100, 'AcDbBlockReference'), pair(2, '*T1'), pair(10, '2000.0'), pair(20, '3400.0'), pair(30, '0.0'),
+    pair(100, 'AcDbTable'), pair(342, '88'), pair(343, '31'), pair(11, '1.0'), pair(21, '0.0'), pair(31, '0.0'),
+    pair(91, '        5'), pair(92, '        8'), pair(141, '40.0'), pair(142, '100.0'),
+  ];
+
+  it('translateEntityPairs는 10/20만 옮기고 11/21(방향)은 그대로 둔다', () => {
+    const moved = translateEntityPairs(TABLE, 500, 0);
+    expect(moved.find((p) => p.code === 10)!.value).toBe('2500.0');
+    expect(moved.find((p) => p.code === 20)!.value).toBe('3400.0');
+    expect(moved.find((p) => p.code === 11)!.value).toBe('1.0');
+    expect(moved.find((p) => p.code === 21)!.value).toBe('0.0');
+  });
+
+  it('entityPointsOf는 삽입점 하나만 낸다', () => {
+    expect(entityPointsOf(TABLE)).toEqual([[2000, 3400]]);
+  });
+
+  it('isCopyable은 false다 — 표는 tableClone으로만 복제한다', () => {
+    expect(isCopyable(TABLE)).toBe(false);
   });
 });
