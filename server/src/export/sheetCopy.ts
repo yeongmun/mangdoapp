@@ -20,8 +20,8 @@ import {
   cellCenter,
   composeTransform,
   hasUniformScale,
-  indexOfBand,
   insertTransform,
+  isPrintedNumber,
   modelSpaceRanges,
   modelTextHeight,
   numberAt,
@@ -196,14 +196,6 @@ export function copyRegion(ctx: SheetContext, ranges: EntityRange[], dx: number)
 
 function baseFor(ctx: SheetContext, layer: string, colorIndex: number): EntityBase {
   return { handle: ctx.alloc.next(), owner: ctx.owner, layer, colorIndex };
-}
-
-// 이 글자가 번호 열의 **데이터 행** 칸에 있는가(= 미리 인쇄된 번호인가).
-function isPrintedNumber(grid: TableGrid, entity: RawEntity): boolean {
-  const local: Point = [numberAt(entity, 10, 0), numberAt(entity, 20, 0)];
-  if (indexOfBand(grid.colBoundaries, local[0]) !== grid.numberColumn) return false;
-  const row = indexOfBand(grid.rowBoundaries, local[1]);
-  return row >= grid.firstDataRow;
 }
 
 /**

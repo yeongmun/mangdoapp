@@ -61,6 +61,8 @@ export interface BlockText {
   text: string;
   position: Point;
   height: number;
+  /** MTEXT 너비(코드 41). 없으면 0 */
+  width: number;
 }
 
 export interface TableCandidate {
@@ -87,6 +89,8 @@ export interface TableGrid {
   dataRowCount: number;
   /** 표 로컬 글자 높이 */
   textHeight: number;
+  /** 번호 '1' 글자의 너비(코드 41). 없으면 0 — 셀 글자 여백 계산에 쓴다 */
+  textWidth: number;
   numberColumn: number;
   /** 데이터 영역 위쪽(머리글 영역)의 선. 데이터 시작선까지 잘라 둔다 */
   headerLines: BlockLine[];
@@ -395,6 +399,7 @@ export function buildGrid(doc: DxfDocument, candidate: TableCandidate): TableGri
         text: mtextPlainText(raw),
         position: [numberAt(entity, 10, 0), numberAt(entity, 20, 0)],
         height: numberAt(entity, 40, 0),
+        width: numberAt(entity, 41, 0),
       });
     } else if (entity.type === 'LINE') {
       lines.push({
@@ -412,6 +417,7 @@ export function buildGrid(doc: DxfDocument, candidate: TableCandidate): TableGri
   const headerRow = numberHeader ? indexOfBand(rowBoundaries, numberHeader.position[1]) : -1;
   let firstDataRow = -1;
   let textHeight = 0;
+  let textWidth = 0;
   for (const text of texts) {
     if (text.text.trim() !== '1') continue;
     if (indexOfBand(colBoundaries, text.position[0]) !== numberColumn) continue;
@@ -420,6 +426,7 @@ export function buildGrid(doc: DxfDocument, candidate: TableCandidate): TableGri
     if (firstDataRow === -1 || row < firstDataRow) {
       firstDataRow = row;
       textHeight = text.height;
+      textWidth = text.width;
     }
   }
   if (firstDataRow < 0 || !(textHeight > 0)) return null;
@@ -458,6 +465,7 @@ export function buildGrid(doc: DxfDocument, candidate: TableCandidate): TableGri
     firstDataRow,
     dataRowCount: rowBoundaries.length - 1 - firstDataRow,
     textHeight,
+    textWidth,
     numberColumn,
     headerLines: clampedLines,
     headerTexts: texts.filter((t) => t.position[1] > dataTop && t.text !== ''),
@@ -480,4 +488,12 @@ export function cellCenter(grid: TableGrid, dataRow: number, column: number): Po
 
 export function modelTextHeight(grid: TableGrid): number {
   return grid.textHeight * Math.abs(grid.transform.scaleX);
+}
+
+/** 이 글자가 번호 열의 **데이터 행** 칸에 있는가(= 미리 인쇄된 번호인가). 좌표는 표 로컬이다. */
+export function isPrintedNumber(grid: TableGrid, entity: RawEntity): boolean {
+  const local: Point = [numberAt(entity, 10, 0), numberAt(entity, 20, 0)];
+  if (indexOfBand(grid.colBoundaries, local[0]) !== grid.numberColumn) return false;
+  const row = indexOfBand(grid.rowBoundaries, local[1]);
+  return row >= grid.firstDataRow;
 }

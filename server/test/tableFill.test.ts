@@ -179,6 +179,7 @@ describe('fillTable — 열 순서가 다른 표', () => {
       firstDataRow: 1,
       dataRowCount: 2,
       textHeight: 10,
+      textWidth: 0,
       numberColumn: 0,
       headerLines: [],
       headerTexts: [],
