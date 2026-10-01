@@ -400,7 +400,11 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
         const insert = copyFrameInsert(ctx, plan.frame, dx);
         appendAll(pairs, insert.pairs);
         copySkipped += insert.skipped;
-        if (!tableRange || !recordTable) continue;
+        // 이 장의 표를 만들지 못하면 조용히 넘기지 않고 건너뛴 수에 센다(sheetCopySkipped 경고).
+        if (!tableRange || !recordTable) {
+          copySkipped += 1;
+          continue;
+        }
         // 표는 통째로 복제한다(설계 5.2). 밀린 원본에서 베끼므로 dx는 장 간격.
         const clone = cloneTable(doc, doc.pairs.slice(tableRange.start, tableRange.end), plan.grid, {
           dx,
@@ -409,7 +413,10 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
           alloc,
           recordTableHandle: recordTable.handle,
         });
-        if (!clone) continue;
+        if (!clone) {
+          copySkipped += 1;
+          continue;
+        }
         const pageEntries = plan.entries
           .filter((entry) => pageOf(entry.number, plan.dataRows) === page)
           .map((entry) => ({ ...entry, number: entry.number - page * plan.dataRows }));
@@ -418,7 +425,10 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
         const mtexts: DxfPair[] = [];
         for (const write of writes) appendAll(mtexts, cellMtextPairs(plan.grid, write, alloc.next(), clone.recordHandle));
         const originalBlock = findBlock(doc, plan.grid.blockName);
-        if (!originalBlock) continue;
+        if (!originalBlock) {
+          copySkipped += 1;
+          continue;
+        }
         edits.insert(originalBlock.end, appendBeforeEndblk(clone.blockPairs, mtexts));
         edits.insert(recordTable.end, clone.recordPairs);
         newRecords += 1;
