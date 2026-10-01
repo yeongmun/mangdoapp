@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createHandleAllocator, parseDxf, recordHandle } from '../src/export/dxfDocument.js';
 import { findFrames } from '../src/export/frames.js';
 import {
+  copyFrameInsert,
   copyRegion,
   flattenFrameBlock,
   indexRegions,
@@ -14,7 +15,7 @@ import {
   shiftRangesInPlace,
 } from '../src/export/sheetCopy.js';
 import { buildGrid, cellCenter } from '../src/export/tableGrid.js';
-import { templateText, withSecondFrame } from './fixtureDocs.js';
+import { modelSpaceTemplate, templateText, withSecondFrame } from './fixtureDocs.js';
 
 // 픽스처 실측값(frames.test.ts와 같은 계산):
 //   틀 0 영역 x 2000~4280 (너비 2280), y 3160~3400. 틀 INSERT (1000, 2000) 배율 2.
@@ -24,6 +25,16 @@ import { templateText, withSecondFrame } from './fixtureDocs.js';
 
 async function framesOf(text: string) {
   return findFrames(parseDxf(text));
+}
+
+// indexRegions·copyRegion·copyFrameInsert 테스트가 함께 쓰는 문서 색인 준비.
+async function contextOf(text: string) {
+  const doc = parseDxf(text);
+  const frames = findFrames(doc);
+  const alloc = createHandleAllocator(doc);
+  const owner = recordHandle(doc, 'BLOCK_RECORD', '*Model_Space')!;
+  const ctx = readSheetContext(doc, alloc, owner)!;
+  return { doc, frames, ctx };
 }
 
 describe('pageOf · pagesOf · pitchOf', () => {
@@ -70,15 +81,6 @@ describe('pageOf · pagesOf · pitchOf', () => {
 });
 
 describe('indexRegions', () => {
-  async function contextOf(text: string) {
-    const doc = parseDxf(text);
-    const frames = findFrames(doc);
-    const alloc = createHandleAllocator(doc);
-    const owner = recordHandle(doc, 'BLOCK_RECORD', '*Model_Space')!;
-    const ctx = readSheetContext(doc, alloc, owner)!;
-    return { doc, frames, ctx };
-  }
-
   it('틀 INSERT는 영역에서 빼고 따로 들고 있는다', async () => {
     const { frames, ctx } = await contextOf(await templateText());
     const regions = indexRegions(ctx, frames);
@@ -285,5 +287,36 @@ describe('ROLES 밖 엔티티(DIMENSION 등)의 영역 판정·복사·이동', 
     expect(at(20)).toBeCloseTo(3200, 6);
     expect(at(11)).toBeCloseTo(51250, 6);
     expect(at(21)).toBeCloseTo(3300, 6);
+  });
+});
+
+describe('모델 공간 표가 있는 틀 (2026-10-02)', () => {
+  it('indexRegions는 표를 그 틀 영역에 넣는다(표 영역의 중심으로 판정)', async () => {
+    const { frames, ctx } = await contextOf(await modelSpaceTemplate(2));
+    const regions = indexRegions(ctx, frames);
+    expect(regions.inFrame[0]).toContain(ctx.ranges[frames[0].tableEntityIndex!]);
+    expect(regions.inFrame[1]).toContain(ctx.ranges[frames[1].tableEntityIndex!]);
+  });
+
+  it('copyRegion은 exclude로 넘긴 표를 베끼지 않고 skipped에도 세지 않는다', async () => {
+    const { frames, ctx } = await contextOf(await modelSpaceTemplate());
+    const regions = indexRegions(ctx, frames);
+    const table = ctx.ranges[frames[0].tableEntityIndex!];
+    const result = copyRegion(ctx, regions.inFrame[0], 100, table);
+    expect(result.pairs.some((p) => p.code === 0 && p.value === 'ACAD_TABLE')).toBe(false);
+    expect(result.skipped).toBe(0);
+    // exclude 없이 부르면 표는 복사 불가라 skipped에 센다
+    expect(copyRegion(ctx, regions.inFrame[0], 100).skipped).toBe(1);
+  });
+
+  it('copyFrameInsert는 틀 INSERT를 새 핸들로 베껴 dx만큼 옮긴다', async () => {
+    const { frames, ctx } = await contextOf(await modelSpaceTemplate());
+    const result = copyFrameInsert(ctx, frames[0], 50000);
+    expect(result.skipped).toBe(0);
+    expect(result.pairs[0]).toMatchObject({ code: 0, value: 'INSERT' });
+    expect(result.pairs.find((p) => p.code === 2)!.value).toBe('망도틀');
+    expect(result.pairs.find((p) => p.code === 10)!.value).toBe('51000.0');
+    expect(result.pairs.find((p) => p.code === 41)!.value).toBe('2.0');
+    expect(result.pairs.find((p) => p.code === 5)!.value).not.toBe('80');
   });
 });
