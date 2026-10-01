@@ -125,7 +125,7 @@ function emptyCell(): string[] {
 const MODEL_TABLE_HEADERS = ['번호', '손상위치', '손상현황', '가로/폭', '세로/길이', '개소', '면적/연장', '단위'];
 
 // 모델 공간 ACAD_TABLE 한 벌. 5행 × 8열, 행 높이 40·20×4, 열 너비는 템플릿 표와 같다.
-function modelTableText(handle: string, x: number, blockName: string, recordHandle: string): string {
+export function modelTableText(handle: string, x: number, blockName: string, recordHandle: string): string {
   const cells: string[] = [];
   for (let row = 0; row < 5; row++) {
     for (let col = 0; col < 8; col++) {
@@ -192,4 +192,51 @@ export async function modelSpaceTemplate(frameCount = 1): Promise<string> {
   if (blocks) text = replaceOnce(text, '  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n', blocks + '  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n');
   if (records) text = replaceOnce(text, '  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nBLOCKS\n', records + '  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nBLOCKS\n');
   return text;
+}
+
+// ───────── 표를 감싸는 INSERT가 여럿인 도면 ─────────
+// 실제 템플릿은 틀마다 폴리라인 하나짜리 `테두리` 블록이 두 번, 망도틀보다 먼저 삽입되어 있고
+// 그 영역도 표를 감싼다. 여기서는 망도틀보다 조금 큰 테두리 하나로 그 모양을 흉내 낸다.
+
+// 테두리 블록의 폴리라인 사각형(블록 좌표). 망도틀 LINE (0,0)-(2000,2000)보다 사방 100 넓다.
+const BORDER_MIN = -100;
+const BORDER_MAX = 2100;
+
+function borderBlockText(): string {
+  const corners = [
+    [BORDER_MIN, BORDER_MIN],
+    [BORDER_MAX, BORDER_MIN],
+    [BORDER_MAX, BORDER_MAX],
+    [BORDER_MIN, BORDER_MAX],
+  ];
+  return [
+    '  0', 'BLOCK', '  5', 'B0', '330', 'B3', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbBlockBegin',
+    '  2', '테두리', ' 70', '     0', ' 10', '0.0', ' 20', '0.0', ' 30', '0.0', '  3', '테두리', '  1', '',
+    '  0', 'LWPOLYLINE', '  5', 'B1', '330', 'B3', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbPolyline',
+    ' 90', '        4', ' 70', '     1',
+    ...corners.flatMap(([x, y]) => [' 10', x.toFixed(1), ' 20', y.toFixed(1)]),
+    '  0', 'ENDBLK', '  5', 'B2', '330', 'B3', '100', 'AcDbEntity', '  8', '0', '100', 'AcDbBlockEnd', '',
+  ].join('\n');
+}
+
+/**
+ * 틀 0의 망도틀 INSERT 바로 앞에 같은 삽입점·배율의 `테두리` INSERT를 넣는다. 테두리 영역은
+ * x 800~5200, y 1800~6200으로 망도틀(1000~5000, 2000~6000)보다 넓고 표 중심을 함께 감싼다.
+ * modelSpaceTemplate() 결과에 쓴다.
+ */
+export function withBorderInsertBefore(text: string): string {
+  const borderInsert = FRAME_INSERT.replace('\n80\n', '\nB4\n').replace('\n망도틀\n', '\n테두리\n');
+  let out = replaceOnce(text, FRAME_INSERT, borderInsert + FRAME_INSERT);
+  out = replaceOnce(out, '  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n', borderBlockText() + '  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n');
+  return replaceOnce(
+    out,
+    '  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nBLOCKS\n',
+    blockRecordText('B3', '테두리').replace('\n 70\n     1\n', '\n 70\n     0\n') + '  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nBLOCKS\n',
+  );
+}
+
+/** 옛 구조(블록 안 표) 도면의 틀 영역 안에 모델 공간 표를 하나 더 놓는다(설계 8장 — 안쪽 표가 이긴다). */
+export function withLooseTableInBlockFrame(text: string): string {
+  // 옛 틀 영역은 x 2000~4280, y 3160~3400. 표를 (2000, 3400)에 두면 중심 (2570, 3340)이 그 안이다.
+  return replaceOnce(text, '  0\nLINE\n  5\n81\n', modelTableText('A9', 2000, '*TX', '31') + '  0\nLINE\n  5\n81\n');
 }

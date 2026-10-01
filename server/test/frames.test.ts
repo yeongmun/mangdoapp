@@ -6,7 +6,9 @@ import {
   modelSpaceTemplate,
   rotatedFrame,
   templateText,
+  withBorderInsertBefore,
   withFrameLine,
+  withLooseTableInBlockFrame,
   withNestedInsert,
   withoutTable,
   withSecondFrame,
@@ -128,5 +130,26 @@ describe('findFrames — 표가 블록 밖(모델 공간)에 놓인 새 템플�
     // 표 삽입점을 영역 밖(x 20000)으로 옮긴다.
     const text = (await modelSpaceTemplate()).replace('\n 10\n2000.0\n 20\n3400.0\n', '\n 10\n20000.0\n 20\n3400.0\n');
     expect(await framesOf(text)).toEqual([]);
+  });
+
+  it('표를 감싸는 INSERT가 여럿이면 영역 면적이 가장 작은 INSERT가 틀이다 — 도면 순서가 아니다', async () => {
+    // 테두리 INSERT(영역 800~5200 × 1800~6200)가 망도틀 INSERT보다 먼저 나온다(실제 템플릿 모양).
+    const text = withBorderInsertBefore(await modelSpaceTemplate());
+    const frames = await framesOf(text);
+    expect(frames).toHaveLength(1);
+    expect(frames[0].blockName).toBe('망도틀');
+    expect(frames[0].entityIndex).toBe(1); // 0번은 테두리 INSERT
+    expect(frames[0].bounds).toEqual({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
+    expect(frames[0].tableKind).toBe('modelSpace');
+    expect(frames[0].tableEntityIndex).toBe(2);
+    expect(frames.some((f) => f.blockName === '테두리')).toBe(false);
+  });
+
+  it('블록 안에 표가 있고 그 영역에 모델 공간 표도 있으면 안쪽 표가 이긴다(inBlock)', async () => {
+    const frames = await framesOf(withLooseTableInBlockFrame(await templateText()));
+    expect(frames).toHaveLength(1);
+    expect(frames[0].tableKind).toBe('inBlock');
+    expect(frames[0].tableEntityIndex).toBeNull();
+    expect(frames[0].bounds).toEqual(FRAME_0);
   });
 });

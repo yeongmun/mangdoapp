@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { DAMAGE_LAYER, findBlock, layerNames, parseDxf, symbolTableInfo, TABLE_LAYER, type DxfPair } from '../src/export/dxfDocument.js';
 import { EXPORT_WARNINGS, ExportError, exportDamagesToDxf } from '../src/export/exportDrawing.js';
 import { findFrames } from '../src/export/frames.js';
-import { flatTable, modelSpaceTemplate, rotatedFrame, withFrameAt, withSecondFrame, withUnreadableHeaders } from './fixtureDocs.js';
+import { flatTable, modelSpaceTemplate, rotatedFrame, withBorderInsertBefore, withFrameAt, withSecondFrame, withUnreadableHeaders } from './fixtureDocs.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
 
@@ -1167,6 +1167,44 @@ describe('모델 공간 표 — 셀 직접 채우기와 표 복제 (2026-10-02)'
     const handles = doc.pairs.filter((p) => p.code === 5).map((p) => p.value.trim());
     expect(new Set(handles).size).toBe(handles.length);
     expect(findFrames(doc)).toHaveLength(3);
+  });
+
+  it('틀 둘이 모두 넘치면 표 복제가 둘이고 밀린 틀 1도 자기 복제를 가진다', async () => {
+    const damages = [1, 2, 3, 4].flatMap((n) => [inFrame(n, 0), inFrame(n, 1)]);
+    const result = exportDamagesToDxf(await modelSpaceTemplate(2), damages);
+    expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(0, 2), EXPORT_WARNINGS.sheetCopied(1, 2)]);
+    const doc = parseDxf(result.dxfText);
+    expect(findBlock(doc, '*T1')).not.toBeNull();
+    expect(findBlock(doc, '*T2')).not.toBeNull();
+    const record = symbolTableInfo(doc, 'BLOCK_RECORD')!;
+    expect(doc.pairs[record.countIndex].value.trim()).toBe('5'); // 3 + 2
+    // 표 4개: 틀 0 원본 2000, 그 복제 52000, 간격만큼 밀린 틀 1 102000, 그 복제 152000
+    const tables = entities(result.dxfText, 'ACAD_TABLE');
+    expect(tables.map((e) => Number(at(e, 10)[0])).sort((a, b) => a - b)).toEqual([2000, 52000, 102000, 152000]);
+    expect(tables.every((e) => at(e, 11)[0] === '1.0')).toBe(true);
+    const clones = tables.filter((e) => /^\*T\d+$/.test(at(e, 2)[0]));
+    expect(clones).toHaveLength(2);
+    expect(clones.every((e) => !e.some((p) => p.code === 160 || p.code === 310))).toBe(true);
+    const handles = doc.pairs.filter((p) => p.code === 5).map((p) => p.value.trim());
+    expect(new Set(handles).size).toBe(handles.length);
+    expect(findFrames(doc)).toHaveLength(4);
+  });
+
+  it('표를 감싸는 테두리 INSERT가 망도틀 앞에 있어도 망도틀이 틀이고, 넘침 장에 테두리도 함께 복사된다', async () => {
+    const text = withBorderInsertBefore(await modelSpaceTemplate());
+    const result = exportDamagesToDxf(text, [1, 2, 3, 4].map((n) => inFrame(n, 0)));
+    expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(0, 2)]);
+    const xsOf = (name: string) =>
+      entities(result.dxfText, 'INSERT')
+        .filter((e) => at(e, 2)[0] === name)
+        .map((e) => Number(at(e, 10)[0]))
+        .sort((a, b) => a - b);
+    const frameXs = xsOf('망도틀');
+    expect(frameXs).toHaveLength(2);
+    expect(frameXs[0]).toBe(1000);
+    expect(frameXs[1]).toBeGreaterThan(1000);
+    // 테두리는 중심이 틀 영역 안이라 영역 복사로 같은 간격만큼 옮겨진다
+    expect(xsOf('테두리')).toEqual(frameXs);
   });
 
   it('옛 구조(블록 안 표) 도면은 전과 같이 선 위 글자로 채운다', async () => {
