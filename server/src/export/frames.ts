@@ -3,6 +3,7 @@
 // 근거: docs/superpowers/specs/2026-09-16-frame-numbering-design.md 2장
 
 import type { DxfDocument } from './dxfDocument.js';
+import { arcExtentPoints } from './entityTransform.js';
 import type { Point } from './dxfEntities.js';
 import {
   applyTransform,
@@ -67,14 +68,22 @@ export function boundsPointsOf(entity: RawEntity): Point[] {
       for (let i = 0; i < Math.min(xs.length, ys.length); i++) points.push([xs[i], ys[i]]);
       return points;
     }
-    case 'CIRCLE':
-    case 'ARC': {
-      // 호도 원 전체로 넉넉히 잡는다 — 영역이 조금 넓은 것은 괜찮지만 좁으면 손상을 놓친다.
+    case 'CIRCLE': {
       const x = numberAt(entity, 10, 0);
       const y = numberAt(entity, 20, 0);
       const r = Math.abs(numberAt(entity, 40, 0));
       return corners(x - r, y - r, x + r, y + r);
     }
+    case 'ARC':
+      // 호는 실제로 지나는 영역만. 원 전체로 잡으면 반지름이 아주 큰 완만한 호(곡선 교량 거더선)의
+      // 중심이 도면 밖으로 가 틀 소속 판정이 틀린다(entityTransform.arcExtentPoints 참고).
+      return arcExtentPoints(
+        numberAt(entity, 10, 0),
+        numberAt(entity, 20, 0),
+        Math.abs(numberAt(entity, 40, 0)),
+        numberAt(entity, 50, 0),
+        numberAt(entity, 51, 360),
+      );
     case 'TEXT':
     case 'MTEXT':
       return [[numberAt(entity, 10, 0), numberAt(entity, 20, 0)]];
