@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { HandleAllocator, type DxfPair } from '../src/export/dxfDocument.js';
 import { buildGrid, findTableCandidates, type TableGrid } from '../src/export/tableGrid.js';
-import { columnMapOf, fillTable, resolvedColumnMap, rowValuesOf, TABLE_COLUMN } from '../src/export/tableFill.js';
+import { columnMapOf, fillTable, formatTableAmount, resolvedColumnMap, rowValuesOf, TABLE_COLUMN } from '../src/export/tableFill.js';
 import { parseDxf } from '../src/export/dxfDocument.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
@@ -79,11 +79,27 @@ function lineLayersOf(pairs: DxfPair[]): LineLayerInfo[] {
   return result;
 }
 
+describe('formatTableAmount', () => {
+  it('치수·물량은 소수점 둘째 자리까지 고정한다 (1.5 → 1.50, 2 → 2.00, 0.245 → 0.25)', () => {
+    expect(formatTableAmount(1.5)).toBe('1.50');
+    expect(formatTableAmount(2)).toBe('2.00');
+    expect(formatTableAmount(0.245)).toBe('0.25');
+    expect(formatTableAmount(12.3456)).toBe('12.35');
+  });
+
+  it('개소는 소수점 없이 정수 그대로다', () => {
+    const row = rowValuesOf(damage('spalling', { width: 1, length: 2, count: 3 }), 1);
+    expect(row.fields.count).toBe('3');
+    expect(row.fields.width).toBe('1.00');
+    expect(row.fields.quantity).toBe('6.00');
+  });
+});
+
 describe('rowValuesOf', () => {
   it('손상현황·가로/폭·세로/길이·개소·물량·단위를 채우고 번호와 손상위치는 비운다', () => {
     const row = rowValuesOf(damage('crack', { width: 0.2, length: 1.5, count: 2 }), 7);
     expect(row.number).toBe(7);
-    expect(row.fields).toEqual({ status: '균열(0.3mm미만)', width: '0.2', length: '1.5', count: '2', quantity: '3.0', unit: 'm' });
+    expect(row.fields).toEqual({ status: '균열(0.3mm미만)', width: '0.20', length: '1.50', count: '2', quantity: '3.00', unit: 'm' });
     expect(row.fields.number).toBeUndefined();
     expect(row.fields.location).toBeUndefined();
   });
@@ -91,20 +107,20 @@ describe('rowValuesOf', () => {
   it('면형은 가로 × 세로 × 개소가 물량이고 단위가 ㎡다', () => {
     const row = rowValuesOf(damage('spalling', { width: 1.2, length: 1.5, count: 1 }), 1);
     expect(row.fields.status).toBe('박락');
-    expect(row.fields.quantity).toBe('1.8');
+    expect(row.fields.quantity).toBe('1.80');
     expect(row.fields.unit).toBe('㎡');
   });
 
   it('값이 없는 칸은 비워 둔다 (-를 쓰지 않는다)', () => {
     const row = rowValuesOf(damage('spalling', { width: null, length: 1.5, count: null }), 2);
-    expect(row.fields).toEqual({ status: '박락', width: '', length: '1.5', count: '', quantity: '', unit: '㎡' });
+    expect(row.fields).toEqual({ status: '박락', width: '', length: '1.50', count: '', quantity: '', unit: '㎡' });
   });
 
   it('0은 유효한 값이라 적는다', () => {
     const row = rowValuesOf(damage('spalling', { width: 0, length: 0, count: 0 }), 3);
-    expect(row.fields.width).toBe('0.0');
+    expect(row.fields.width).toBe('0.00');
     expect(row.fields.count).toBe('0');
-    expect(row.fields.quantity).toBe('0.0');
+    expect(row.fields.quantity).toBe('0.00');
   });
 
   it('기타는 사용자가 적은 손상현황을 쓴다', () => {
@@ -196,9 +212,9 @@ describe('fillTable — 열 순서가 다른 표', () => {
     const at = (value: string) => texts.find((t) => t.text === value);
     expect(at('박락')).toMatchObject({ x: 150, y: -55 }); // 손상현황 → 열 1
     expect(at('5')).toMatchObject({ x: 350, y: -55 }); // 개소 → 열 3
-    expect(at('1.2')).toMatchObject({ x: 450, y: -55 }); // 가로 → 열 4
-    expect(at('3.4')).toMatchObject({ x: 550, y: -55 }); // 세로 → 열 5
-    expect(at('20.4')).toMatchObject({ x: 650, y: -55 }); // 면적(물량) → 열 6
+    expect(at('1.20')).toMatchObject({ x: 450, y: -55 }); // 가로 → 열 4
+    expect(at('3.40')).toMatchObject({ x: 550, y: -55 }); // 세로 → 열 5
+    expect(at('20.40')).toMatchObject({ x: 650, y: -55 }); // 면적(물량) → 열 6
     expect(at('㎡')).toMatchObject({ x: 750, y: -55 }); // 단위 → 열 7
     // 번호 열(0)·비고 열(2)에는 rowValuesOf가 값을 채우지 않으니 아무 글자도 없다.
     expect(texts.some((t) => t.x === 50)).toBe(false);
@@ -219,7 +235,7 @@ describe('fillTable — 원본 표 안', () => {
       '1F',
     );
     const texts = textsOf(pairs);
-    // 1행: 박락 1.2 1.5 1 1.8 ㎡ (6칸), 3행: 균열(...) 0.2 1.5 2 3.0 m (6칸)
+    // 1행: 박락 1.20 1.50 1 1.80 ㎡ (6칸), 3행: 균열(...) 0.20 1.50 2 3.00 m (6칸)
     expect(texts).toHaveLength(12);
     const first = texts.find((t) => t.text === '박락')!;
     // 2열 중앙, 데이터 1행 중앙 → 모델 (2800, 3260)
@@ -233,7 +249,7 @@ describe('fillTable — 원본 표 안', () => {
   it('빈 칸은 글자를 만들지 않는다', async () => {
     const g = await grid();
     const pairs = fillTable(g, [rowValuesOf(damage('spalling', { length: 1.5 }), 1)], new HandleAllocator(0x400), '1F');
-    expect(textsOf(pairs).map((t) => t.text)).toEqual(['박락', '1.5', '㎡']);
+    expect(textsOf(pairs).map((t) => t.text)).toEqual(['박락', '1.50', '㎡']);
   });
 
   it('원본 표 안에 들어가면 선을 하나도 긋지 않는다', async () => {
@@ -272,7 +288,7 @@ describe('fillTable — 넘침 표', () => {
     expect(texts.map((t) => t.text)).toEqual([
       '손상물량표', '번호', '손상위치', '손상현황', '가로/폭', '세로/길이', '개소', '면적/연장', '단위',
       '4', '5', '6',
-      '박락', '1.5', '㎡',
+      '박락', '1.50', '㎡',
     ]);
     // 머리글 선 5개 + 가로 3개(데이터 행 경계) + 세로 9개
     expect(lineCount(pairs)).toBe(17);

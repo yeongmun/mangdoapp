@@ -1121,7 +1121,7 @@ describe('모델 공간 표 — 셀 직접 채우기와 표 복제 (2026-10-02)'
     expect(tables).toHaveLength(1);
     const strings = at(tables[0], 302);
     expect(strings).toContain('박락'); // 손상현황 (statusTextOf(spalling) = 박락)
-    expect(strings.filter((v) => v === '1.2')).toHaveLength(2); // 가로 두 행
+    expect(strings.filter((v) => v === '1.20')).toHaveLength(2); // 가로 두 행(소수점 2자리 고정)
     expect(tables[0].some((p) => p.code === 160 || p.code === 310)).toBe(false);
     // 글자 블록 *TX에 MTEXT가 늘었다(머리글 9 + 번호 3 = 12 → + 2행 × 6칸 = 24)
     const doc = parseDxf(result.dxfText);
