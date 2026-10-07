@@ -24,16 +24,9 @@ export interface DrawingRecord {
    * 올린 도면도 아무것도 바꾸지 않고 미분류로 보인다(설계 2.2).
    */
   projectId?: string | null;
-  /**
-   * 망도틀별 손상위치(부재). frames와 같은 순서(왼쪽부터 0)이고, 없거나 짧으면 그 틀은 빈 값이다.
-   * 손상마다 적지 않고 틀마다 한 번 적는다(2026-10-07 결정). 손상 원장(ledger)의 '위치' 칸이 된다.
-   */
-  frameLocations?: string[];
 }
 
-export type DrawingPatch = Partial<
-  Pick<DrawingRecord, 'status' | 'progress' | 'error' | 'frames' | 'projectId' | 'frameLocations'>
->;
+export type DrawingPatch = Partial<Pick<DrawingRecord, 'status' | 'progress' | 'error' | 'frames' | 'projectId'>>;
 
 const DRAWING_ID_PATTERN = /^d_[0-9a-f]{32}$/;
 

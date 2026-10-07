@@ -1,6 +1,7 @@
 // 손상 원장(ledger): 도면의 손상을 손상물량표 한 행 모양으로 편 것. 웹(daenong)이 받아
 // 집계표·사진첩을 만든다. 번호·손상현황·물량은 화면·산출 DXF·사진 zip과 **같은 함수**로 구한다 —
 // 받는 쪽이 다시 계산하면 규칙이 어긋난다. 파일 I/O가 없는 순수 함수라 손으로 검산할 수 있다.
+// 손상위치(부재)는 여기 없다 — 캐드에서 적는다(2026-10-07 결정). 웹이 빈 열을 두고 사람이 채운다.
 // 근거: 대농 프로젝트 문서 '앱-웹-연동-분석.md' 4장.
 
 import { getDamageType } from '../public/viewer/damageTypes.js';
@@ -20,8 +21,6 @@ export interface LedgerRow {
   frameIndex: number | null;
   /** 틀마다 1부터. 틀 밖 손상은 null(산출 DXF·사진 zip과 같다) */
   no: number | null;
-  /** 손상위치(부재). 도면의 frameLocations[frameIndex]. 없으면 '' */
-  location: string;
   /** 손상 유형 id(crack, spalling …) */
   type: string;
   /** 손상현황. 균열류는 폭 구간이 붙는다 — '균열(0.3mm미만)' */
@@ -42,8 +41,8 @@ export interface LedgerRow {
 export interface DrawingLedger {
   drawingId: string;
   drawingName: string;
-  /** 틀별 손상위치. frames 길이에 맞춰 빈 문자열로 채운다 */
-  frameLocations: string[];
+  /** 망도틀 수. 0이면 틀이 없는 도면(전체가 한 묶음) */
+  frameCount: number;
   rows: LedgerRow[];
   /** 틀 밖이라 번호를 받지 못한 손상 수 */
   outsideFrames: number;
@@ -57,20 +56,13 @@ function stringsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-/** frames 길이에 맞춘 위치 목록. 없는 칸은 ''이고, 틀보다 긴 값은 버린다. */
-export function frameLocationsFor(frames: FrameBounds[], locations: unknown): string[] {
-  const list = stringsOf(locations);
-  return frames.map((_, index) => (list[index] ?? '').trim());
-}
-
 export function buildDrawingLedger(
-  drawing: { id: string; name: string; frameLocations?: unknown },
+  drawing: { id: string; name: string },
   damages: unknown[],
   frames: FrameBounds[],
 ): DrawingLedger {
   const list = Array.isArray(damages) ? damages : [];
   const numbers = computeNumbers(list, frames);
-  const locations = frameLocationsFor(frames, drawing.frameLocations);
   const hasFrames = frames.length > 0;
 
   const rows: LedgerRow[] = [];
@@ -90,7 +82,6 @@ export function buildDrawingLedger(
       damageId: id,
       frameIndex,
       no: numbers.get(id) ?? null,
-      location: frameIndex === null ? '' : (locations[frameIndex] ?? ''),
       type,
       statusText: statusTextOf(damage),
       width: numberOrNull(damage?.measured?.width),
@@ -111,5 +102,5 @@ export function buildDrawingLedger(
     return fa - fb || (a.no ?? Number.MAX_SAFE_INTEGER) - (b.no ?? Number.MAX_SAFE_INTEGER) || a.damageId.localeCompare(b.damageId);
   });
 
-  return { drawingId: drawing.id, drawingName: drawing.name, frameLocations: locations, rows, outsideFrames };
+  return { drawingId: drawing.id, drawingName: drawing.name, frameCount: frames.length, rows, outsideFrames };
 }

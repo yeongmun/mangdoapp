@@ -563,12 +563,12 @@ describe('PATCH /api/drawings/:id (프로젝트로 옮기기)', () => {
     expect(res.body.frames).toEqual([]);
   });
 
-  it('본문에 projectId도 frameLocations도 없으면 400', async () => {
+  it('본문에 projectId 키가 없으면 400', async () => {
     const { app, drawings } = setup();
     const drawing = await seed(drawings);
     const res = await request(app).patch(`/api/drawings/${drawing.id}`).set('x-access-key', KEY).send({});
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: 'projectId 또는 frameLocations가 필요합니다.' });
+    expect(res.body).toEqual({ error: 'projectId가 필요합니다.' });
   });
 
   it('projectId가 문자열도 null도 아니면 400', async () => {
@@ -599,58 +599,6 @@ describe('PATCH /api/drawings/:id (프로젝트로 옮기기)', () => {
     expect(res.body).toEqual({ error: '도면을 찾을 수 없습니다.' });
   });
 
-  // 틀마다 한 번 적는 손상위치(부재). 손상 원장의 '위치' 칸이 된다(2026-10-07 결정).
-  describe('frameLocations(틀별 손상위치)', () => {
-    it('틀 수에 맞춰 저장하고 응답에도 실린다', async () => {
-      const { app, drawings, originals } = setup();
-      const drawing = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete' });
-      await originals.save(drawing.objectKey, await readFile(templatePath));
-
-      const res = await request(app)
-        .patch(`/api/drawings/${drawing.id}`)
-        .set('x-access-key', KEY)
-        .send({ frameLocations: [' 교대 ', '남는값'] });
-
-      expect(res.status).toBe(200);
-      expect(res.body.frames).toHaveLength(1);
-      expect(res.body.frameLocations).toEqual(['교대']);
-      expect((await drawings.get(drawing.id))?.frameLocations).toEqual(['교대']);
-    });
-
-    it('projectId와 함께 보내도 둘 다 반영된다', async () => {
-      const { app, drawings, projects } = setup();
-      const drawing = await seed(drawings, { name: '교량.dwg' });
-      const project = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
-      const res = await request(app)
-        .patch(`/api/drawings/${drawing.id}`)
-        .set('x-access-key', KEY)
-        .send({ projectId: project.id, frameLocations: ['x'] });
-      expect(res.status).toBe(200);
-      expect(res.body.projectId).toBe(project.id);
-      // DWG는 틀이 없으므로 위치도 빈 배열
-      expect(res.body.frameLocations).toEqual([]);
-    });
-
-    it('문자열 배열이 아니면 400', async () => {
-      const { app, drawings } = setup();
-      const drawing = await seed(drawings);
-      for (const bad of ['교대', [1], null]) {
-        const res = await request(app).patch(`/api/drawings/${drawing.id}`).set('x-access-key', KEY).send({ frameLocations: bad });
-        expect(res.status).toBe(400);
-        expect(res.body).toEqual({ error: 'frameLocations는 문자열 배열이어야 합니다.' });
-      }
-    });
-
-    it('줄바꿈이나 100자 초과는 400', async () => {
-      const { app, drawings } = setup();
-      const drawing = await seed(drawings);
-      for (const bad of [['a\nb'], ['x'.repeat(101)]]) {
-        const res = await request(app).patch(`/api/drawings/${drawing.id}`).set('x-access-key', KEY).send({ frameLocations: bad });
-        expect(res.status).toBe(400);
-        expect(res.body).toEqual({ error: '손상위치는 줄바꿈 없이 100자까지 적을 수 있습니다.' });
-      }
-    });
-  });
 
   it('접근키가 없으면 401', async () => {
     const { app, drawings } = setup();
@@ -1660,9 +1608,9 @@ describe('GET /api/projects/:id/export.zip', () => {
 // 손상 원장. 번호·손상현황·물량은 산출 DXF·사진 zip과 같은 함수를 쓴다(ledger.test.ts가 값을 검사하고,
 // 여기서는 라우트가 틀·위치·손상을 제대로 모아 넘기는지만 본다).
 describe('GET /api/drawings/:id/ledger', () => {
-  it('틀·위치·손상을 모아 행으로 준다', async () => {
+  it('틀·손상을 모아 행으로 준다', async () => {
     const { app, drawings, damages, originals } = setup();
-    const drawing = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete', frameLocations: ['교대'] });
+    const drawing = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete' });
     await originals.save(drawing.objectKey, await readFile(templatePath));
     // 템플릿 틀(x 2000~4280, y 3160~3400) 안의 균열 하나
     const doc = crackDoc(drawing.id);
@@ -1672,13 +1620,12 @@ describe('GET /api/drawings/:id/ledger', () => {
     const res = await request(app).get(`/api/drawings/${drawing.id}/ledger`).set('x-access-key', KEY);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ drawingId: drawing.id, drawingName: '망도.dxf', frameLocations: ['교대'], outsideFrames: 0 });
+    expect(res.body).toMatchObject({ drawingId: drawing.id, drawingName: '망도.dxf', frameCount: 1, outsideFrames: 0 });
     expect(res.body.rows).toHaveLength(1);
     expect(res.body.rows[0]).toMatchObject({
       damageId: 'c1',
       frameIndex: 0,
       no: 1,
-      location: '교대',
       type: 'crack',
       statusText: '균열(0.3mm이상)',
       width: 0.3,
@@ -1697,7 +1644,7 @@ describe('GET /api/drawings/:id/ledger', () => {
     const res = await request(app).get(`/api/drawings/${drawing.id}/ledger`).set('x-access-key', KEY);
     expect(res.status).toBe(200);
     expect(res.body.rows).toEqual([]);
-    expect(res.body.frameLocations).toEqual([]);
+    expect(res.body.frameCount).toBe(0);
   });
 
   it('없는 도면이면 404', async () => {

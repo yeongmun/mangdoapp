@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FrameBounds } from '../src/export/frames.js';
-import { buildDrawingLedger, frameLocationsFor } from '../src/ledger.js';
+import { buildDrawingLedger } from '../src/ledger.js';
 
 // 왼쪽 틀(x 0~1000)과 오른쪽 틀(x 2000~3000).
 const FRAMES: FrameBounds[] = [
@@ -26,19 +26,10 @@ const RECT_LEFT_2: [number, number][] = [[500, 100], [600, 100], [600, 200], [50
 const RECT_RIGHT: [number, number][] = [[2100, 100], [2200, 100], [2200, 200], [2100, 200]];
 const OUTSIDE: [number, number][] = [[1500, 100], [1600, 100], [1600, 200], [1500, 200]];
 
-describe('frameLocationsFor', () => {
-  it('틀 수에 맞춰 빈 칸은 ""로 채우고 넘치는 값은 버린다', () => {
-    expect(frameLocationsFor(FRAMES, ['교대', ' 거더 ', '남는값'])).toEqual(['교대', '거더']);
-    expect(frameLocationsFor(FRAMES, ['교대'])).toEqual(['교대', '']);
-    expect(frameLocationsFor(FRAMES, undefined)).toEqual(['', '']);
-    expect(frameLocationsFor(FRAMES, 'x')).toEqual(['', '']);
-  });
-});
-
 describe('buildDrawingLedger', () => {
-  it('번호는 틀마다 1부터, 위치는 틀의 frameLocations, 손상현황·물량·단위는 화면과 같은 규칙', () => {
+  it('번호는 틀마다 1부터, 손상현황·물량·단위는 화면과 같은 규칙', () => {
     const ledger = buildDrawingLedger(
-      { id: 'd_1', name: '교량.dxf', frameLocations: ['교대', '거더'] },
+      { id: 'd_1', name: '교량.dxf' },
       [
         damage('b', 'spalling', RECT_LEFT_2, { width: 0.5, length: 2, count: 3 }, { photoNumbers: ['101530'], note: '동측' }),
         damage('a', 'crack', [[100, 100], [300, 100]], { width: 0.2, length: 5, count: 1 }),
@@ -47,13 +38,11 @@ describe('buildDrawingLedger', () => {
       FRAMES,
     );
 
-    expect(ledger.drawingId).toBe('d_1');
-    expect(ledger.frameLocations).toEqual(['교대', '거더']);
-    expect(ledger.outsideFrames).toBe(0);
-    expect(ledger.rows.map((r) => [r.frameIndex, r.no, r.damageId, r.location])).toEqual([
-      [0, 1, 'a', '교대'],
-      [0, 2, 'b', '교대'],
-      [1, 1, 'c', '거더'],
+    expect(ledger).toMatchObject({ drawingId: 'd_1', drawingName: '교량.dxf', frameCount: 2, outsideFrames: 0 });
+    expect(ledger.rows.map((r) => [r.frameIndex, r.no, r.damageId])).toEqual([
+      [0, 1, 'a'],
+      [0, 2, 'b'],
+      [1, 1, 'c'],
     ]);
 
     const [a, b, c] = ledger.rows;
@@ -62,16 +51,16 @@ describe('buildDrawingLedger', () => {
     expect(c).toMatchObject({ statusText: '균열(0.3mm이상)', quantity: 3, unit: 'm' });
   });
 
-  it('틀 밖 손상은 번호·위치 없이 맨 뒤에 오고 outsideFrames에 센다', () => {
+  it('틀 밖 손상은 번호 없이 맨 뒤에 오고 outsideFrames에 센다', () => {
     const ledger = buildDrawingLedger(
-      { id: 'd_1', name: '교량.dxf', frameLocations: ['교대', '거더'] },
+      { id: 'd_1', name: '교량.dxf' },
       [damage('x', 'spalling', OUTSIDE, { width: 1, length: 1, count: 1 }), damage('r', 'spalling', RECT_RIGHT, { width: 1, length: 1, count: 1 })],
       FRAMES,
     );
     expect(ledger.outsideFrames).toBe(1);
-    expect(ledger.rows.map((r) => [r.damageId, r.frameIndex, r.no, r.location])).toEqual([
-      ['r', 1, 1, '거더'],
-      ['x', null, null, ''],
+    expect(ledger.rows.map((r) => [r.damageId, r.frameIndex, r.no])).toEqual([
+      ['r', 1, 1],
+      ['x', null, null],
     ]);
   });
 
@@ -81,10 +70,10 @@ describe('buildDrawingLedger', () => {
       [damage('p', 'spalling', RECT_LEFT, { width: 1, length: 1, count: 1 }), damage('q', 'spalling', RECT_RIGHT, { width: 1, length: 1, count: 1 })],
       [],
     );
-    expect(ledger.frameLocations).toEqual([]);
-    expect(ledger.rows.map((r) => [r.damageId, r.frameIndex, r.no, r.location])).toEqual([
-      ['p', 0, 1, ''],
-      ['q', 0, 2, ''],
+    expect(ledger.frameCount).toBe(0);
+    expect(ledger.rows.map((r) => [r.damageId, r.frameIndex, r.no])).toEqual([
+      ['p', 0, 1],
+      ['q', 0, 2],
     ]);
   });
 

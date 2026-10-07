@@ -113,9 +113,9 @@ npx expo start --tunnel
 
 웹이 손상물량표·사진첩을 만들 때 쓰는 읽기 전용 API입니다. 번호·손상현황·물량은 산출 DXF·사진 zip과 같은 규칙입니다.
 
-- `GET /api/drawings/:id/ledger` — 도면 하나의 손상을 표 행(`rows`)으로. 행마다 `frameIndex`(틀 순번), `no`(틀마다 1부터), `location`(틀별 손상위치), `statusText`, `width`/`widthUnit`, `length`, `count`, `quantity`, `unit`, `photoNumbers`, `note`
+- `GET /api/drawings/:id/ledger` — 도면 하나의 손상을 표 행(`rows`)으로. 행마다 `frameIndex`(틀 순번), `no`(틀마다 1부터), `statusText`, `width`/`widthUnit`, `length`, `count`, `quantity`, `unit`, `photoNumbers`, `note`
 - `GET /api/projects/:id/ledger` — 프로젝트(와 하위 프로젝트)의 모든 도면 원장. 도면 순서는 사진 zip과 같고, 하위 프로젝트 도면은 `subProject`에 이름이 실립니다
-- 손상위치(부재)는 손상마다가 아니라 **망도틀마다 한 번** 적습니다: `PATCH /api/drawings/:id` 에 `{ "frameLocations": ["교대", "거더"] }` (틀 순서대로, 왼쪽부터). 아직 PC 업로드 페이지에 입력칸은 없습니다
+- 손상위치(부재)는 원장에 없습니다 — 캐드에서 적습니다. 웹이 빈 열을 두고 사람이 채웁니다
 
 ## 문제 해결
 

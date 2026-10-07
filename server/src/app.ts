@@ -15,7 +15,7 @@ import { findFrames, type FrameBounds } from './export/frames.js';
 import type { OriginalsStore } from './originalsStore.js';
 import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
-import { buildDrawingLedger, frameLocationsFor, type DrawingLedger } from './ledger.js';
+import { buildDrawingLedger, type DrawingLedger } from './ledger.js';
 import {
   isDamageId,
   isPhotoNumber,
@@ -378,41 +378,25 @@ export function createApp(deps: AppDeps) {
       return;
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    if (!('projectId' in body) && !('frameLocations' in body)) {
-      res.status(400).json({ error: 'projectId 또는 frameLocations가 필요합니다.' });
+    if (!('projectId' in body)) {
+      res.status(400).json({ error: 'projectId가 필요합니다.' });
       return;
     }
-    const patch: { projectId?: string | null; frameLocations?: string[] } = {};
-    if ('projectId' in body) {
-      const value = body.projectId;
-      if (value === null) {
-        patch.projectId = null;
-      } else if (typeof value === 'string') {
-        if (!isProjectId(value) || !(await deps.projects.get(value))) {
-          res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
-          return;
-        }
-        patch.projectId = value;
-      } else {
-        res.status(400).json({ error: 'projectId 형식이 올바르지 않습니다.' });
+    const value = body.projectId;
+    let projectId: string | null;
+    if (value === null) {
+      projectId = null;
+    } else if (typeof value === 'string') {
+      if (!isProjectId(value) || !(await deps.projects.get(value))) {
+        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
         return;
       }
+      projectId = value;
+    } else {
+      res.status(400).json({ error: 'projectId 형식이 올바르지 않습니다.' });
+      return;
     }
-    if ('frameLocations' in body) {
-      // 틀마다 한 번 적는 손상위치(부재). 틀 수에 맞춰 자르고, 빈 칸은 ''로 둔다.
-      const value = body.frameLocations;
-      if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-        res.status(400).json({ error: 'frameLocations는 문자열 배열이어야 합니다.' });
-        return;
-      }
-      if (value.some((item: string) => item.length > 100 || /[\r\n]/.test(item))) {
-        res.status(400).json({ error: '손상위치는 줄바꿈 없이 100자까지 적을 수 있습니다.' });
-        return;
-      }
-      const withFrames = await ensureFrames(deps, drawing);
-      patch.frameLocations = frameLocationsFor(withFrames.frames ?? [], value);
-    }
-    const updated = await deps.drawings.update(drawing.id, patch);
+    const updated = await deps.drawings.update(drawing.id, { projectId });
     res.json(await ensureFrames(deps, updated ?? drawing));
   });
 
