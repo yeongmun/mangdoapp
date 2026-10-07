@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HandleAllocator, type DxfPair } from '../src/export/dxfDocument.js';
+import { HandleAllocator, pair, type DxfPair } from '../src/export/dxfDocument.js';
 import type { Transform } from '../src/export/tableGrid.js';
 import {
+  arcExtentPoints,
   copyEntityPairs,
   entityBoundsOf,
+  entityPointsOf,
   isCopyable,
   transformEntityPairs,
   translateEntityPairs,
@@ -558,5 +560,69 @@ describe('HATCH 비폴리라인 경계(72 모서리 종류) — fix round 2', ()
     expect(valueAt(copy, 71)).toBe('     0'); // 원래부터 비연관 — 안 바뀐다
     expect(valueAt(copy, 10, 1)).toBe('20.0'); // 중심점은 그대로
     expect(valueAt(copy, 40)).toBe('5.0');
+  });
+});
+
+describe('arcExtentPoints · 원호의 실제 영역 (2026-10-01 곡선 교량 거더선)', () => {
+  it('완만한 큰 호의 경계상자는 호가 지나는 띠다 — 원 전체가 아니다', () => {
+    // 반지름 3,369,405mm, 269.62°→270.38°(아래쪽 극점 부근을 지나는 거의 수평인 호). 실도면 값.
+    const arc = pairsOf([0, 'ARC'], [8, 'CS-CONC-MAJR'], [10, '102670'], [20, '3395952'], [40, '3369405'], [50, '269.62'], [51, '270.38']);
+    const b = entityBoundsOf(arc)!;
+    // 호는 y≈26,547 근처(중심 − 반지름)의 가로 띠. 중심(y=3,395,952)이나 원 전체(y −0~6,765,000)가 아니다.
+    expect(b.minY).toBeGreaterThan(26_000);
+    expect(b.maxY).toBeLessThan(27_500);
+    expect(b.minX).toBeGreaterThan(80_000);
+    expect(b.maxX).toBeLessThan(126_000);
+    // 경계상자 중심이 틀 0(x 76,628~144,365 · y 36~45,701) 안에 든다.
+    const cx = (b.minX + b.maxX) / 2;
+    const cy = (b.minY + b.maxY) / 2;
+    expect(cx).toBeGreaterThan(76_628);
+    expect(cx).toBeLessThan(144_365);
+    expect(cy).toBeGreaterThan(36);
+    expect(cy).toBeLessThan(45_701);
+  });
+
+  it('축 극점을 지나는 호는 그 극점까지 포함한다 (0°→180° 반원은 위쪽 꼭대기 포함)', () => {
+    const pts = arcExtentPoints(0, 0, 10, 0, 180);
+    const ys = pts.map((p) => p[1]);
+    expect(Math.max(...ys)).toBeCloseTo(10, 6);
+    expect(Math.min(...ys)).toBeCloseTo(0, 6);
+  });
+
+  it('끝각이 시작각보다 작으면 360°를 지나 반시계로 잰다 (350°→10°)', () => {
+    const pts = arcExtentPoints(0, 0, 10, 350, 10);
+    const xs = pts.map((p) => p[0]);
+    expect(Math.max(...xs)).toBeCloseTo(10, 6); // 0° 극점 포함
+    expect(Math.min(...xs)).toBeGreaterThan(9); // 반대쪽(180°)은 포함하지 않는다
+  });
+
+  it('원(CIRCLE)은 지금처럼 중심±반지름이다', () => {
+    const circle = pairsOf([0, 'CIRCLE'], [10, '5'], [20, '5'], [40, '2']);
+    expect(entityBoundsOf(circle)).toEqual({ minX: 3, minY: 3, maxX: 7, maxY: 7 });
+  });
+});
+
+describe('ACAD_TABLE — 삽입점만 옮기고 방향 벡터는 두며, 복사하지 않는다', () => {
+  const TABLE: DxfPair[] = [
+    pair(0, 'ACAD_TABLE'), pair(5, 'A0'), pair(330, '1F'), pair(100, 'AcDbEntity'), pair(8, '0'),
+    pair(100, 'AcDbBlockReference'), pair(2, '*T1'), pair(10, '2000.0'), pair(20, '3400.0'), pair(30, '0.0'),
+    pair(100, 'AcDbTable'), pair(342, '88'), pair(343, '31'), pair(11, '1.0'), pair(21, '0.0'), pair(31, '0.0'),
+    pair(91, '        5'), pair(92, '        8'), pair(141, '40.0'), pair(142, '100.0'),
+  ];
+
+  it('translateEntityPairs는 10/20만 옮기고 11/21(방향)은 그대로 둔다', () => {
+    const moved = translateEntityPairs(TABLE, 500, 0);
+    expect(moved.find((p) => p.code === 10)!.value).toBe('2500.0');
+    expect(moved.find((p) => p.code === 20)!.value).toBe('3400.0');
+    expect(moved.find((p) => p.code === 11)!.value).toBe('1.0');
+    expect(moved.find((p) => p.code === 21)!.value).toBe('0.0');
+  });
+
+  it('entityPointsOf는 삽입점 하나만 낸다', () => {
+    expect(entityPointsOf(TABLE)).toEqual([[2000, 3400]]);
+  });
+
+  it('isCopyable은 false다 — 표는 tableClone으로만 복제한다', () => {
+    expect(isCopyable(TABLE)).toBe(false);
   });
 });

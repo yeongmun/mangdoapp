@@ -5,7 +5,7 @@
 // 고정 순서는 머리글을 읽지 못했을 때만 쓰는 옛 자리다.
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 7장
 
-import { formatQuantity, quantityOf, statusTextOf, unitOf } from '../../public/viewer/quantities.js';
+import { quantityOf, statusTextOf, unitOf } from '../../public/viewer/quantities.js';
 import { TABLE_COLOR, TABLE_LAYER, type DxfPair, type HandleAllocator } from './dxfDocument.js';
 import { lineEntity, textEntity, type EntityBase, type Point } from './dxfEntities.js';
 import { applyTransform, cellCenter, modelTextHeight, type TableGrid } from './tableGrid.js';
@@ -103,8 +103,19 @@ export interface TableRow {
   fields: Partial<Record<RowField, string>>;
 }
 
+/** 표 칸의 치수·물량은 소수점 둘째 자리까지 고정(1.5 → 1.50, 2 → 2.00). 개소는 정수 그대로. 사용자 요청 2026-10-02 */
+export const TABLE_AMOUNT_DECIMALS = 2;
+
+export function formatTableAmount(value: number): string {
+  // 0.245처럼 이진수로 딱 떨어지지 않는 값은 toFixed가 0.24로 내려 버린다 — 유효숫자 12자리로
+  // 한 번 다듬은 뒤 반올림해 사람이 기대하는 0.25가 나오게 한다.
+  const scale = 10 ** TABLE_AMOUNT_DECIMALS;
+  const rounded = Math.round(Number((value * scale).toPrecision(12))) / scale;
+  return rounded.toFixed(TABLE_AMOUNT_DECIMALS);
+}
+
 function amountText(value: unknown): string {
-  return Number.isFinite(value) && (value as number) >= 0 ? formatQuantity(value as number) : '';
+  return Number.isFinite(value) && (value as number) >= 0 ? formatTableAmount(value as number) : '';
 }
 
 function countText(value: unknown): string {
@@ -120,7 +131,7 @@ export function rowValuesOf(damage: unknown, number: number): TableRow {
     width: amountText(measured.width),
     length: amountText(measured.length),
     count: countText(measured.count),
-    quantity: quantity === null ? '' : formatQuantity(quantity),
+    quantity: quantity === null ? '' : formatTableAmount(quantity),
     unit: unitOf(damage) ?? '',
   };
   return { number, fields };

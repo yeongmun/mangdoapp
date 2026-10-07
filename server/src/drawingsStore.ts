@@ -24,9 +24,22 @@ export interface DrawingRecord {
    * 올린 도면도 아무것도 바꾸지 않고 미분류로 보인다(설계 2.2).
    */
   projectId?: string | null;
+  /**
+   * 오토데스크 변환을 요청한 형식. **없으면 `svf2`**(오프라인 모드가 생기기 전에 올린 도면).
+   * 오프라인 모드부터는 새 업로드·다시 변환 모두 `svf`만 쓴다(설계 2장).
+   */
+  viewFormat?: 'svf' | 'svf2';
 }
 
-export type DrawingPatch = Partial<Pick<DrawingRecord, 'status' | 'progress' | 'error' | 'frames' | 'projectId'>>;
+export type DrawingPatch = Partial<
+  Pick<DrawingRecord, 'status' | 'progress' | 'error' | 'frames' | 'projectId' | 'viewFormat'>
+>;
+
+// 오프라인 모드(설계 2장): 이 도면을 기기에 내려받아 쓸 수 있는지. 저장하지 않고 응답에서
+// 계산한다 — status나 viewFormat이 바뀌어도 따로 손댈 값이 없다.
+export function offlineReadyOf(record: DrawingRecord): boolean {
+  return record.status === 'success' && record.viewFormat === 'svf';
+}
 
 const DRAWING_ID_PATTERN = /^d_[0-9a-f]{32}$/;
 

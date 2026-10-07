@@ -8,9 +8,11 @@ import { loadConfig } from './config.js';
 import { DamagesStore } from './damagesStore.js';
 import { DrawingsStore } from './drawingsStore.js';
 import { DrawingTrash } from './drawingTrash.js';
+import { OfflineFilesStore } from './offlineFiles.js';
 import { OriginalsStore } from './originalsStore.js';
 import { PhotosStore } from './photosStore.js';
 import { ProjectsStore } from './projectsStore.js';
+import { ViewerBundle } from './viewerBundle.js';
 
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
 dotenv.config({ path: join(serverRoot, '.env'), quiet: true });
@@ -32,6 +34,16 @@ async function main(): Promise<void> {
 
   const drawings = new DrawingsStore(join(config.dataDir, 'drawings.json'));
   const projects = new ProjectsStore(join(config.dataDir, 'projects.json'));
+
+  // 오프라인 모드(설계 3.1): 파생 파일·뷰어 꾸러미 캐시. fetchCdn은 전역 fetch로 CDN 파일을
+  // 받는다. Node fetch는 보통 본문을 이미 풀어 주지만 content-encoding 헤더를 남기므로,
+  // ViewerBundle은 헤더가 아니라 바이트(gzip 매직)로 풀지 말지 정한다.
+  const fetchCdn = async (url: string) => {
+    const response = await fetch(url);
+    const body = Buffer.from(await response.arrayBuffer());
+    return { status: response.status, body, contentEncoding: response.headers.get('content-encoding') };
+  };
+
   const app = createApp({
     accessKey: config.appAccessKey,
     readKey: config.appReadKey,
@@ -51,6 +63,8 @@ async function main(): Promise<void> {
       (id) => projects.get(id).then(Boolean),
     ),
     projects,
+    offline: new OfflineFilesStore(join(config.dataDir, 'cache', 'derivatives'), aps),
+    viewerBundle: new ViewerBundle(join(serverRoot, 'public'), join(config.dataDir, 'cache', 'viewer'), fetchCdn),
     publicDir: join(serverRoot, 'public'),
   });
 

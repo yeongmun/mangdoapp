@@ -6,10 +6,21 @@ export interface ManifestMessage {
   message?: string | string[];
 }
 
+// 오프라인 모드(설계 3.1): manifest의 파생물 트리 노드. svf 파생 아래 어딘가에 mime이
+// application/autodesk-f2d인 resource 노드가 있고, 그 urn이 오프라인에 내려받을 f2d 파생이다.
+export interface ManifestNode {
+  type?: string;
+  role?: string;
+  mime?: string;
+  urn?: string;
+  name?: string;
+  children?: ManifestNode[];
+}
+
 export interface ManifestLike {
   status: string;
   progress?: string;
-  derivatives?: Array<{ status?: string; messages?: ManifestMessage[] }>;
+  derivatives?: Array<{ status?: string; messages?: ManifestMessage[]; outputType?: string; children?: ManifestNode[] }>;
 }
 
 export interface ApsClients {
@@ -19,6 +30,8 @@ export interface ApsClients {
   uploadObject(bucketKey: string, objectKey: string, data: Buffer, accessToken: string): Promise<{ objectId?: string }>;
   startJob(urn: string, accessToken: string): Promise<unknown>;
   getManifest(urn: string, accessToken: string): Promise<ManifestLike>;
+  // 오프라인 모드(설계 3.1): manifest의 파생 파일(f2d, manifest.json.gz, metadata.json.gz) 바이트.
+  downloadDerivative(urn: string, derivativeUrn: string, accessToken: string): Promise<Buffer>;
 }
 
 export interface TokenInfo {
@@ -136,6 +149,17 @@ export class ApsService {
       if (httpStatusOf(err) === 404) return { status: 'pending', progress: '', error: null };
       throw err;
     }
+  }
+
+  // 오프라인 모드(설계 3.1): getTranslationStatus와 달리 가공 없이 manifest 그대로 돌려준다 —
+  // offlineFiles.ts가 이 안에서 f2d 파생 urn을 찾는다(findF2dUrn).
+  async getRawManifest(urn: string): Promise<ManifestLike> {
+    return this.clients.getManifest(urn, await this.getInternalToken());
+  }
+
+  // 오프라인 모드(설계 3.1): 파생 파일(f2d·manifest.json.gz·metadata.json.gz) 바이트를 받는다.
+  async downloadDerivative(urn: string, derivativeUrn: string): Promise<Buffer> {
+    return this.clients.downloadDerivative(urn, derivativeUrn, await this.getInternalToken());
   }
 
   private async freshToken(current: TokenInfo | null, scopes: string[]): Promise<TokenInfo> {

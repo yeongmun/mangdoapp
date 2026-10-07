@@ -61,6 +61,10 @@ const ROLES: ReadonlyMap<string, CodeRoles> = new Map([
   // 모서리(72=2)를 isCopyable이 허용하면서 변환(transformEntityPairs)도 반지름에 배율을,
   // 각도에 회전을 옳게 적용해야 한다(원 중심은 10/20이라 xyRoleOf가 이미 점으로 다룬다).
   ['HATCH', { ...NONE, points: [[43, 44]], scaledVectors: [[45, 46]], lengths: [40, 41, 47, 49], angles: [50, 51, 52, 53] }],
+  // ACAD_TABLE의 10/20은 삽입점, 11/21은 가로 방향 벡터(1,0)다 — 일반 규칙은 11/21까지 점으로
+  // 보고 옮겨 표를 깨뜨린다(2026-10-02 설계 5.3). 열 너비·행 높이(141/142)는 배율과 무관한
+  // 표 로컬 값이라 lengths에 넣지 않는다(transform은 표에 쓰지 않는다 — 복제는 tableClone이 한다).
+  ['ACAD_TABLE', { ...NONE, points: [[10, 20]], vectors: [[11, 21]] }],
 ]);
 
 function typeOf(pairs: DxfPair[]): string {
@@ -262,8 +266,50 @@ export function entityPointsOf(pairs: DxfPair[]): Point[] {
   return points;
 }
 
+/**
+ * 원호(ARC)가 실제로 지나는 영역의 대표 점: 양 끝점과, 호 안에 드는 축 방향 극점(0°·90°·180°·270°).
+ * 원 전체(중심±반지름)로 잡으면 곡선 교량의 거더선처럼 **반지름이 수백만 mm인 완만한 호**의 경계상자
+ * 중심이 도면 밖 수 km 지점으로 가서 어느 틀에도 속하지 않게 된다(2026-10-01 실도면: 넘침 복사본에
+ * 거더선이 빠짐). 각도는 도(degree), 반시계, 시작→끝.
+ */
+export function arcExtentPoints(cx: number, cy: number, r: number, startDeg: number, endDeg: number): Point[] {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const norm = (deg: number) => ((deg % 360) + 360) % 360;
+  const start = norm(startDeg);
+  let sweep = norm(endDeg) - start;
+  if (sweep <= 0) sweep += 360;
+  const points: Point[] = [
+    [cx + r * Math.cos(rad(start)), cy + r * Math.sin(rad(start))],
+    [cx + r * Math.cos(rad(start + sweep)), cy + r * Math.sin(rad(start + sweep))],
+  ];
+  for (const axis of [0, 90, 180, 270]) {
+    const offset = norm(axis - start);
+    if (offset <= sweep) points.push([cx + r * Math.cos(rad(axis)), cy + r * Math.sin(rad(axis))]);
+  }
+  return points;
+}
+
+function circularPointsOf(pairs: DxfPair[]): Point[] | null {
+  const type = typeOf(pairs);
+  if (type !== 'ARC' && type !== 'CIRCLE') return null;
+  const num = (code: number): number | null => {
+    const p = pairs.find((entry) => entry.code === code);
+    const value = p ? Number(p.value.trim()) : NaN;
+    return Number.isFinite(value) ? value : null;
+  };
+  const cx = num(10);
+  const cy = num(20);
+  const r = num(40);
+  if (cx === null || cy === null || r === null) return null;
+  if (type === 'CIRCLE') {
+    return [[cx - r, cy - r], [cx + r, cy + r]];
+  }
+  return arcExtentPoints(cx, cy, Math.abs(r), num(50) ?? 0, num(51) ?? 360);
+}
+
 export function entityBoundsOf(pairs: DxfPair[]): EntityBounds | null {
-  const points = entityPointsOf(pairs);
+  // 원·원호는 중심점 하나가 아니라 실제로 차지하는 영역으로 잰다(위 arcExtentPoints 참고).
+  const points = circularPointsOf(pairs) ?? entityPointsOf(pairs);
   if (points.length === 0) return null;
   let minX = Infinity;
   let minY = Infinity;
@@ -351,6 +397,8 @@ function hasUnhandledReference(pairs: DxfPair[]): boolean {
 export function isCopyable(pairs: DxfPair[]): boolean {
   const type = typeOf(pairs);
   if (!ROLES.has(type)) return false;
+  // 표는 글자 블록·블록 레코드까지 한 벌이라 엔티티만 베끼면 안 된다 — tableClone.ts가 맡는다.
+  if (type === 'ACAD_TABLE') return false;
   // 속성(ATTRIB)이 따라오는 INSERT는 ATTRIB…SEQEND까지 한 벌이라 이 모듈이 다루지 못한다.
   if (type === 'INSERT' && intAt(pairs, 66) === 1) return false;
   if (type === 'HATCH') {

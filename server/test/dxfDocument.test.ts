@@ -2,10 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { templateText } from './fixtureDocs.js';
 import {
   createHandleAllocator,
   DAMAGE_LAYER,
   ensureLayer,
+  findBlock,
   findSection,
   findTable,
   formatInt,
@@ -21,16 +23,11 @@ import {
   recordHandle,
   serializeDxf,
   setHeaderValue,
+  symbolTableInfo,
   TABLE_COLOR,
   TABLE_LAYER,
   type DxfPair,
 } from '../src/export/dxfDocument.js';
-
-const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
-
-async function templateText(): Promise<string> {
-  return readFile(fixturePath, 'utf8');
-}
 
 describe('parseDxf / serializeDxf', () => {
   it('쌍으로 나누고 원래 글자 그대로 되돌린다 (LF)', async () => {
@@ -319,5 +316,29 @@ describe('ensureLayer', () => {
     const doc = parseDxf(text);
     ensureLayer(doc, createHandleAllocator(doc), DAMAGE_LAYER, 1);
     expect(serializeDxf(doc)).not.toContain('390');
+  });
+});
+
+describe('findBlock · symbolTableInfo', () => {
+  it('블록의 BLOCK/ENDBLK 자리와 레코드 핸들을 돌려준다', async () => {
+    const doc = parseDxf(await templateText());
+    const block = findBlock(doc, '*TX')!;
+    expect(block).not.toBeNull();
+    expect(doc.pairs[block.start]).toMatchObject({ code: 0, value: 'BLOCK' });
+    expect(doc.pairs[block.endblkIndex]).toMatchObject({ code: 0, value: 'ENDBLK' });
+    // *TX는 마지막 블록이라 ENDBLK 다음 (0, …)은 ENDSEC이다
+    expect(doc.pairs[block.end]).toMatchObject({ code: 0, value: 'ENDSEC' });
+    expect(block.recordHandle).toBe('31');
+    expect(findBlock(doc, '없는블록')).toBeNull();
+  });
+
+  it('심볼 표의 핸들·개수 자리·ENDTAB 자리를 돌려준다', async () => {
+    const doc = parseDxf(await templateText());
+    const info = symbolTableInfo(doc, 'BLOCK_RECORD')!;
+    expect(info.handle).toBe('1');
+    expect(doc.pairs[info.countIndex]).toMatchObject({ code: 70 });
+    expect(doc.pairs[info.countIndex].value.trim()).toBe('3');
+    expect(doc.pairs[info.end]).toMatchObject({ code: 0, value: 'ENDTAB' });
+    expect(symbolTableInfo(doc, 'NOPE')).toBeNull();
   });
 });

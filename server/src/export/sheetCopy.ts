@@ -20,8 +20,8 @@ import {
   cellCenter,
   composeTransform,
   hasUniformScale,
-  indexOfBand,
   insertTransform,
+  isPrintedNumber,
   modelSpaceRanges,
   modelTextHeight,
   numberAt,
@@ -117,6 +117,15 @@ function inside(bounds: { minX: number; minY: number; maxX: number; maxY: number
  * (조사 2장 주의) — 블록 안 도형을 삽입 변환으로 옮겨 감싼다. findFrames와 같은 방식이다.
  */
 function resolvedBounds(model: ModelSpace, entity: RawEntity, pairs: DxfPair[]): EntityBounds | null {
+  if (entity.type === 'ACAD_TABLE') {
+    // 표는 삽입점 하나가 아니라 표가 차지하는 영역으로 잰다(frames.ts와 같은 규칙) — 모델 공간
+    // 표의 틀 소속은 표 중심으로 판정해야 틀 가장자리에 걸친 삽입점 때문에 틀리지 않는다.
+    const points = boundsPointsOf(entity);
+    if (points.length === 0) return null;
+    const xs = points.map((p) => p[0]);
+    const ys = points.map((p) => p[1]);
+    return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+  }
   if (entity.type !== 'INSERT') return entityBoundsOf(pairs);
   const name = textAt(entity, 2);
   const contents = name ? model.blocks.get(name) : undefined;
@@ -179,11 +188,12 @@ function appendAll(target: DxfPair[], source: DxfPair[]): void {
   for (const p of source) target.push(p);
 }
 
-/** 최상위 엔티티 여러 개를 새 핸들로 베껴 x로 dx만큼 옮긴다(설계 5.1). */
-export function copyRegion(ctx: SheetContext, ranges: EntityRange[], dx: number): CopyResult {
+/** 최상위 엔티티 여러 개를 새 핸들로 베껴 x로 dx만큼 옮긴다(설계 5.1). exclude는 베끼지 않고 세지도 않는다(모델 공간 표 — tableClone이 따로 복제한다). */
+export function copyRegion(ctx: SheetContext, ranges: EntityRange[], dx: number, exclude?: EntityRange): CopyResult {
   const pairs: DxfPair[] = [];
   let skipped = 0;
   for (const range of ranges) {
+    if (range === exclude) continue;
     const source = ctx.doc.pairs.slice(range.start, range.end);
     if (!isCopyable(source)) {
       skipped += 1;
@@ -196,14 +206,6 @@ export function copyRegion(ctx: SheetContext, ranges: EntityRange[], dx: number)
 
 function baseFor(ctx: SheetContext, layer: string, colorIndex: number): EntityBase {
   return { handle: ctx.alloc.next(), owner: ctx.owner, layer, colorIndex };
-}
-
-// 이 글자가 번호 열의 **데이터 행** 칸에 있는가(= 미리 인쇄된 번호인가).
-function isPrintedNumber(grid: TableGrid, entity: RawEntity): boolean {
-  const local: Point = [numberAt(entity, 10, 0), numberAt(entity, 20, 0)];
-  if (indexOfBand(grid.colBoundaries, local[0]) !== grid.numberColumn) return false;
-  const row = indexOfBand(grid.rowBoundaries, local[1]);
-  return row >= grid.firstDataRow;
 }
 
 /**
@@ -299,6 +301,18 @@ export function flattenFrameBlock(
     appendAll(pairs, transformEntityPairs(copyEntityPairs(source, ctx.alloc, ctx.owner), frameTransform));
   }
   return { pairs, skipped };
+}
+
+/**
+ * 틀 INSERT 자체를 한 벌 더 넣는다(새 구조 — 블록 안에 표가 없어 번호 1~N이 따라오지 않으므로
+ * 펼칠 필요가 없다, 2026-10-02 설계 5.1). 블록 정의는 공유된다.
+ */
+export function copyFrameInsert(ctx: SheetContext, frame: Frame, dx: number): CopyResult {
+  const range = ctx.ranges[frame.entityIndex];
+  if (!range || range.type !== 'INSERT') return { pairs: [], skipped: 1 };
+  const source = ctx.doc.pairs.slice(range.start, range.end);
+  if (!isCopyable(source)) return { pairs: [], skipped: 1 };
+  return { pairs: translateEntityPairs(copyEntityPairs(source, ctx.alloc, ctx.owner), dx, 0), skipped: 0 };
 }
 
 /** 원본 엔티티를 제자리에서 옮긴다(복사가 아니다 — 핸들·참조는 그대로다, 설계 6장). */

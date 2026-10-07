@@ -10,15 +10,49 @@
       "bundleIdentifier": "com.yourcompany.mangdoapp"
     },
     "android": {
-      "package": "com.yourcompany.mangdoapp"
+      "package": "com.yourcompany.mangdoapp",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro"
     },
     "plugins": [
       "expo-status-bar",
-      ["expo-image-picker", { "cameraPermission": "손상 사진을 찍기 위해 카메라를 씁니다." }],
-      ["expo-media-library", { "savePhotosPermission": "찍은 사진을 앨범에 저장합니다.", "isAccessMediaLocationEnabled": false }]
-    ]
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "손상 사진을 찍기 위해 카메라를 씁니다."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "찍은 사진을 앨범에 저장합니다.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "69773266-610c-42bd-bc5d-a67adbbddbee"
+      }
+    },
+    "owner": "yeongmun"
   }
 }

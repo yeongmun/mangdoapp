@@ -4,22 +4,26 @@
 // 근거: docs/superpowers/specs/2026-09-15-dxf-export-design.md 4~8·10장
 
 import { computeNumbers, countOutsideFrames, frameIndexOf } from '../../public/viewer/quantities.js';
+import { DocumentEdits } from './documentEdits.js';
 import { damageEntities, dwgPointsOf, dwgShapesOf, type DamageEntitiesWarnings } from './damageEntities.js';
 import {
   createHandleAllocator,
   DAMAGE_COLOR,
   DAMAGE_LAYER,
   ensureLayer,
+  findBlock,
   findSection,
   findTable,
   headerValue,
   insertEntities,
+  pair,
   parseDxf,
   PHOTO_COLOR,
   PHOTO_LAYER,
   recordHandle,
   serializeDxf,
   setHeaderValue,
+  symbolTableInfo,
   TABLE_COLOR,
   TABLE_LAYER,
   type DxfDocument,
@@ -31,6 +35,7 @@ import { translatePairs } from './entityTransform.js';
 import { findFrames, type Frame } from './frames.js';
 import { damageLabels, labelEntities } from './labelPlacement.js';
 import {
+  copyFrameInsert,
   copyRegion,
   flattenFrameBlock,
   indexRegions,
@@ -44,6 +49,8 @@ import {
   type RegionIndex,
   type SheetContext,
 } from './sheetCopy.js';
+import { appendBeforeEndblk, cellMtextPairs, cellWritesFor, stripGraphicsCache, writeCellValues } from './tableCells.js';
+import { cloneTable, nextTableName, usedTableNames } from './tableClone.js';
 import { fillTable, resolvedColumnMap, rowValuesOf, type TableRow } from './tableFill.js';
 import {
   buildGrid,
@@ -261,7 +268,8 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
     const dataRows = grid?.dataRowCount ?? 0;
     let pages = 1;
     if (grid && dataRows > 0 && frameMax > dataRows) {
-      if (isFlattenable(frame.transform)) pages = pagesOf(frameMax, dataRows);
+      // 모델 공간 표 틀은 펼치지 않고 INSERT·표를 그대로 베끼므로 늘 복사할 수 있다(2026-10-02 설계 5장).
+      if (frame.tableKind === 'modelSpace' || isFlattenable(frame.transform)) pages = pagesOf(frameMax, dataRows);
       // 회전·비균일 배율인 틀은 펼치지 못한다 — 옛 넘침(표를 아래에)으로 간다(설계 5.2).
       else warnings.push(EXPORT_WARNINGS.sheetCopyUnsupported(frame.index));
     }
@@ -271,14 +279,19 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
   }
 
   const planByFrame = new Map(plans.map((plan) => [plan.frame.index, plan] as const));
-  // 넘치는 틀이 하나도 없으면 문서를 다시 훑지 않는다 — 4 MB 템플릿에서 헛일이 크다.
+  // 넘치는 틀도, 셀을 채울 모델 공간 표도 없으면 문서를 다시 훑지 않는다 — 4 MB 템플릿에서
+  // 헛일이 크다. 모델 공간 표는 넘치지 않아도 표 범위(ctx.ranges)가 있어야 제자리에서 고친다.
+  // 영역 색인은 복사·밀기에만 쓰므로 넘치는 틀이 있을 때만 만든다.
   let ctx: SheetContext | null = null;
   let regions: RegionIndex | null = null;
-  if (plans.some((plan) => plan.pages > 1)) {
+  const needsContext = plans.some(
+    (plan) => plan.pages > 1 || (plan.frame.tableKind === 'modelSpace' && plan.entries.length > 0 && plan.grid),
+  );
+  if (needsContext) {
     ctx = readSheetContext(doc, alloc, owner);
-    if (ctx) regions = indexRegions(ctx, frames);
+    if (ctx && plans.some((plan) => plan.pages > 1)) regions = indexRegions(ctx, frames);
     // 문맥을 읽지 못하면(ENTITIES가 없는 파일 — 위에서 이미 막았다) 복사를 포기하고 옛 길로 간다.
-    else for (const plan of plans) plan.pages = 1;
+    if (!ctx) for (const plan of plans) plan.pages = 1;
   }
 
   /** 어느 틀에도 속하지 않는 것(틀 밖 손상·잡다한 글자)이 오른쪽으로 가는 거리(설계 6장) */
@@ -327,6 +340,24 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
     }
   }
   if (circleWarnings.circlesTruncated) warnings.push(EXPORT_WARNINGS.circlesTruncated);
+
+  // 오른쪽 틀과 그 영역의 원본 엔티티를 제자리에서 옮긴다(설계 6장).
+  // 복사·셀 채우기보다 **먼저** 민다 — 그 뒤의 복사는 밀린 원본에서 베끼므로 dx가 `page × pitch`만이면
+  // 된다(2026-10-02 설계 6장). insertEntities보다도 먼저여야 하는 이유는 전과 같다 — 범위(EntityRange)는
+  // ENTITIES 구역 안의 인덱스이고, insertEntities는 그 구역 끝에 쌍을 이어 붙여 배열을 새로 만든다.
+  if (regions && running > 0) {
+    for (const plan of plans) {
+      if (plan.offset === 0) continue;
+      shiftRangesInPlace(doc, regions.inFrame[plan.frame.index], plan.offset);
+      const insert = regions.frameInsert[plan.frame.index];
+      if (insert) shiftRangesInPlace(doc, [insert], plan.offset);
+    }
+    // 어느 틀에도 속하지 않는 최상위 엔티티(틀 사이의 글자 등)도 오른쪽에 있으면 같이 민다.
+    for (const entry of regions.loose) {
+      shiftRangesInPlace(doc, [entry.range], looseShift(entry.centerX));
+    }
+  }
+
   // 도면에는 그렸지만 번호를 받지 못한 손상. dwg가 없어 아예 그리지 못한 손상(skipped)은
   // 응답 헤더 X-Mangdo-Skipped로 따로 알리므로 여기서 두 번 세지 않는다.
   const outside = countOutsideFrames(included.map((entry) => entry.damage), frameBounds);
@@ -342,18 +373,66 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
       appendAll(pairs, fillCandidate(doc, candidate, rowsFor(included, maxNumber), alloc, owner, warnings));
     }
   } else {
-    // 넘치는 틀은 장마다 복사본을 만든다(설계 7장 4단계).
+    const edits = new DocumentEdits();
+    const tableNames = ctx ? usedTableNames(doc) : new Set<string>();
+    const recordTable = symbolTableInfo(doc, 'BLOCK_RECORD');
+    let newRecords = 0;
+
+    // 넘치는 틀은 장마다 복사본을 만든다(설계 7장 4단계). 밀기는 이미 끝났으므로 복사 dx는 장
+    // 간격만이다(원본이 offset만큼 밀려 있다). flattenFrameBlock만 틀 변환(밀기 전 좌표)을
+    // 쓰므로 offset을 더해 준다.
     let copySkipped = 0;
     for (const plan of plans) {
       if (plan.pages <= 1 || !plan.grid || !ctx || !regions) continue;
       warnings.push(EXPORT_WARNINGS.sheetCopied(plan.frame.index, plan.pages));
+      const tableRange = plan.frame.tableEntityIndex === null ? undefined : ctx.ranges[plan.frame.tableEntityIndex];
       for (let page = 1; page < plan.pages; page++) {
-        const dx = plan.offset + page * plan.pitch;
-        const region = copyRegion(ctx, regions.inFrame[plan.frame.index], dx);
+        const dx = page * plan.pitch;
+        const region = copyRegion(ctx, regions.inFrame[plan.frame.index], dx, tableRange);
         appendAll(pairs, region.pairs);
-        const block = flattenFrameBlock(ctx, plan.frame, plan.grid, page, dx);
-        appendAll(pairs, block.pairs);
-        copySkipped += region.skipped + block.skipped;
+        copySkipped += region.skipped;
+        if (plan.frame.tableKind === 'inBlock') {
+          const block = flattenFrameBlock(ctx, plan.frame, plan.grid, page, plan.offset + dx);
+          appendAll(pairs, block.pairs);
+          copySkipped += block.skipped;
+          continue;
+        }
+        const insert = copyFrameInsert(ctx, plan.frame, dx);
+        appendAll(pairs, insert.pairs);
+        copySkipped += insert.skipped;
+        // 이 장의 표를 만들지 못하면 조용히 넘기지 않고 건너뛴 수에 센다(sheetCopySkipped 경고).
+        if (!tableRange || !recordTable) {
+          copySkipped += 1;
+          continue;
+        }
+        // 표는 통째로 복제한다(설계 5.2). 밀린 원본에서 베끼므로 dx는 장 간격.
+        const clone = cloneTable(doc, doc.pairs.slice(tableRange.start, tableRange.end), plan.grid, {
+          dx,
+          page,
+          name: nextTableName(tableNames),
+          alloc,
+          recordTableHandle: recordTable.handle,
+        });
+        if (!clone) {
+          copySkipped += 1;
+          continue;
+        }
+        const pageEntries = plan.entries
+          .filter((entry) => pageOf(entry.number, plan.dataRows) === page)
+          .map((entry) => ({ ...entry, number: entry.number - page * plan.dataRows }));
+        const pageMax = Math.min(plan.dataRows, plan.maxNumber - page * plan.dataRows);
+        const writes = cellWritesFor(plan.grid, rowsFor(pageEntries, pageMax));
+        const mtexts: DxfPair[] = [];
+        for (const write of writes) appendAll(mtexts, cellMtextPairs(plan.grid, write, alloc.next(), clone.recordHandle));
+        const originalBlock = findBlock(doc, plan.grid.blockName);
+        if (!originalBlock) {
+          copySkipped += 1;
+          continue;
+        }
+        edits.insert(originalBlock.end, appendBeforeEndblk(clone.blockPairs, mtexts));
+        edits.insert(recordTable.end, clone.recordPairs);
+        newRecords += 1;
+        appendAll(pairs, writeCellValues(clone.tablePairs, plan.grid.colBoundaries.length - 1, writes));
       }
     }
     if (copySkipped > 0) warnings.push(EXPORT_WARNINGS.sheetCopySkipped(copySkipped));
@@ -361,6 +440,24 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
     // 틀마다 자기 표에 그 틀 손상만 1번부터 채운다. 손상이 없는 틀의 표는 건드리지 않는다.
     for (const plan of plans) {
       if (plan.entries.length === 0 || !plan.grid) continue;
+      const pageZero = plan.pages <= 1
+        ? { entries: plan.entries, max: plan.maxNumber }
+        : { entries: plan.entries.filter((entry) => pageOf(entry.number, plan.dataRows) === 0), max: Math.min(plan.dataRows, plan.maxNumber) };
+
+      if (plan.frame.tableKind === 'modelSpace' && ctx && plan.frame.tableEntityIndex !== null) {
+        // 원본 표를 제자리에서 고친다(설계 4장): 셀 값 + 글자 블록 MTEXT + 캐시 제거.
+        const tableRange = ctx.ranges[plan.frame.tableEntityIndex];
+        const block = findBlock(doc, plan.grid.blockName);
+        if (!block) continue;
+        const writes = cellWritesFor(plan.grid, rowsFor(pageZero.entries, pageZero.max));
+        const mtexts: DxfPair[] = [];
+        for (const write of writes) appendAll(mtexts, cellMtextPairs(plan.grid, write, alloc.next(), block.recordHandle));
+        const source = doc.pairs.slice(tableRange.start, tableRange.end);
+        edits.replace(tableRange.start, tableRange.end, stripGraphicsCache(writeCellValues(source, plan.grid.colBoundaries.length - 1, writes)));
+        if (mtexts.length > 0) edits.insert(block.endblkIndex, mtexts);
+        continue;
+      }
+
       if (plan.pages <= 1) {
         // 넘치지 않는 틀(과 미지원 틀)은 지금까지와 같다 — 넘치면 fillTable이 표를 아래에 쌓는다.
         appendAll(pairs, fillTable(shiftGrid(plan.grid, plan.offset), rowsFor(plan.entries, plan.maxNumber), alloc, owner));
@@ -376,22 +473,12 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
         appendAll(pairs, fillTable(shiftGrid(plan.grid, dx), rowsFor(pageEntries, pageMax), alloc, owner));
       }
     }
-  }
 
-  // 오른쪽 틀과 그 영역의 원본 엔티티를 제자리에서 옮긴다(설계 6장).
-  // insertEntities보다 **먼저** 해야 한다 — 범위(EntityRange)는 ENTITIES 구역 안의 인덱스이고,
-  // insertEntities는 그 구역 끝에 쌍을 이어 붙여 배열을 새로 만든다.
-  if (regions && running > 0) {
-    for (const plan of plans) {
-      if (plan.offset === 0) continue;
-      shiftRangesInPlace(doc, regions.inFrame[plan.frame.index], plan.offset);
-      const insert = regions.frameInsert[plan.frame.index];
-      if (insert) shiftRangesInPlace(doc, [insert], plan.offset);
+    if (newRecords > 0 && recordTable && recordTable.countIndex >= 0) {
+      const count = Number(doc.pairs[recordTable.countIndex].value.trim());
+      if (Number.isFinite(count)) edits.replace(recordTable.countIndex, recordTable.countIndex + 1, [pair(70, String(count + newRecords).padStart(6, ' '))]);
     }
-    // 어느 틀에도 속하지 않는 최상위 엔티티(틀 사이의 글자 등)도 오른쪽에 있으면 같이 민다.
-    for (const entry of regions.loose) {
-      shiftRangesInPlace(doc, [entry.range], looseShift(entry.centerX));
-    }
+    edits.apply(doc);
   }
 
   insertEntities(doc, pairs);

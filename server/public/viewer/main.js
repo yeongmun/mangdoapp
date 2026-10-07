@@ -29,11 +29,20 @@ import {
   withPhotoNumber,
 } from './quantities.js';
 import { blocksDrawing, photoStripItems } from './photoStrip.js';
+import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlineApi.js';
+import { clampPage, frameWorldBox, pageCount, pageLabel } from './pageView.js';
 
 const $ = (id) => document.getElementById(id);
-const drawingId = new URLSearchParams(location.search).get('id') ?? '';
+// 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다. 어떤 WebView가
+// file:// 주소의 질의 문자열을 떼어내더라도 앱이 주입한 window.mangdoOffline이 있으면 오프라인이다
+// (최종 검토 Important 4). 도면 id도 같은 순서로 찾는다.
+const injectedOffline = typeof window.mangdoOffline === 'object' && window.mangdoOffline !== null ? window.mangdoOffline : null;
+const offline = isOfflineMode(location.search) || injectedOffline !== null;
+const drawingId = new URLSearchParams(location.search).get('id') || injectedOffline?.drawing?.id || '';
 const accessKey = new URLSearchParams(location.hash.slice(1)).get('key') ?? '';
-const STATUS_LABELS = { saved: '저장됨', saving: '저장 중', pending: '저장 대기', error: '저장 실패' };
+const STATUS_LABELS = offline
+  ? OFFLINE_STATUS_LABELS
+  : { saved: '저장됨', saving: '저장 중', pending: '저장 대기', error: '저장 실패' };
 
 function errorMessage(status, body) {
   if (status === 401) return '접근키를 확인하세요.';
@@ -43,7 +52,7 @@ function errorMessage(status, body) {
 
 // 응답 오류는 status와 retryable(4xx는 다시 보내도 같으므로 false)을 붙여 던진다.
 // fetch 자체가 실패한 네트워크 오류에는 retryable이 없으므로 재시도 대상이다.
-async function api(path, options = {}) {
+async function onlineApi(path, options = {}) {
   const res = await fetch(`/api${path}`, {
     ...options,
     headers: { 'content-type': 'application/json', ...(options.headers ?? {}), 'x-access-key': accessKey },
@@ -58,9 +67,39 @@ async function api(path, options = {}) {
   return body;
 }
 
+// 오프라인이면 서버를 전혀 부르지 않는다 — 앱이 미리 주입한 window.mangdoOffline과
+// postToApp('offlineSave')/window.mangdoOfflineSaved 왕복만으로 답한다(설계 3.3~3.4장).
+const api = offline
+  ? createOfflineApi(window.mangdoOffline, {
+      post: postToApp,
+      onSaved: (cb) => {
+        window.mangdoOfflineSaved = cb;
+      },
+    })
+  : onlineApi;
+
 // 앱(React Native WebView)으로 메시지를 보낸다. 브라우저에서 직접 열면 아무것도 하지 않는다.
 function postToApp(message) {
   window.ReactNativeWebView?.postMessage(JSON.stringify(message));
+}
+
+// 오프라인 진단(2026-09-23 실기기: 아이폰에서 '도면을 불러오는 중'에서 멈춤). 어느 단계까지 갔는지를
+// 앱(Metro 콘솔)으로 보내고, 45초 안에 도면이 안 뜨면 마지막 단계와 함께 오류를 보인다.
+let lastOfflineStep = '시작';
+function offlineStep(step, detail) {
+  if (!offline) return;
+  lastOfflineStep = step;
+  postToApp({ type: 'offlineLog', step, detail: detail === undefined ? '' : String(detail) });
+}
+if (offline) {
+  window.addEventListener('error', (event) => {
+    offlineStep('스크립트 오류', `${event.message} @ ${event.filename ?? ''}:${event.lineno ?? ''}`);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    offlineStep('약속 거부', reason instanceof Error ? `${reason.message}
+${reason.stack ?? ''}` : String(reason));
+  });
 }
 
 function showError(message) {
@@ -80,6 +119,16 @@ function safeStorage() {
 
 function initializeViewer() {
   return new Promise((resolve) => {
+    // 오프라인은 로컬 파일만 읽으므로 토큰이 필요 없다(설계 3.4장). 뷰어 버전은 viewer.html이
+    // 온라인·오프라인 모두 같은 것을 쓰므로(3.1장) 코드 경로는 여기서만 갈린다.
+    if (offline) {
+      offlineStep('뷰어 초기화 요청', typeof Autodesk === 'undefined' ? 'Autodesk 전역 없음' : Autodesk.Viewing?.Private?.LMV_VIEWER_VERSION);
+      Autodesk.Viewing.Initializer({ env: 'Local', useADP: false, language: 'ko' }, () => {
+        offlineStep('뷰어 초기화 완료');
+        resolve();
+      });
+      return;
+    }
     Autodesk.Viewing.Initializer(
       {
         env: 'AutodeskProduction2',
@@ -103,15 +152,38 @@ function loadDocument(urn) {
   });
 }
 
+// 오프라인은 Document.load 없이 파생 파일(f2d)을 바로 연다(설계 3.2·3.4장). modelUrl은 앱이
+// 주입한 file:// 경로다.
+function loadOfflineModel(viewer, modelUrl) {
+  offlineStep('도면 파일 요청', modelUrl);
+  return new Promise((resolve, reject) => {
+    viewer.loadModel(
+      modelUrl,
+      {},
+      (model) => {
+        offlineStep('도면 파일 읽음', `is2d=${model?.is2d?.()}`);
+        resolve(model);
+      },
+      (code, message) => {
+        offlineStep('도면 파일 실패', `${code} ${message ?? ''}`);
+        reject(new Error(`도면을 불러오지 못했습니다 (오류 ${code}) ${message ?? ''}`));
+      },
+    );
+  });
+}
+
 // DWG의 모델 공간 2D 뷰는 이름이 "Model"이다. 없으면 첫 2D 뷰를 쓴다.
 function pick2dViewable(doc) {
   const views = doc.getRoot().search({ type: 'geometry', role: '2d' });
   return views.find((node) => node.name() === 'Model') ?? views[0] ?? null;
 }
 
-function waitForGeometry(viewer) {
+// model은 오프라인 경로에서 loadOfflineModel이 돌려준 모델이다 — viewer.loadDocumentNode를 거치지
+// 않으므로 이 시점엔 viewer.model이 아직 안 채워져 있을 수 있어 직접 받아 쓴다(설계 3.4장).
+function waitForGeometry(viewer, model) {
   return new Promise((resolve) => {
-    if (viewer.model?.isLoadDone()) {
+    const target = model ?? viewer.model;
+    if (target?.isLoadDone()) {
       resolve();
       return;
     }
@@ -125,7 +197,8 @@ function waitForGeometry(viewer) {
 
 async function start() {
   if (!/^d_[0-9a-f]{32}$/.test(drawingId)) throw new Error('도면 id가 올바르지 않습니다.');
-  if (!accessKey) throw new Error('접근키가 없습니다. 앱 설정을 확인하세요.');
+  // 접근키는 서버 API를 부를 때만 쓴다 — 오프라인은 서버를 부르지 않으므로 없어도 된다.
+  if (!offline && !accessKey) throw new Error('접근키가 없습니다. 앱 설정을 확인하세요.');
 
   const [drawings, serverDoc] = await Promise.all([api('/drawings'), api(`/drawings/${drawingId}/damages`)]);
   const serverDocV3 = migrateDoc(serverDoc, drawingId) ?? serverDoc;
@@ -133,14 +206,28 @@ async function start() {
   if (!drawing) throw new Error('도면을 찾을 수 없습니다.');
   if (drawing.status !== 'success') throw new Error('아직 변환이 끝나지 않은 도면입니다.');
 
+  offlineStep('데이터 준비', `damages=${serverDocV3?.damages?.length ?? '?'}`);
   await initializeViewer();
   const viewer = new Autodesk.Viewing.Viewer3D($('viewer'));
-  if (viewer.start() > 0) throw new Error('이 기기에서 WebGL을 사용할 수 없습니다.');
-  const doc = await loadDocument(drawing.urn);
-  const viewable = pick2dViewable(doc);
-  if (!viewable) throw new Error('이 도면에는 2D 뷰가 없습니다.');
-  await viewer.loadDocumentNode(doc, viewable);
-  await waitForGeometry(viewer);
+  const startCode = viewer.start();
+  offlineStep('viewer.start', startCode);
+  if (startCode > 0) throw new Error('이 기기에서 WebGL을 사용할 수 없습니다.');
+  // 오프라인 감시: 45초 안에 도면이 안 그려지면 마지막 단계와 함께 오류를 보인다(무한 로딩 방지).
+  const watchdog = offline
+    ? setTimeout(() => showError(`도면을 불러오지 못했습니다 (오프라인, 마지막 단계: ${lastOfflineStep})`), 45000)
+    : null;
+  let offlineModel = null;
+  if (offline) {
+    offlineModel = await loadOfflineModel(viewer, window.mangdoOffline.modelUrl);
+  } else {
+    const doc = await loadDocument(drawing.urn);
+    const viewable = pick2dViewable(doc);
+    if (!viewable) throw new Error('이 도면에는 2D 뷰가 없습니다.');
+    await viewer.loadDocumentNode(doc, viewable);
+  }
+  await waitForGeometry(viewer, offlineModel);
+  if (watchdog !== null) clearTimeout(watchdog);
+  offlineStep('도형 로드 완료');
 
   const mapper = createCoordinateMapper(viewer);
   console.info('[mangdo] DWG 좌표 변환:', mapper.dwgStatus.reason);
@@ -151,13 +238,16 @@ async function start() {
 
   const overlay = createOverlay($('overlay'), mapper);
   // 레코드에 frames가 없으면(옛 도면·DWG) 빈 배열이고, 그때는 도면 전체에서 1번부터 매긴다.
-  overlay.setFrames(Array.isArray(drawing.frames) ? drawing.frames : []);
+  const frames = Array.isArray(drawing.frames) ? drawing.frames : [];
+  overlay.setFrames(frames);
   viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => overlay.requestRender());
   window.addEventListener('resize', () => overlay.requestRender());
 
   const syncer = createSyncer({
     drawingId,
-    storage: safeStorage(),
+    // file://의 localStorage는 iOS에서 못 믿는다(설계 8장) — 오프라인은 백업을 아예 쓰지 않는다.
+    // 앱이 device의 damages.json을 곧 백업으로 갖고 있다.
+    storage: offline ? { getItem: () => null, setItem: () => undefined } : safeStorage(),
     save: (d) => {
       const errors = validateDamageDoc(d, drawingId);
       if (errors.length > 0) {
@@ -215,6 +305,16 @@ async function start() {
   // 선택된 **도형**의 화면 좌표. crackTool의 getSelectedScreenShape로 넘긴다 — 모서리·회전 핸들
   // 판정은 kind === 'rect'일 때만 하고, 몸통을 끌어 옮기는 판정(hitSelectedShape)은 선·사각형
   // 모두에서 한다(설계 §4 "선택한 손상 이동"). 복제본도 첫 도형과 똑같이 끌 수 있다.
+  function selectedDamageScreenShapes() {
+    const damage = selectedDamage();
+    if (!damage) return [];
+    return shapesOf(damage).map((shape, shapeIndex) => ({
+      shapeIndex,
+      kind: damage.geometry.kind,
+      points: shape.world.map((point) => mapper.worldToClient(point)),
+    }));
+  }
+
   function selectedScreenShape() {
     const damage = selectedDamage();
     if (!damage) return null;
@@ -297,6 +397,15 @@ async function start() {
     isPropsOpen: () => blocksDrawing(isPropsOpen(), isPhotoViewOpen()),
     getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
     getSelectedScreenShape: selectedScreenShape,
+    // 선택된 손상의 모든 도형(원본 + 복제본). 선택된 도형이 아니어도 같은 손상의 도형을 끌면 그 도형을
+    // 옮긴다(2026-09-30 사용자 요청: 복제한 뒤 원본도 바로 옮길 수 있게). 다른 손상의 도형은 그대로
+    // 새로 그리기다 — 기존 손상 위에 겹쳐 그리려다 실수로 옮기지 않게.
+    getSelectedDamageScreenShapes: selectedDamageScreenShapes,
+    onPickShape: (shapeIndex) => {
+      if (selectedId === null) return;
+      selectedShape = shapeIndex;
+      refresh();
+    },
     onDraft: (draft) => overlay.setDraft(draft),
     onTap: handleTap,
     onStroke: (points) => {
@@ -499,6 +608,14 @@ async function start() {
     closePhotoStrip();
     photoStripDamageId = damageId;
     const generation = ++photoStripGeneration;
+    if (offline) {
+      // 오프라인은 서버 사진 목록을 모른다 — 칸에 적힌 번호마다 자리표시 칩만 보인다(설계 3.4장).
+      // 📷 촬영은 지금처럼 앱의 대기열에 맡기고, 연결되면 mangdoPhotoUploaded가 다시 부른다.
+      const numbers = parsePhotoNumbers($('photoInput').value);
+      for (const number of numbers) strip.append(chip(`${number} (연결되면 보임)`));
+      strip.hidden = numbers.length === 0;
+      return;
+    }
     let list = [];
     try {
       list = await api(`/drawings/${drawingId}/damages/${damageId}/photos`);
@@ -781,10 +898,67 @@ async function start() {
     if (document.visibilityState === 'hidden') void syncer.flushNow();
   });
 
+  // 망도틀 한 페이지씩 보기(2026-09-28 설계 2장) ─────────────────────────────
+  // 카메라만 옮긴다 — 그 뒤는 CAMERA_CHANGE_EVENT → overlay.requestRender 흐름이 그대로 다시 그린다.
+  // 틀이 없거나 첫 틀조차 뷰어 좌표로 못 바꾸면(DWG 좌표 변환 불가) 페이지 모드를 끈다.
+  // 2026-09-30 사용자 결정: 전체/페이지를 나눌 필요 없이 **페이지가 기본이자 유일한 방식**이다. 틀이 없는
+  // 도면(또는 좌표 변환 불가)만 예전처럼 도면 전체를 보인다.
+  const pagesAvailable = pageCount(frames) > 0 && frameWorldBox(frames[0], mapper.dwgToWorld) !== null;
+  const viewMode = pagesAvailable ? 'page' : 'all';
+  let pageIndex = clampPage(injectedOffline?.pageIndex ?? 0, frames);
+
+  function fitPage(index) {
+    const box = frameWorldBox(frames[index], mapper.dwgToWorld);
+    if (!box) return false;
+    const bounds = new THREE.Box3(new THREE.Vector3(box.minX, box.minY, 0), new THREE.Vector3(box.maxX, box.maxY, 0));
+    viewer.navigation.fitBounds(false, bounds);
+    return true;
+  }
+
+  function renderPageControls() {
+    const count = pageCount(frames);
+    $('pageNav').hidden = viewMode !== 'page';
+    $('pageLabel').textContent = count > 0 ? pageLabel(pageIndex, count) : '';
+    $('pagePrev').disabled = pageIndex <= 0;
+    $('pageNext').disabled = pageIndex >= count - 1;
+  }
+
+  function postViewPrefs() {
+    postToApp({ type: 'viewPrefs', viewMode, pageIndex });
+  }
+
+  function showPage(index) {
+    pageIndex = clampPage(index, frames);
+    fitPage(pageIndex);
+    renderPageControls();
+    postViewPrefs();
+  }
+
+  $('pagePrev').addEventListener('click', () => showPage(pageIndex - 1));
+  $('pageNext').addEventListener('click', () => showPage(pageIndex + 1));
+
+  // 폰 세로에서 도구막대가 두 줄로 감기면 높이가 바뀐다 — 페이지 이동 줄이 그 바로 위에 오도록 알린다.
+  const syncToolbarHeight = () =>
+    document.documentElement.style.setProperty('--toolbar-h', `${$('toolbar').offsetHeight}px`);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncToolbarHeight).observe($('toolbar'));
+  window.addEventListener('resize', syncToolbarHeight);
+
   if (initial.needsUpload) syncer.change(initial.doc);
   refresh();
   $('loading').hidden = true;
   $('toolbar').hidden = false;
+  syncToolbarHeight();
+  renderPageControls();
+  // 페이지로 시작하면 뷰어가 도형을 다 그린 다음 틀에 맞춘다(첫 fitToView 뒤에 오도록 한 박자 늦춘다).
+  if (viewMode === 'page') {
+    // 뷰어가 처음 도면 전체로 맞추는 동작이 기기에 따라 늦게 끝날 수 있다 — 한 프레임 뒤에 한 번,
+    // 그리고 조금 뒤에 한 번 더 맞춘다. 그 사이 사용자가 페이지를 바꿨으면 두 번째는 하지 않는다.
+    const startPage = pageIndex;
+    requestAnimationFrame(() => fitPage(startPage));
+    setTimeout(() => {
+      if (pageIndex === startPage) fitPage(startPage);
+    }, 600);
+  }
   postToApp({ type: 'ready' });
 }
 

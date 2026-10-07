@@ -114,6 +114,13 @@ function renderRows(drawings) {
     badge.className = `badge ${drawing.status}`;
     badge.textContent = STATUS_LABELS[drawing.status] ?? drawing.status;
     statusTd.append(badge);
+    // 오프라인 모드(설계 2·4장): SVF로 변환이 끝난 도면만 기기에 내려받아 쓸 수 있다.
+    if (drawing.offlineReady) {
+      const offlineBadge = document.createElement('span');
+      offlineBadge.className = 'badge offline';
+      offlineBadge.textContent = '오프라인';
+      statusTd.append(offlineBadge);
+    }
     if (drawing.error) {
       const error = document.createElement('div');
       error.className = 'error small';
@@ -149,12 +156,24 @@ function renderRows(drawings) {
     tr.append(moveSelectCell(drawing));
 
     const actionTd = document.createElement('td');
+    const isSvf = (drawing.viewFormat ?? 'svf2') === 'svf';
+    // 실패한 도면의 "다시 시도"는 변환을 다시 거는 것이라 결과가 SVF가 된다(서버가 viewFormat도 svf로
+    // 적는다). 그래서 실패한 옛 도면에는 "다시 변환"을 따로 두지 않는다 — 버튼 둘이 같은 일을 한다.
     if (drawing.status === 'failed') {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = '다시 시도';
       button.addEventListener('click', () => retry(drawing.id, button));
       actionTd.append(button);
+    }
+    // 오프라인 모드(설계 4장): 변환이 끝난 SVF2(또는 이 기능 전에 올린) 도면만 다시 변환할 수 있고,
+    // 변환 중에는 눌러도 서버가 409를 준다.
+    if (!isSvf && drawing.status === 'success') {
+      const retranslateButton = document.createElement('button');
+      retranslateButton.type = 'button';
+      retranslateButton.textContent = '다시 변환';
+      retranslateButton.addEventListener('click', () => retranslate(drawing, retranslateButton));
+      actionTd.append(retranslateButton);
     }
     // 삭제는 휴지통으로 옮기기다 — 아래 휴지통에서 복구할 수 있다(서버는 영구 삭제하지 않는다).
     const deleteButton = document.createElement('button');
@@ -214,13 +233,20 @@ function selectProject(id) {
 
 // 한 줄은 <li> 안의 <button>이다 — 키보드(Tab·Enter·Space)로 고를 수 있고, 고른 줄은
 // aria-current로 보조 기술에 전해진다(검토 Task 4 Important: 클릭만 되는 <li>였다).
-function projectRow(id, label, isChild) {
+function projectRow(id, name, count, isChild) {
   const li = document.createElement('li');
   if (isChild) li.classList.add('child');
+  if (id === 'unfiled') li.classList.add('unfiled');
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'project-row';
-  button.textContent = label;
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'name';
+  nameSpan.textContent = name;
+  const countSpan = document.createElement('span');
+  countSpan.className = 'count';
+  countSpan.textContent = count;
+  button.append(nameSpan, countSpan);
   if (id === selected) {
     li.classList.add('selected');
     button.setAttribute('aria-current', 'true');
@@ -234,8 +260,8 @@ function projectRow(id, label, isChild) {
 // 최상위는 합계를 함께 적는다(최종 검토 M-3: 줄에는 5인데 표에는 2개만 보여 헷갈렸다).
 function countLabel(project) {
   return project.childCount > 0
-    ? `도면 ${project.drawingCount} · 하위 포함 ${project.totalDrawingCount}`
-    : `도면 ${project.drawingCount}`;
+    ? `${project.drawingCount} · 전체 ${project.totalDrawingCount}`
+    : `${project.drawingCount}`;
 }
 
 function renderProjects() {
@@ -243,14 +269,13 @@ function renderProjects() {
   list.replaceChildren();
 
   for (const project of projects) {
-    list.append(
-      projectRow(project.id, `${project.name} (${countLabel(project)})`, project.depth === 1),
-    );
+    list.append(projectRow(project.id, project.name, countLabel(project), project.depth === 1));
   }
-  list.append(projectRow('unfiled', `미분류 (${unfiledCount()})`, false));
+  list.append(projectRow('unfiled', '미분류', `도면 ${unfiledCount()}`, false));
 
   const current = projects.find((p) => p.id === selected);
   $('projectMemo').textContent = current ? current.memo : '';
+  $('currentTitle').textContent = current ? current.path : '미분류';
   $('uploadTarget').textContent = `올릴 곳: ${current ? current.path : '미분류'}`;
 
   // 하위 만들기는 최상위 프로젝트를 골랐을 때만 된다(설계 2.1 — 깊이는 2단계까지다).
@@ -487,6 +512,24 @@ async function retry(id, button) {
     await loadList();
   } catch (err) {
     showMessage(err.message, true);
+    button.disabled = false;
+  }
+}
+
+// 오프라인 모드(설계 4장): SVF2 도면을 SVF로 강제 재변환한다. 변환 요금이 한 번 더 들고,
+// 끝날 때까지 태블릿에서 그 도면을 열 수 없어 확인 문구에 적는다(스펙 4장 그대로).
+async function retranslate(drawing, button) {
+  const ok = window.confirm(
+    `"${drawing.name}"을(를) 오프라인용(SVF)으로 다시 변환할까요?\n\n변환 요금이 한 번 더 들고, 변환이 끝날 때까지(수십 초~수 분) 태블릿에서 열 수 없습니다.`,
+  );
+  if (!ok) return;
+  button.disabled = true;
+  try {
+    await api(`/drawings/${drawing.id}/retranslate`, { method: 'POST' });
+    showMessage(`다시 변환을 요청했습니다: ${drawing.name}`);
+    await loadList();
+  } catch (err) {
+    notifyProjectError(err);
     button.disabled = false;
   }
 }

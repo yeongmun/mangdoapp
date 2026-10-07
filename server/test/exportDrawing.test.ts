@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DAMAGE_LAYER, layerNames, parseDxf } from '../src/export/dxfDocument.js';
+import { DAMAGE_LAYER, findBlock, layerNames, parseDxf, symbolTableInfo, TABLE_LAYER, type DxfPair } from '../src/export/dxfDocument.js';
 import { EXPORT_WARNINGS, ExportError, exportDamagesToDxf } from '../src/export/exportDrawing.js';
 import { findFrames } from '../src/export/frames.js';
-import { flatTable, rotatedFrame, withFrameAt, withSecondFrame, withUnreadableHeaders } from './fixtureDocs.js';
+import { flatTable, modelSpaceTemplate, rotatedFrame, withBorderInsertBefore, withFrameAt, withSecondFrame, withUnreadableHeaders } from './fixtureDocs.js';
 
 const fixturePath = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'mangdo-template.dxf');
 
@@ -1091,5 +1091,124 @@ describe('exportDamagesToDxf', () => {
       expect(numbers[0]).toBeGreaterThan(151000);
       expect(numbers[0]).toBeLessThan(220000);
     }, 120_000);
+  });
+});
+
+describe('모델 공간 표 — 셀 직접 채우기와 표 복제 (2026-10-02)', () => {
+  // 틀 0 영역 x 1000~5000, y 2000~6000. 표 로컬 격자: 데이터 행 3(firstDataRow 2), 번호 열 0.
+  function inFrame(n: number, frame = 0) {
+    const x = 1500 + n * 100 + frame * 50000;
+    const dwg: Pt[] = [[x, 2500], [x + 50, 2500], [x + 50, 2600], [x, 2600]];
+    return damage(`m${frame}-${n}`, 'spalling', n * 10 + frame * 1000, dwg, { width: 1.2, length: 1.5, count: 2 });
+  }
+  function entities(text: string, type: string) {
+    const doc = parseDxf(text);
+    const out: DxfPair[][] = [];
+    for (let i = 0; i < doc.pairs.length; i++) {
+      if (doc.pairs[i].code !== 0 || doc.pairs[i].value !== type) continue;
+      let j = i + 1;
+      while (j < doc.pairs.length && doc.pairs[j].code !== 0) j += 1;
+      out.push(doc.pairs.slice(i, j));
+      i = j - 1;
+    }
+    return out;
+  }
+  const at = (pairs: DxfPair[], code: number) => pairs.filter((p) => p.code === code).map((p) => p.value);
+
+  it('값이 선 위 글자가 아니라 표 셀과 글자 블록에 들어가고 캐시는 없다', async () => {
+    const result = exportDamagesToDxf(await modelSpaceTemplate(), [inFrame(1), inFrame(2)]);
+    const tables = entities(result.dxfText, 'ACAD_TABLE');
+    expect(tables).toHaveLength(1);
+    const strings = at(tables[0], 302);
+    expect(strings).toContain('박락'); // 손상현황 (statusTextOf(spalling) = 박락)
+    expect(strings.filter((v) => v === '1.20')).toHaveLength(2); // 가로 두 행(소수점 2자리 고정)
+    expect(tables[0].some((p) => p.code === 160 || p.code === 310)).toBe(false);
+    // 글자 블록 *TX에 MTEXT가 늘었다(머리글 9 + 번호 3 = 12 → + 2행 × 6칸 = 24)
+    const doc = parseDxf(result.dxfText);
+    const block = findBlock(doc, '*TX')!;
+    const blockText = doc.pairs.slice(block.start, block.end);
+    expect(blockText.filter((p) => p.code === 0 && p.value === 'MTEXT')).toHaveLength(24);
+    expect(at(blockText, 330).every((v) => v.trim() === '31')).toBe(true);
+    // 선 위 글자(손상물량표 레이어 TEXT)는 없다. 레이어 자체는 만든다.
+    expect(entities(result.dxfText, 'TEXT').filter((e) => at(e, 8)[0] === TABLE_LAYER)).toHaveLength(0);
+    expect(layerNames(doc)).toContain(TABLE_LAYER);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('데이터 행을 넘으면 틀 INSERT와 표를 복제하고 뒤 틀을 민다', async () => {
+    const result = exportDamagesToDxf(await modelSpaceTemplate(2), [1, 2, 3, 4].map((n) => inFrame(n, 0)));
+    expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(0, 2)]);
+    const doc = parseDxf(result.dxfText);
+    // 틀 INSERT 3개: 원본 x 1000, 복사본 51000, 밀린 틀 1은 101000
+    const inserts = entities(result.dxfText, 'INSERT').filter((e) => at(e, 2)[0] === '망도틀');
+    expect(inserts.map((e) => Number(at(e, 10)[0])).sort((a, b) => a - b)).toEqual([1000, 51000, 101000]);
+    // 표 3개: 원본 2000, 복제 52000, 밀린 틀 1의 표 102000(방향 11은 그대로 1.0)
+    const tables = entities(result.dxfText, 'ACAD_TABLE');
+    expect(tables.map((e) => Number(at(e, 10)[0])).sort((a, b) => a - b)).toEqual([2000, 52000, 102000]);
+    expect(tables.every((e) => at(e, 11)[0] === '1.0')).toBe(true);
+    const clone = tables.find((e) => at(e, 10)[0] === '52000.0')!;
+    // 행 순서대로: 4번 행의 번호 '4'와 개수 '2'(inFrame의 count), 빈 5·6번 행의 번호
+    expect(at(clone, 302).filter((v) => /^\d+$/.test(v))).toEqual(['4', '2', '5', '6']);
+    expect(at(clone, 302)).toContain('박락'); // 4번 손상의 값
+    expect(at(clone, 2)).toEqual(['*T1']);
+    // 새 레코드·블록
+    const record = symbolTableInfo(doc, 'BLOCK_RECORD')!;
+    expect(doc.pairs[record.countIndex].value.trim()).toBe('4'); // 3 + 1
+    const block = findBlock(doc, '*T1')!;
+    expect(block).not.toBeNull();
+    expect(at(clone, 343)).toEqual([block.recordHandle]);
+    const blockPairs = doc.pairs.slice(block.start, block.end);
+    expect(at(blockPairs, 1)).toContain('4');
+    expect(at(blockPairs, 1)).toContain('박락');
+    // 원본 표에는 1~3번만
+    const original = tables.find((e) => at(e, 10)[0] === '2000.0')!;
+    expect(at(original, 302).filter((v) => v === '박락')).toHaveLength(3);
+    // 핸들 유일, 다시 읽힘
+    const handles = doc.pairs.filter((p) => p.code === 5).map((p) => p.value.trim());
+    expect(new Set(handles).size).toBe(handles.length);
+    expect(findFrames(doc)).toHaveLength(3);
+  });
+
+  it('틀 둘이 모두 넘치면 표 복제가 둘이고 밀린 틀 1도 자기 복제를 가진다', async () => {
+    const damages = [1, 2, 3, 4].flatMap((n) => [inFrame(n, 0), inFrame(n, 1)]);
+    const result = exportDamagesToDxf(await modelSpaceTemplate(2), damages);
+    expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(0, 2), EXPORT_WARNINGS.sheetCopied(1, 2)]);
+    const doc = parseDxf(result.dxfText);
+    expect(findBlock(doc, '*T1')).not.toBeNull();
+    expect(findBlock(doc, '*T2')).not.toBeNull();
+    const record = symbolTableInfo(doc, 'BLOCK_RECORD')!;
+    expect(doc.pairs[record.countIndex].value.trim()).toBe('5'); // 3 + 2
+    // 표 4개: 틀 0 원본 2000, 그 복제 52000, 간격만큼 밀린 틀 1 102000, 그 복제 152000
+    const tables = entities(result.dxfText, 'ACAD_TABLE');
+    expect(tables.map((e) => Number(at(e, 10)[0])).sort((a, b) => a - b)).toEqual([2000, 52000, 102000, 152000]);
+    expect(tables.every((e) => at(e, 11)[0] === '1.0')).toBe(true);
+    const clones = tables.filter((e) => /^\*T\d+$/.test(at(e, 2)[0]));
+    expect(clones).toHaveLength(2);
+    expect(clones.every((e) => !e.some((p) => p.code === 160 || p.code === 310))).toBe(true);
+    const handles = doc.pairs.filter((p) => p.code === 5).map((p) => p.value.trim());
+    expect(new Set(handles).size).toBe(handles.length);
+    expect(findFrames(doc)).toHaveLength(4);
+  });
+
+  it('표를 감싸는 테두리 INSERT가 망도틀 앞에 있어도 망도틀이 틀이고, 넘침 장에 테두리도 함께 복사된다', async () => {
+    const text = withBorderInsertBefore(await modelSpaceTemplate());
+    const result = exportDamagesToDxf(text, [1, 2, 3, 4].map((n) => inFrame(n, 0)));
+    expect(result.warnings).toEqual([EXPORT_WARNINGS.sheetCopied(0, 2)]);
+    const xsOf = (name: string) =>
+      entities(result.dxfText, 'INSERT')
+        .filter((e) => at(e, 2)[0] === name)
+        .map((e) => Number(at(e, 10)[0]))
+        .sort((a, b) => a - b);
+    const frameXs = xsOf('망도틀');
+    expect(frameXs).toHaveLength(2);
+    expect(frameXs[0]).toBe(1000);
+    expect(frameXs[1]).toBeGreaterThan(1000);
+    // 테두리는 중심이 틀 영역 안이라 영역 복사로 같은 간격만큼 옮겨진다
+    expect(xsOf('테두리')).toEqual(frameXs);
+  });
+
+  it('옛 구조(블록 안 표) 도면은 전과 같이 선 위 글자로 채운다', async () => {
+    const result = exportDamagesToDxf(await template(), [damage('a', 'spalling', 0, RECT_A, { width: 1.2 })]);
+    expect(entities(result.dxfText, 'TEXT').filter((e) => at(e, 8)[0] === TABLE_LAYER).length).toBeGreaterThan(0);
   });
 });

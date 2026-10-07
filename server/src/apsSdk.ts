@@ -31,6 +31,8 @@ export function createSdkClients(clientId: string, clientSecret: string): ApsCli
       ),
     uploadObject: (bucketKey, objectKey, data, accessToken) =>
       ossClient.uploadObject(bucketKey, objectKey, data, { accessToken }),
+    // 오프라인 모드(설계 2장): SVF(2D)로만 변환한다 — 온라인 뷰어도 SVF를 그대로 열고,
+    // SVF의 파생 파일(f2d)이라야 기기에 내려받아 인터넷 없이 열 수 있다.
     startJob: (urn, accessToken) =>
       modelDerivativeClient.startJob(
         {
@@ -38,8 +40,8 @@ export function createSdkClients(clientId: string, clientSecret: string): ApsCli
           output: {
             formats: [
               {
-                type: modelDerivativeSdk.OutputType.Svf2,
-                views: [modelDerivativeSdk.View._2d, modelDerivativeSdk.View._3d],
+                type: modelDerivativeSdk.OutputType.Svf,
+                views: [modelDerivativeSdk.View._2d],
               },
             ],
           },
@@ -48,5 +50,17 @@ export function createSdkClients(clientId: string, clientSecret: string): ApsCli
       ),
     getManifest: async (urn, accessToken) =>
       (await modelDerivativeClient.getManifest(urn, { accessToken })) as unknown as ManifestLike,
+    // 오프라인 모드(설계 3.1): APS SDK에는 파생 파일 바이트를 내려받는 메서드가 없어 raw fetch로 부른다
+    // (Node 24 전역 fetch). Model Derivative의 manifest 하위 파생 경로 GET이 바이트를 그대로 준다.
+    downloadDerivative: async (urn, derivativeUrn, accessToken) => {
+      const response = await fetch(
+        `https://developer.api.autodesk.com/modelderivative/v2/designdata/${urn}/manifest/${encodeURIComponent(derivativeUrn)}`,
+        { headers: { authorization: `Bearer ${accessToken}` } },
+      );
+      if (response.status !== 200) {
+        throw new Error(`파생 파일 내려받기 실패 (${response.status})`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    },
   };
 }

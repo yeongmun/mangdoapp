@@ -241,6 +241,11 @@ export function pendingPhotoCount(): number {
   return pendingCount(readQueue());
 }
 
+/** 뷰어 헤더의 서버 전송 상태(2026-09-28 설계 1.3) — 이 도면의 사진이 대기열에 남아 있는지 본다. */
+export function pendingPhotoCountFor(drawingId: string): number {
+  return readQueue().filter((item) => item.drawingId === drawingId).length;
+}
+
 /** 배지를 눌렀을 때. 10번 실패해 멈춘 항목까지 되돌린다 — 이어서 flushPhotoQueue를 부른다. */
 export function retryPendingPhotos(): void {
   writeQueue(retryAll(readQueue()));

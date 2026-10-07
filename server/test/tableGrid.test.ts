@@ -196,7 +196,7 @@ describe('buildGrid', () => {
       '면적/연장',
       '단위',
     ]);
-    expect(grid.headerTexts[1]).toEqual({ text: '번호', position: [50, -50], height: 10 });
+    expect(grid.headerTexts[1]).toEqual({ text: '번호', position: [50, -50], height: 10, width: 0 });
   });
 
   it('인쇄된 번호 1을 못 찾으면 null', async () => {

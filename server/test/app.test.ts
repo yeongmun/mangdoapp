@@ -2,17 +2,25 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inflateRawSync } from 'node:zlib';
+import { gzipSync, inflateRawSync } from 'node:zlib';
 import sharp from 'sharp';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ManifestLike } from '../src/aps.js';
 import { createApp } from '../src/app.js';
 import { DamagesStore } from '../src/damagesStore.js';
 import { DrawingsStore, newDrawingId, type DrawingRecord } from '../src/drawingsStore.js';
 import { DrawingTrash } from '../src/drawingTrash.js';
+import { OfflineFilesStore } from '../src/offlineFiles.js';
 import { OriginalsStore } from '../src/originalsStore.js';
 import { PhotosStore } from '../src/photosStore.js';
+import { FILE_URL_SHIM } from '../src/viewerBundle.js';
 import { newProjectId, ProjectsStore } from '../src/projectsStore.js';
+import { AUTODESK_VIEWER_FILES, AUTODESK_VIEWER_VERSION, ViewerBundle } from '../src/viewerBundle.js';
+
+// 오프라인 모드(설계 2장): offlineReady는 저장하지 않고 응답에만 붙는다 — 저장 타입(DrawingRecord)에는
+// 없으므로 응답 바디를 다루는 테스트에서만 이 타입으로 읽는다.
+type WithOfflineReady = DrawingRecord & { offlineReady: boolean };
 
 const KEY = 'test-access-key';
 const NOW = Date.parse('2026-09-10T00:00:00.000Z');
@@ -20,10 +28,34 @@ const NOW = Date.parse('2026-09-10T00:00:00.000Z');
 const D1 = '11111111-1111-4111-8111-111111111111';
 let dir: string;
 
+// 오프라인 모드(설계 3.1): 오프라인 라우트 테스트가 쓰는 svf 파생 manifest 조각. 실측 모양대로
+// svf 파생의 geometry 노드 아래 mime이 application/autodesk-f2d인 resource 노드가 f2d 파생이다.
+const F2D_URN = 'urn:adsk.viewing:fs.file:dGVzdA==/output/0ab7c123_f2d/primaryGraphics.f2d';
+const SVF_MANIFEST: ManifestLike = {
+  status: 'success',
+  progress: 'complete',
+  derivatives: [
+    {
+      outputType: 'svf',
+      status: 'success',
+      children: [
+        {
+          type: 'geometry',
+          children: [{ type: 'resource', role: 'graphics', mime: 'application/autodesk-f2d', urn: F2D_URN }],
+        },
+      ],
+    },
+  ],
+};
+
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'mangdo-app-'));
-  await mkdir(join(dir, 'public'));
+  await mkdir(join(dir, 'public', 'viewer'), { recursive: true });
   await writeFile(join(dir, 'public', 'hello.html'), '<p>hi</p>', 'utf8');
+  // 오프라인 모드(설계 3.1): 뷰어 꾸러미 목록·파일 라우트가 읽는 최소한의 우리 뷰어 파일.
+  await writeFile(join(dir, 'public', 'viewer.html'), '<html>viewer</html>', 'utf8');
+  await writeFile(join(dir, 'public', 'viewer', 'main.js'), 'console.log(1);', 'utf8');
+  await writeFile(join(dir, 'public', 'viewer', 'viewer.css'), 'body{margin:0}', 'utf8');
 });
 
 afterEach(async () => {
@@ -44,7 +76,30 @@ function fakeAps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: number, maxPhotoBytes?: number) {
+// 오프라인 모드(설계 3.1): GET /drawings/:id/offline·offline/files가 쓰는 가짜 APS 클라이언트.
+// 기본값은 svf manifest를 돌려주고, 파생 urn을 그대로 내용 삼아 버퍼를 만든다.
+function fakeOfflineAps(overrides: Record<string, unknown> = {}) {
+  return {
+    getRawManifest: vi.fn(async (_urn: string) => SVF_MANIFEST),
+    downloadDerivative: vi.fn(async (_urn: string, derivativeUrn: string) => Buffer.from(`data:${derivativeUrn}`)),
+    ...overrides,
+  };
+}
+
+// 오프라인 모드(설계 3.1): GET /viewer-bundle·viewer-bundle/files가 쓰는 가짜 CDN. 작은 버퍼를
+// gzip 없이 돌려준다 — gzip 해제 자체는 viewerBundle.test.ts에서 따로 확인한다.
+function fakeFetchCdn(impl?: (url: string) => Promise<{ status: number; body: Buffer; contentEncoding: string | null }>) {
+  return vi.fn(impl ?? (async (url: string) => ({ status: 200, body: Buffer.from(`cdn:${url}`), contentEncoding: null })));
+}
+
+function setup(
+  apsOverrides: Record<string, unknown> = {},
+  maxUploadBytes?: number,
+  maxPhotoBytes?: number,
+  offlineApsOverrides: Record<string, unknown> = {},
+  fetchCdnImpl?: (url: string) => Promise<{ status: number; body: Buffer; contentEncoding: string | null }>,
+  readKey?: string,
+) {
   const aps = fakeAps(apsOverrides);
   const drawings = new DrawingsStore(join(dir, 'data', 'drawings.json'));
   const damages = new DamagesStore(join(dir, 'data', 'damages'));
@@ -61,8 +116,13 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
     drawings,
     (id) => projects.get(id).then(Boolean),
   );
+  const offlineAps = fakeOfflineAps(offlineApsOverrides);
+  const offline = new OfflineFilesStore(join(dir, 'data', 'cache', 'derivatives'), offlineAps);
+  const fetchCdn = fakeFetchCdn(fetchCdnImpl);
+  const viewerBundle = new ViewerBundle(join(dir, 'public'), join(dir, 'data', 'cache', 'viewer'), fetchCdn);
   const app = createApp({
     accessKey: KEY,
+    readKey,
     aps,
     drawings,
     damages,
@@ -70,12 +130,14 @@ function setup(apsOverrides: Record<string, unknown> = {}, maxUploadBytes?: numb
     photos,
     trash,
     projects,
+    offline,
+    viewerBundle,
     publicDir: join(dir, 'public'),
     now: () => NOW,
     maxUploadBytes,
     maxPhotoBytes,
   });
-  return { app, aps, drawings, damages, originals, photos, trash, projects };
+  return { app, aps, drawings, damages, originals, photos, trash, projects, offlineAps, offline, fetchCdn, viewerBundle };
 }
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
@@ -197,13 +259,19 @@ describe('POST /api/drawings', () => {
       progress: '',
       error: null,
       uploadedAt: '2026-09-10T00:00:00.000Z',
+      // 오프라인 모드(설계 2장): 새로 올린 도면은 SVF(2D)로만 변환을 요청한다.
+      viewFormat: 'svf',
+      // status가 pending이라 아직 오프라인용으로 쓸 수 없다.
+      offlineReady: false,
     });
     const id = res.body.id as string;
     expect(res.body.objectKey).toBe(`${id}.dwg`);
     expect(res.body.urn).toBe(`urn-${id}.dwg`);
     expect(aps.uploadDrawing).toHaveBeenCalledWith(Buffer.from('dwg-bytes'), `${id}.dwg`);
     expect(aps.startTranslation).toHaveBeenCalledWith(`urn-${id}.dwg`);
-    expect(await drawings.get(id)).toEqual(res.body);
+    // offlineReady는 저장하지 않고 응답에서만 계산한다(설계 2장).
+    const { offlineReady, ...stored } = res.body;
+    expect(await drawings.get(id)).toEqual(stored);
   });
 
   it('name이 없으면 원본 파일명을 쓴다', async () => {
@@ -297,7 +365,8 @@ describe('POST /api/drawings', () => {
       .attach('file', Buffer.from('  0\nSECTION\n'), 'bridge.dxf');
 
     expect(res.status).toBe(201);
-    expect(await drawings.get(res.body.id)).toEqual(res.body);
+    const { offlineReady, ...stored } = res.body;
+    expect(await drawings.get(res.body.id)).toEqual(stored);
     expect(errorSpy).toHaveBeenCalledWith('[upload] 원본 보관 실패', expect.any(String), expect.any(Error));
 
     errorSpy.mockRestore();
@@ -393,12 +462,21 @@ describe('GET /api/drawings', () => {
     const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
 
     expect(res.status).toBe(200);
-    const byId = Object.fromEntries((res.body as DrawingRecord[]).map((r) => [r.id, r]));
+    const byId = Object.fromEntries((res.body as WithOfflineReady[]).map((r) => [r.id, r]));
     expect(byId[pending.id]).toMatchObject({ status: 'inprogress', progress: '50% complete' });
-    expect(byId[done.id]).toEqual({ ...done, frames: [] });
+    // done은 옛 레코드(viewFormat 없음)라 success여도 offlineReady는 false다(설계 2장).
+    expect(byId[done.id]).toEqual({ ...done, frames: [], offlineReady: false });
     expect(aps.getTranslationStatus).toHaveBeenCalledTimes(1);
     expect(aps.getTranslationStatus).toHaveBeenCalledWith(pending.urn);
     expect((await drawings.get(pending.id))?.status).toBe('inprogress');
+  });
+
+  it('success이고 viewFormat이 svf인 도면은 offlineReady가 true다', async () => {
+    const { app, drawings } = setup();
+    const ready = await seed(drawings, { status: 'success', progress: 'complete', viewFormat: 'svf' });
+    const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
+    const byId = Object.fromEntries((res.body as WithOfflineReady[]).map((r) => [r.id, r]));
+    expect(byId[ready.id].offlineReady).toBe(true);
   });
 
   it('상태 조회가 실패해도 기존 레코드를 돌려준다', async () => {
@@ -406,7 +484,7 @@ describe('GET /api/drawings', () => {
     const pending = await seed(drawings);
     const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ ...pending, frames: [] }]);
+    expect(res.body).toEqual([{ ...pending, frames: [], offlineReady: false }]);
   });
 
   it('frames가 없는 옛 DXF 레코드는 목록에서 한 번 계산해 저장한다', async () => {
@@ -471,7 +549,7 @@ describe('GET /api/drawings', () => {
     const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
 
     expect(res.status).toBe(200);
-    const byId = Object.fromEntries((res.body as DrawingRecord[]).map((r) => [r.id, r]));
+    const byId = Object.fromEntries((res.body as WithOfflineReady[]).map((r) => [r.id, r]));
     expect(byId[bad.id].frames).toEqual([]);
     expect(byId[good.id].frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
     expect(errorSpy).toHaveBeenCalledWith('[frames]', bad.id, expect.any(String));
@@ -488,8 +566,10 @@ describe('POST /api/drawings/:id/retry', () => {
     const failed = await seed(drawings, { status: 'failed', progress: 'complete', error: '파일 오류' });
     const res = await request(app).post(`/api/drawings/${failed.id}/retry`).set('x-access-key', KEY);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ...failed, status: 'pending', progress: '', error: null, frames: [] });
+    // 변환 작업은 이제 SVF를 만드므로 다시 시도한 도면도 viewFormat이 svf가 된다(오프라인 설계 2장).
+    expect(res.body).toEqual({ ...failed, status: 'pending', progress: '', error: null, frames: [], viewFormat: 'svf', offlineReady: false });
     expect(aps.startTranslation).toHaveBeenCalledWith(failed.urn);
+    expect((await drawings.get(failed.id))?.viewFormat).toBe('svf');
   });
 
   it('frames 없는 옛 레코드를 재시도해도 응답에 frames가 채워진다', async () => {
@@ -519,6 +599,73 @@ describe('POST /api/drawings/:id/retry', () => {
       expect(res.status).toBe(404);
       expect(res.body).toEqual({ error: '도면을 찾을 수 없습니다.' });
     }
+  });
+});
+
+// 오프라인 모드(설계 2장, 4장): SVF2로 올라간 옛 도면을 PC 업로드 페이지에서 SVF로 다시 변환한다.
+describe('POST /api/drawings/:id/retranslate', () => {
+  it('SVF2(또는 viewFormat 없음) 도면은 변환을 다시 걸고 pending·svf로 바꾼다', async () => {
+    const { app, aps, drawings } = setup();
+    const old = await seed(drawings, { status: 'success', progress: 'complete', error: null });
+    const res = await request(app).post(`/api/drawings/${old.id}/retranslate`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      ...old,
+      status: 'pending',
+      progress: '',
+      error: null,
+      viewFormat: 'svf',
+      frames: [],
+      offlineReady: false,
+    });
+    expect(aps.startTranslation).toHaveBeenCalledWith(old.urn);
+    expect((await drawings.get(old.id))?.viewFormat).toBe('svf');
+    expect((await drawings.get(old.id))?.status).toBe('pending');
+  });
+
+  it('viewFormat이 svf2로 저장된 도면도 다시 변환할 수 있다', async () => {
+    const { app, drawings } = setup();
+    const old = await seed(drawings, { status: 'success', viewFormat: 'svf2' });
+    const res = await request(app).post(`/api/drawings/${old.id}/retranslate`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body.viewFormat).toBe('svf');
+  });
+
+  it('없는 id나 형식이 틀린 id는 404', async () => {
+    const { app } = setup();
+    for (const id of [newDrawingId(), 'bad-id']) {
+      const res = await request(app).post(`/api/drawings/${id}/retranslate`).set('x-access-key', KEY);
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: '도면을 찾을 수 없습니다.' });
+    }
+  });
+
+  it('이미 svf인 도면은 409', async () => {
+    const { app, drawings, aps } = setup();
+    const ready = await seed(drawings, { status: 'success', viewFormat: 'svf' });
+    const res = await request(app).post(`/api/drawings/${ready.id}/retranslate`).set('x-access-key', KEY);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: '이미 오프라인용(SVF)으로 변환된 도면입니다.' });
+    expect(aps.startTranslation).not.toHaveBeenCalled();
+  });
+
+  it.each(['pending', 'inprogress'] as const)('변환 중(%s)이면 409', async (status) => {
+    const { app, drawings, aps } = setup();
+    const mid = await seed(drawings, { status });
+    const res = await request(app).post(`/api/drawings/${mid.id}/retranslate`).set('x-access-key', KEY);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: '변환이 끝난 뒤에 다시 시도하세요.' });
+    expect(aps.startTranslation).not.toHaveBeenCalled();
+  });
+
+  it('APS 재요청이 실패하면 502이고 레코드를 바꾸지 않는다', async () => {
+    const { app, drawings } = setup({ startTranslation: vi.fn(async () => { throw new Error('boom'); }) });
+    const old = await seed(drawings, { status: 'success' });
+    const res = await request(app).post(`/api/drawings/${old.id}/retranslate`).set('x-access-key', KEY);
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: `변환 재요청에 실패했습니다: boom` });
+    expect((await drawings.get(old.id))?.status).toBe('success');
   });
 });
 
@@ -561,6 +708,17 @@ describe('PATCH /api/drawings/:id (프로젝트로 옮기기)', () => {
       .set('x-access-key', KEY)
       .send({ projectId: null });
     expect(res.body.frames).toEqual([]);
+  });
+
+  // 오프라인 모드(설계 2장): 도면을 옮기는 곳도 offlineReady를 붙여 보낸다.
+  it('응답에 offlineReady가 붙는다', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { status: 'success', viewFormat: 'svf' });
+    const res = await request(app)
+      .patch(`/api/drawings/${drawing.id}`)
+      .set('x-access-key', KEY)
+      .send({ projectId: null });
+    expect(res.body.offlineReady).toBe(true);
   });
 
   it('본문에 projectId 키가 없으면 400', async () => {
@@ -1084,7 +1242,7 @@ describe('GET /api/drawings/:id/damages/:damageId/photos/:number', () => {
 });
 
 describe('GET /api/drawings/:id/photos.zip', () => {
-  it('사진을 zip으로 묶어 보낸다 (이름은 번호_손상현황_사진번호)', async () => {
+  it('사진을 zip으로 묶어 보낸다 (이름은 망도틀번호_손상현황_사진번호)', async () => {
     const { app, drawings, damages, photos } = setup();
     const drawing = await seed(drawings, { name: '교량 A.dwg' });
     await damages.save(photoDoc(drawing.id));
@@ -1104,7 +1262,8 @@ describe('GET /api/drawings/:id/photos.zip', () => {
     // 진짜 zip인지: 첫 항목 머리글 서명 PK\x03\x04
     expect(body.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
     // 항목 이름은 머리글에 UTF-8 그대로 들어가고, store 방식이라 내용도 그대로 들어간다.
-    expect(body.includes(Buffer.from('1_균열(0.3mm미만)_101530.jpg', 'utf8'))).toBe(true);
+    // 이 시험 도면은 틀이 없으므로 망도틀 번호 자리가 000이다.
+    expect(body.includes(Buffer.from('000_균열(0.3mm미만)_101530.jpg', 'utf8'))).toBe(true);
     expect(body.includes(Buffer.from('photo-one', 'utf8'))).toBe(true);
   });
 
@@ -1654,26 +1813,7 @@ describe('GET /api/drawings/:id/ledger', () => {
   });
 
   it('읽기 전용 키로 읽을 수 있고, 그 키로 PATCH는 403', async () => {
-    const aps = fakeAps();
-    const drawings = new DrawingsStore(join(dir, 'data', 'drawings.json'));
-    const projects = new ProjectsStore(join(dir, 'data', 'projects.json'));
-    const app = createApp({
-      accessKey: KEY,
-      readKey: 'read-only-key-1234567890',
-      aps,
-      drawings,
-      damages: new DamagesStore(join(dir, 'data', 'damages')),
-      originals: new OriginalsStore(join(dir, 'data', 'drawings')),
-      photos: new PhotosStore(join(dir, 'data', 'photos')),
-      trash: new DrawingTrash(
-        { trashDir: join(dir, 'data', 'trash'), originalsDir: join(dir, 'data', 'drawings'), damagesDir: join(dir, 'data', 'damages'), photosDir: join(dir, 'data', 'photos') },
-        drawings,
-        (id) => projects.get(id).then(Boolean),
-      ),
-      projects,
-      publicDir: join(dir, 'public'),
-      now: () => NOW,
-    });
+    const { app, drawings } = setup({}, undefined, undefined, {}, undefined, 'read-only-key-1234567890');
     const drawing = await seed(drawings, { name: '교량.dwg' });
 
     const read = await request(app).get(`/api/drawings/${drawing.id}/ledger`).set('x-access-key', 'read-only-key-1234567890');
@@ -1710,5 +1850,144 @@ describe('GET /api/projects/:id/ledger', () => {
     const { app } = setup();
     const res = await request(app).get(`/api/projects/${newProjectId()}/ledger`).set('x-access-key', KEY);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/drawings/:id/offline', () => {
+  it('offlineReady인 도면의 목록을 준다', async () => {
+    const { app, drawings, damages } = setup();
+    const drawing = await seed(drawings, { status: 'success', progress: 'complete', viewFormat: 'svf' });
+    await damages.save({ ...crackDoc(drawing.id), updatedAt: '2026-09-20T00:00:00.000Z' });
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/offline`).set('x-access-key', KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      drawingId: drawing.id,
+      viewFormat: 'svf',
+      model: '0ab7c123_f2d/primaryGraphics.f2d',
+      files: [
+        { path: '0ab7c123_f2d/primaryGraphics.f2d', size: expect.any(Number) },
+        { path: '0ab7c123_f2d/manifest.json.gz', size: expect.any(Number) },
+        { path: '0ab7c123_f2d/metadata.json.gz', size: expect.any(Number) },
+      ],
+      damagesUpdatedAt: '2026-09-20T00:00:00.000Z',
+    });
+  });
+
+  it('SVF2(또는 옛) 도면은 409', async () => {
+    const { app, drawings } = setup();
+    const svf2 = await seed(drawings, { status: 'success', progress: 'complete', viewFormat: 'svf2' });
+    const legacy = await seed(drawings, { status: 'success', progress: 'complete' });
+
+    for (const drawing of [svf2, legacy]) {
+      const res = await request(app).get(`/api/drawings/${drawing.id}/offline`).set('x-access-key', KEY);
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: '오프라인용으로 변환된 도면이 아닙니다.' });
+    }
+  });
+
+  it('없는 도면은 404, 키가 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { status: 'success', viewFormat: 'svf' });
+    expect((await request(app).get(`/api/drawings/${newDrawingId()}/offline`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).get(`/api/drawings/${drawing.id}/offline`)).status).toBe(401);
+  });
+});
+
+describe('GET /api/drawings/:id/offline/files/*path', () => {
+  it('목록에 있는 파일을 캐시해 두고 바이트로 준다(중첩 경로 포함)', async () => {
+    const { app, drawings, offlineAps } = setup();
+    const drawing = await seed(drawings, { status: 'success', viewFormat: 'svf' });
+    // 캐시를 먼저 채운다(설계: read는 listing이 캐시에 둔 것만 준다).
+    await request(app).get(`/api/drawings/${drawing.id}/offline`).set('x-access-key', KEY);
+
+    const res = await request(app)
+      .get(`/api/drawings/${drawing.id}/offline/files/0ab7c123_f2d/primaryGraphics.f2d`)
+      .set('x-access-key', KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('application/octet-stream');
+    expect(res.headers['cache-control']).toBe('private, max-age=86400');
+    expect(Buffer.from(res.body).toString('utf8')).toBe(`data:${F2D_URN}`);
+    // 두 번째 요청은 오토데스크를 다시 부르지 않는다(캐시 재사용).
+    expect(offlineAps.downloadDerivative).toHaveBeenCalledTimes(3);
+  });
+
+  it('목록에 없는 path·도면 없음은 404, 키가 없으면 401', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { status: 'success', viewFormat: 'svf' });
+    await request(app).get(`/api/drawings/${drawing.id}/offline`).set('x-access-key', KEY);
+
+    const missing = await request(app)
+      .get(`/api/drawings/${drawing.id}/offline/files/not-cached.json`)
+      .set('x-access-key', KEY);
+    expect(missing.status).toBe(404);
+
+    const noDrawing = await request(app)
+      .get(`/api/drawings/${newDrawingId()}/offline/files/0ab7c123_f2d/primaryGraphics.f2d`)
+      .set('x-access-key', KEY);
+    expect(noDrawing.status).toBe(404);
+
+    expect(
+      (await request(app).get(`/api/drawings/${drawing.id}/offline/files/0ab7c123_f2d/primaryGraphics.f2d`)).status,
+    ).toBe(401);
+  });
+});
+
+describe('GET /api/viewer-bundle', () => {
+  it('버전과 파일 목록(우리 파일 + 오토데스크 7개)을 준다', async () => {
+    const { app } = setup();
+    const res = await request(app).get('/api/viewer-bundle').set('x-access-key', KEY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.version).toMatch(new RegExp(`^[0-9a-f]{12}-${AUTODESK_VIEWER_VERSION.replace(/\./g, '\.')}$`));
+    const paths = (res.body.files as { path: string }[]).map((f) => f.path).sort();
+    expect(paths).toEqual(
+      ['viewer.html', 'viewer/main.js', 'viewer/viewer.css', ...AUTODESK_VIEWER_FILES.map((p) => `autodesk/${p}`)].sort(),
+    );
+  });
+
+  it('키가 없으면 401', async () => {
+    const { app } = setup();
+    expect((await request(app).get('/api/viewer-bundle')).status).toBe(401);
+  });
+});
+
+describe('GET /api/viewer-bundle/files/*path', () => {
+  it('우리 파일은 그대로, 오토데스크 파일은 gzip을 풀어 준다', async () => {
+    const gz = gzipSync(Buffer.from('viewer3d-content'));
+    const { app, fetchCdn } = setup({}, undefined, undefined, {}, async () => ({
+      status: 200,
+      body: gz,
+      contentEncoding: 'gzip',
+    }));
+
+    const ours = await request(app).get('/api/viewer-bundle/files/viewer.html').set('x-access-key', KEY);
+    expect(ours.status).toBe(200);
+    expect(Buffer.from(ours.body).toString('utf8')).toBe('<html>viewer</html>');
+
+    const first = await request(app)
+      .get('/api/viewer-bundle/files/autodesk/viewer3D.min.js')
+      .set('x-access-key', KEY);
+    expect(first.status).toBe(200);
+    expect(first.headers['content-type']).toBe('application/octet-stream');
+    expect(first.headers['cache-control']).toBe('private, max-age=86400');
+    // 뷰어 본체에는 file:// 보정 코드가 앞에 붙어 온다(viewerBundle.ts FILE_URL_SHIM).
+    expect(Buffer.from(first.body).toString('utf8')).toBe(FILE_URL_SHIM + 'viewer3d-content');
+
+    const second = await request(app)
+      .get('/api/viewer-bundle/files/autodesk/viewer3D.min.js')
+      .set('x-access-key', KEY);
+    expect(Buffer.from(second.body).toString('utf8')).toBe(FILE_URL_SHIM + 'viewer3d-content');
+    expect(fetchCdn).toHaveBeenCalledTimes(1);
+  });
+
+  it('목록에 없는 path는 404, 키가 없으면 401', async () => {
+    const { app } = setup();
+    expect(
+      (await request(app).get('/api/viewer-bundle/files/not-listed.js').set('x-access-key', KEY)).status,
+    ).toBe(404);
+    expect((await request(app).get('/api/viewer-bundle/files/viewer.html')).status).toBe(401);
   });
 });
