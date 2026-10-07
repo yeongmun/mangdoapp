@@ -799,7 +799,8 @@ describe('손상 문서 API', () => {
     const doc = crackDoc(drawing.id);
     const put = await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(doc);
     expect(put.status).toBe(200);
-    expect(put.body).toEqual({ updatedAt: doc.updatedAt });
+    // PUT은 합친 문서 전체를 돌려준다(2026-10-07 병합). 빈 서버 문서와 합치면 보낸 것 그대로.
+    expect(put.body).toEqual(doc);
 
     const saved = await request(app).get(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY);
     expect(saved.body).toEqual(doc);
@@ -2081,5 +2082,49 @@ describe('DWG 변환기(ODA)가 있을 때', () => {
     const res = await request(app).get(`/api/drawings/${drawing.id}/export.dwg`).set('x-access-key', KEY);
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('ODA_PATH');
+  });
+});
+
+// 2026-10-07 병합: PUT은 저장된 문서와 손상 단위로 합친다.
+describe('PUT /api/drawings/:id/damages — 손상 단위 병합', () => {
+  function withId(doc: ReturnType<typeof crackDoc>, id: string, updatedAt: string) {
+    return { ...doc, updatedAt, damages: doc.damages.map((d) => ({ ...d, id, updatedAt })) };
+  }
+
+  it('두 기기가 서로 다른 손상을 올리면 둘 다 남는다', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const a = withId(crackDoc(drawing.id), 'aaaa', '2026-10-07T01:00:00.000Z');
+    const b = withId(crackDoc(drawing.id), 'bbbb', '2026-10-07T01:05:00.000Z');
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(a);
+    const res = await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(b);
+    expect(res.status).toBe(200);
+    expect(res.body.damages.map((d: { id: string }) => d.id)).toEqual(['aaaa', 'bbbb']);
+    expect(res.body.updatedAt).toBe('2026-10-07T01:05:00.000Z');
+    const stored = await request(app).get(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY);
+    expect(stored.body.damages).toHaveLength(2);
+  });
+
+  it('삭제 기록이 있으면 서버의 손상도 지워진다', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const a = withId(crackDoc(drawing.id), 'aaaa', '2026-10-07T01:00:00.000Z');
+    await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(a);
+    const res = await request(app)
+      .put(`/api/drawings/${drawing.id}/damages`)
+      .set('x-access-key', KEY)
+      .send({ ...a, updatedAt: '2026-10-07T02:00:00.000Z', damages: [], deleted: [{ id: 'aaaa', deletedAt: '2026-10-07T02:00:00.000Z' }] });
+    expect(res.status).toBe(200);
+    expect(res.body.damages).toEqual([]);
+    expect(res.body.deleted).toEqual([{ id: 'aaaa', deletedAt: '2026-10-07T02:00:00.000Z' }]);
+  });
+
+  it('동시에 와도 한쪽이 덮이지 않는다(줄 세우기)', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings);
+    const docs = ['a1', 'b2', 'c3', 'd4'].map((id, i) => withId(crackDoc(drawing.id), id, `2026-10-07T01:0${i}:00.000Z`));
+    await Promise.all(docs.map((d) => request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(d)));
+    const stored = await request(app).get(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY);
+    expect(stored.body.damages.map((d: { id: string }) => d.id).sort()).toEqual(['a1', 'b2', 'c3', 'd4']);
   });
 });

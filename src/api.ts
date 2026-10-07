@@ -50,6 +50,8 @@ export interface DamageDoc {
   drawingId: string;
   updatedAt: string;
   damages: unknown[];
+  /** 지운 손상의 기록(id·시각). 서버가 손상 단위로 합칠 때 쓴다(2026-10-07) */
+  deleted?: { id: string; deletedAt: string }[];
 }
 
 // 서버(projectTree.ts)가 트리 순서로 편 목록을 그대로 내려준다 — 앱은 같은 계산을 다시 하지 않는다.
@@ -156,7 +158,8 @@ export async function fetchDamages(drawingId: string): Promise<DamageDoc | null>
 
 // 로컬이 더 새것일 때 서버로 올린다(설계 3.5 push). 형식 오류(400)면 다시 보내도 소용없지만,
 // 그 판단은 호출부(offlineSync)가 한다 — 여기서는 실패를 그대로 던진다.
-export async function putDamages(drawingId: string, doc: DamageDoc): Promise<{ updatedAt: string }> {
+// 서버는 저장된 문서와 손상 단위로 합친 결과(문서 전체)를 돌려준다(2026-10-07).
+export async function putDamages(drawingId: string, doc: DamageDoc): Promise<DamageDoc> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/drawings/${encodeURIComponent(drawingId)}/damages`, {
@@ -174,7 +177,7 @@ export async function putDamages(drawingId: string, doc: DamageDoc): Promise<{ u
       status: res.status,
     });
   }
-  return (await res.json()) as { updatedAt: string };
+  return (await res.json()) as DamageDoc;
 }
 
 // path의 '/'는 그대로 두고 구간마다만 인코딩한다 — 서버의 와일드카드 라우트(/*path)는 슬래시로

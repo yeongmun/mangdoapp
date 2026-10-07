@@ -17,6 +17,7 @@ import type { OriginalsStore } from './originalsStore.js';
 import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
 import { buildDrawingLedger, type DrawingLedger } from './ledger.js';
+import { mergeDamageDocs } from './mergeDamages.js';
 import type { DrawingConverter } from './oda.js';
 import {
   isDamageId,
@@ -886,9 +887,16 @@ export function createApp(deps: AppDeps) {
       res.status(400).json({ error: '손상 데이터 형식이 올바르지 않습니다.', details: errors });
       return;
     }
-    const doc = req.body as DamageDoc;
-    await deps.damages.save(doc);
-    res.json({ updatedAt: doc.updatedAt });
+    // 통째로 덮어쓰지 않고 저장된 문서와 손상 단위로 합친다(2026-10-07) — 다른 기기가 그린 손상이
+    // 사라지지 않게. 합친 문서를 돌려주므로 보낸 쪽이 그대로 받아 쓰면 된다(updatedAt 포함).
+    const incoming = req.body as DamageDoc;
+    const merged = await deps.damages.withLock(drawing.id, async () => {
+      const current = await deps.damages.get(drawing.id);
+      const result = mergeDamageDocs(current, incoming) as DamageDoc;
+      await deps.damages.save(result);
+      return result;
+    });
+    res.json(merged);
   });
 
   // 찍은 사진을 그 손상 폴더에 저장한다. 사진번호는 **파일 이름에서** 뽑는다(스펙 2장) —

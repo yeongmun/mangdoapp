@@ -28,6 +28,24 @@ export function syncDecision(localUpdatedAt: string | null, serverUpdatedAt: str
   return 'none';
 }
 
+// 서버가 손상 단위로 합치게 된 뒤(2026-10-07)의 동기화 판단. 기기에서 고친 것이 있으면(마지막으로
+// 서버와 맞춘 시각 lastSyncedAt보다 로컬이 새것) 서버가 더 새것이어도 **push**한다 — 서버가 합쳐서
+// 돌려주므로 내 변경이 사라지지 않는다. 고친 것이 없으면 서버가 새것일 때만 pull. 그 밖엔 none.
+export function mergeSyncDecision(
+  localUpdatedAt: string | null,
+  lastSyncedAt: string | null,
+  serverUpdatedAt: string | null,
+): SyncDecision {
+  const local = parseTime(localUpdatedAt);
+  if (local === null) return parseTime(serverUpdatedAt) === null ? 'none' : 'pull';
+  const synced = parseTime(lastSyncedAt);
+  const dirty = synced === null || local > synced;
+  if (dirty) return 'push';
+  const server = parseTime(serverUpdatedAt);
+  if (server !== null && server > local) return 'pull';
+  return 'none';
+}
+
 // offlineReady인데 아직 기기(index)에 없는 도면만, 원래 순서를 지켜 고른다(설계 3.2 "이 목록
 // 내려받기 (N장)"). indexIds는 지금 offline/index.json에 있는 도면 id들이다.
 export function drawingsToDownload<D extends { id: string; offlineReady?: boolean }>(

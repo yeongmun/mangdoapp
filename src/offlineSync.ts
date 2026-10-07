@@ -3,7 +3,7 @@
 // 읽기·쓰기만 한다. photoUpload.flushPhotoQueue와 같은 단일 실행 잠금을 쓴다 — 목록 화면 진입·
 // 60초 타이머·배지 탭이 겹쳐 불려도 한 번만 돈다.
 import { fetchDamages, putDamages, type DamageDoc } from './api';
-import { effectiveDecision, syncDecision } from './offlineRules';
+import { effectiveDecision, mergeSyncDecision } from './offlineRules';
 import { readDamages, readIndex, writeDamages, writeIndex, type OfflineDrawingEntry, type OfflineIndex } from './offlineStore';
 
 /** 서버에 없는(휴지통으로 간) 도면에 적는 사유. 목록 화면이 그대로 보인다. */
@@ -73,7 +73,12 @@ async function runSync(skipPullFor: string | undefined): Promise<SyncResult> {
         continue;
       }
 
-      const decision = effectiveDecision(syncDecision(entry.damagesUpdatedAt, serverDoc.updatedAt), id, skipPullFor);
+      // 기기에서 고친 것이 있으면 서버가 새것이어도 올린다 — 서버가 손상 단위로 합쳐 돌려준다(2026-10-07).
+      const decision = effectiveDecision(
+        mergeSyncDecision(entry.damagesUpdatedAt, entry.serverUpdatedAt, serverDoc.updatedAt),
+        id,
+        skipPullFor,
+      );
       if (decision === 'push') {
         const localDoc = readDamages(id) as DamageDoc | null;
         if (!localDoc) {
@@ -81,8 +86,14 @@ async function runSync(skipPullFor: string | undefined): Promise<SyncResult> {
           continue;
         }
         try {
-          const result = await putDamages(id, localDoc);
-          patchEntry(id, { serverUpdatedAt: result.updatedAt, syncError: null });
+          const merged = await putDamages(id, localDoc);
+          // 합친 문서를 기기에도 둔다 — 다른 기기 손상이 들어온다. 단 그 도면 뷰어가 열려 있으면
+          // 파일만 바꾸면 뷰어 문서와 갈라지므로(effectiveDecision과 같은 이유) 시각만 맞추고 파일은 둔다.
+          if (id !== skipPullFor && writeDamages(id, merged)) {
+            patchEntry(id, { damagesUpdatedAt: merged.updatedAt, serverUpdatedAt: merged.updatedAt, syncError: null });
+          } else {
+            patchEntry(id, { serverUpdatedAt: merged.updatedAt, syncError: null });
+          }
           pushed++;
         } catch (err) {
           // 연결 실패는 조용히 다음 기회로. 서버가 4xx로 거절한 것(형식 오류 등)은 다시 보내도

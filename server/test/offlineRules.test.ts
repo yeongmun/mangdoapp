@@ -3,6 +3,7 @@ import {
   bundleNeedsUpdate,
   drawingsToDownload,
   effectiveDecision,
+  mergeSyncDecision,
   pendingPushCount,
   pendingSummary,
   rewriteViewerHtml,
@@ -154,5 +155,31 @@ describe('effectiveDecision', () => {
   it('skipPullFor가 없으면 결정을 그대로 돌려준다', () => {
     expect(effectiveDecision('pull', 'd1', undefined)).toBe('pull');
     expect(effectiveDecision('none', 'd1', undefined)).toBe('none');
+  });
+});
+
+describe('mergeSyncDecision — 서버가 손상 단위로 합치는 뒤의 판단(2026-10-07)', () => {
+  const T1 = '2026-10-07T00:00:00.000Z';
+  const T2 = '2026-10-07T01:00:00.000Z';
+  const T3 = '2026-10-07T02:00:00.000Z';
+
+  it('기기에서 고친 것이 있으면 서버가 더 새것이어도 push(서버가 합쳐 준다)', () => {
+    expect(mergeSyncDecision(T2, T1, T3)).toBe('push');
+    expect(mergeSyncDecision(T2, T1, null)).toBe('push');
+  });
+  it('서버와 맞춘 기록이 없는 로컬 문서는 push', () => {
+    expect(mergeSyncDecision(T1, null, T3)).toBe('push');
+  });
+  it('고친 것이 없고 서버가 새것이면 pull', () => {
+    expect(mergeSyncDecision(T1, T1, T2)).toBe('pull');
+  });
+  it('고친 것이 없고 서버도 같거나 오래됐으면 none', () => {
+    expect(mergeSyncDecision(T2, T2, T2)).toBe('none');
+    expect(mergeSyncDecision(T2, T2, T1)).toBe('none');
+    expect(mergeSyncDecision(T2, T2, null)).toBe('none');
+  });
+  it('로컬 문서가 없으면 서버가 있을 때만 pull', () => {
+    expect(mergeSyncDecision(null, null, T1)).toBe('pull');
+    expect(mergeSyncDecision(null, null, null)).toBe('none');
   });
 });

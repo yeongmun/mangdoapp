@@ -178,6 +178,8 @@ function validateDamage(damage, path, errors) {
   }
   if (typeof damage.id !== 'string' || damage.id === '') errors.push(`${path}.id가 비어 있습니다.`);
   if (!isDateString(damage.createdAt)) errors.push(`${path}.createdAt이 올바른 날짜가 아닙니다.`);
+  // 수정 시각(선택, 2026-10-07 병합용). 옛 기기 문서에는 없다.
+  if (damage.updatedAt !== undefined && !isDateString(damage.updatedAt)) errors.push(`${path}.updatedAt이 올바른 날짜가 아닙니다.`);
   const type = typeof damage.type === 'string' ? getDamageType(damage.type) : null;
   if (!type) {
     errors.push(`${path}.type이 손상 유형 목록에 없습니다.`);
@@ -211,6 +213,17 @@ export function validateDamageDoc(doc, drawingId) {
       seen.add(damage.id);
     }
   });
+  // 삭제 기록(선택, 2026-10-07 병합용): 지운 손상의 id와 시각. 서버가 다른 기기 문서와 합칠 때 쓴다.
+  if (doc.deleted !== undefined) {
+    if (!Array.isArray(doc.deleted)) errors.push('deleted는 배열이어야 합니다.');
+    else {
+      doc.deleted.forEach((t, i) => {
+        if (typeof t !== 'object' || t === null || typeof t.id !== 'string' || t.id === '' || !isDateString(t.deletedAt)) {
+          errors.push(`deleted[${i}]는 { id, deletedAt } 이어야 합니다.`);
+        }
+      });
+    }
+  }
   return errors;
 }
 
@@ -333,9 +346,22 @@ export function createEditor(doc) {
  * @param {string} now
  * @returns {Editor}
  */
-function commit(editor, damages, now) {
+/**
+ * 바뀐 손상(touchedId)에 수정 시각을 찍고 문서 시각을 올린다. 손상별 updatedAt은 서버가 여러 기기의
+ * 문서를 손상 단위로 합칠 때 어느 쪽이 새것인지 가리는 근거다(2026-10-07).
+ * @param {Editor} editor
+ * @param {Damage[]} damages
+ * @param {string} now
+ * @param {string | null} [touchedId]
+ * @param {Array<{ id: string, deletedAt: string }>} [deleted]
+ * @returns {Editor}
+ */
+function commit(editor, damages, now, touchedId = null, deleted = undefined) {
   const history = [...editor.history, editor.doc].slice(-MAX_HISTORY);
-  return { doc: { ...editor.doc, damages, updatedAt: now }, history };
+  const stamped = touchedId === null ? damages : damages.map((d) => (d.id === touchedId ? { ...d, updatedAt: now } : d));
+  const doc = { ...editor.doc, damages: stamped, updatedAt: now };
+  if (deleted !== undefined) doc.deleted = deleted;
+  return { doc, history };
 }
 
 /**
@@ -345,10 +371,14 @@ function commit(editor, damages, now) {
  * @returns {Editor}
  */
 export function addDamage(editor, damage, now) {
-  return commit(editor, [...editor.doc.damages, damage], now);
+  // 되살린 id의 삭제 기록은 뺀다(같은 id를 다시 넣는 일은 없지만, 있어도 삭제가 이기지 않게).
+  const deleted = (editor.doc.deleted ?? []).filter((t) => t.id !== damage.id);
+  return commit(editor, [...editor.doc.damages, damage], now, damage.id, deleted.length > 0 ? deleted : undefined);
 }
 
 /**
+ * 지운 손상은 문서에서 빼고 deleted에 기록한다 — 서버 병합이 "다른 기기가 모르고 다시 올린 것"과
+ * "정말 지운 것"을 가릴 수 있게.
  * @param {Editor} editor
  * @param {string} damageId
  * @param {string} now
@@ -356,7 +386,8 @@ export function addDamage(editor, damage, now) {
  */
 export function removeDamage(editor, damageId, now) {
   if (!editor.doc.damages.some((d) => d.id === damageId)) return editor;
-  return commit(editor, editor.doc.damages.filter((d) => d.id !== damageId), now);
+  const deleted = [...(editor.doc.deleted ?? []).filter((t) => t.id !== damageId), { id: damageId, deletedAt: now }];
+  return commit(editor, editor.doc.damages.filter((d) => d.id !== damageId), now, null, deleted);
 }
 
 // 손상 한 건의 일부만 바꾼다. geometry·measured·computed·attrs는 각각 얕게 병합한다.
@@ -373,7 +404,7 @@ export function updateDamage(editor, damageId, changes, now) {
     attrs: { ...current.attrs, ...(changes.attrs ?? {}) },
   };
   const damages = editor.doc.damages.map((damage, i) => (i === index ? updated : damage));
-  return commit(editor, damages, now);
+  return commit(editor, damages, now, damageId);
 }
 
 function copiesOf(damage) {
@@ -425,7 +456,7 @@ export function duplicateShape(editor, damageId, shape, now) {
   const current = editor.doc.damages[index];
   const copies = [...copiesOf(current), { world: shape.world, dwg: shape.dwg ?? null }];
   const updated = { ...current, copies, measured: { ...current.measured, count: copies.length + 1 } };
-  return commit(editor, editor.doc.damages.map((damage, i) => (i === index ? updated : damage)), now);
+  return commit(editor, editor.doc.damages.map((damage, i) => (i === index ? updated : damage)), now, damageId);
 }
 
 /**
@@ -454,7 +485,7 @@ export function removeShape(editor, damageId, shapeIndex, now) {
     updated = { ...current, copies: copies.filter((_, i) => i !== shapeIndex - 1) };
   }
   updated = { ...updated, measured: { ...current.measured, count: shapeCountOf(updated) } };
-  return commit(editor, editor.doc.damages.map((damage, i) => (i === index ? updated : damage)), now);
+  return commit(editor, editor.doc.damages.map((damage, i) => (i === index ? updated : damage)), now, damageId);
 }
 
 /**
@@ -484,7 +515,22 @@ export function undo(editor, now) {
   if (editor.history.length === 0) return editor;
   const previous = editor.history[editor.history.length - 1];
   // updatedAt을 현재 시각으로 올려야 로컬 백업이 서버 문서보다 최신으로 판단된다.
-  return { doc: { ...previous, updatedAt: now }, history: editor.history.slice(0, -1) };
+  // 병합(2026-10-07): 되돌려서 달라진 손상에는 새 시각을 찍고(서버에 이미 간 변경을 이긴다),
+  // 되돌려서 사라지는 손상(방금 추가한 것을 무르기)은 삭제 기록에 넣는다.
+  const currentById = new Map(editor.doc.damages.map((d) => [d.id, d]));
+  const previousIds = new Set(previous.damages.map((d) => d.id));
+  const damages = previous.damages.map((d) => {
+    const current = currentById.get(d.id);
+    return current !== undefined && JSON.stringify(current) === JSON.stringify(d) ? d : { ...d, updatedAt: now };
+  });
+  const deleted = (previous.deleted ?? []).filter((t) => !previousIds.has(t.id));
+  for (const d of editor.doc.damages) {
+    if (!previousIds.has(d.id) && !deleted.some((t) => t.id === d.id)) deleted.push({ id: d.id, deletedAt: now });
+  }
+  const doc = { ...previous, damages, updatedAt: now };
+  if (deleted.length > 0) doc.deleted = deleted;
+  else delete doc.deleted;
+  return { doc, history: editor.history.slice(0, -1) };
 }
 
 /**

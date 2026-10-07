@@ -701,3 +701,53 @@ describe('도형 단위 편집', () => {
     expect(updateShape(editor, 'a', 1, COPY_1, T1)).toBe(editor);
   });
 });
+
+// 병합용 흔적(2026-10-07): 손상별 updatedAt, 삭제 기록 deleted. 서버가 여러 기기 문서를 합칠 때 쓴다.
+describe('손상별 updatedAt과 삭제 기록(deleted)', () => {
+  it('addDamage·updateDamage·duplicateShape·removeShape는 그 손상에만 updatedAt을 찍는다', () => {
+    let editor = createEditor(docWith([lineDamage('a'), lineDamage('b')]));
+    editor = addDamage(editor, lineDamage('c'), T1);
+    expect((editor.doc.damages[2] as { updatedAt?: string }).updatedAt).toBe(T1);
+    expect((editor.doc.damages[0] as { updatedAt?: string }).updatedAt).toBeUndefined();
+
+    editor = updateDamage(editor, 'a', { attrs: { note: 'x' } }, T2);
+    expect((editor.doc.damages[0] as { updatedAt?: string }).updatedAt).toBe(T2);
+    expect((editor.doc.damages[1] as { updatedAt?: string }).updatedAt).toBeUndefined();
+    expect(editor.doc.updatedAt).toBe(T2);
+  });
+
+  it('removeDamage는 문서에서 빼고 deleted에 { id, deletedAt }을 남긴다', () => {
+    let editor = createEditor(docWith([lineDamage('a'), lineDamage('b')]));
+    editor = removeDamage(editor, 'a', T1);
+    expect(editor.doc.damages.map((d: unknown) => (d as { id: string }).id)).toEqual(['b']);
+    expect(editor.doc.deleted).toEqual([{ id: 'a', deletedAt: T1 }]);
+    expect(validateDamageDoc(editor.doc, DRAWING)).toEqual([]);
+  });
+
+  it('undo: 삭제를 무르면 손상이 새 시각으로 돌아오고 삭제 기록이 빠진다', () => {
+    let editor = createEditor(docWith([lineDamage('a')]));
+    editor = removeDamage(editor, 'a', T1);
+    editor = undo(editor, T2);
+    expect(editor.doc.damages.map((d: unknown) => (d as { id: string }).id)).toEqual(['a']);
+    expect((editor.doc.damages[0] as { updatedAt?: string }).updatedAt).toBe(T2);
+    expect(editor.doc.deleted).toBeUndefined();
+  });
+
+  it('undo: 추가를 무르면 그 손상이 삭제 기록에 들어간다', () => {
+    let editor = createEditor(docWith([lineDamage('a')]));
+    editor = addDamage(editor, lineDamage('b'), T1);
+    editor = undo(editor, T2);
+    expect(editor.doc.damages.map((d: unknown) => (d as { id: string }).id)).toEqual(['a']);
+    expect(editor.doc.deleted).toEqual([{ id: 'b', deletedAt: T2 }]);
+    // 바뀌지 않은 a는 시각이 그대로
+    expect((editor.doc.damages[0] as { updatedAt?: string }).updatedAt).toBeUndefined();
+  });
+
+  it('검증: updatedAt·deleted는 선택이고 모양이 틀리면 거부한다', () => {
+    const ok = { ...docWith([{ ...lineDamage('a'), updatedAt: T1 }]), deleted: [{ id: 'z', deletedAt: T1 }] };
+    expect(validateDamageDoc(ok, DRAWING)).toEqual([]);
+    expect(validateDamageDoc(docWith([{ ...lineDamage('a'), updatedAt: 'x' }]), DRAWING)).toEqual(['damages[0].updatedAt이 올바른 날짜가 아닙니다.']);
+    expect(validateDamageDoc({ ...docWith([]), deleted: [{ id: '' }] }, DRAWING)).toEqual(['deleted[0]는 { id, deletedAt } 이어야 합니다.']);
+    expect(validateDamageDoc({ ...docWith([]), deleted: 'x' }, DRAWING)).toEqual(['deleted는 배열이어야 합니다.']);
+  });
+});
