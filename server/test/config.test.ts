@@ -24,6 +24,7 @@ describe('loadConfig', () => {
       apsClientId: 'AbC123',
       apsClientSecret: 'secret',
       appAccessKey: 'key-1234567890abcdefgh',
+      appReadKey: null,
       bucketKey: defaultBucketKey('AbC123'),
       port: 3000,
       dataDir: '/data',
@@ -47,6 +48,18 @@ describe('loadConfig', () => {
     }
     expect(loadConfig({ ...base, APP_ACCESS_KEY: 'abcdefghij_KLMNOPQRS-0123' }, '/data').appAccessKey).toBe(
       'abcdefghij_KLMNOPQRS-0123',
+    );
+  });
+
+  it('APP_READ_KEY는 선택이고, 있으면 같은 규칙을 따르며 본 키와 달라야 한다', () => {
+    expect(loadConfig(base, '/data').appReadKey).toBeNull();
+    expect(loadConfig({ ...base, APP_READ_KEY: '  ' }, '/data').appReadKey).toBeNull();
+    expect(loadConfig({ ...base, APP_READ_KEY: 'read-1234567890abcdefgh' }, '/data').appReadKey).toBe('read-1234567890abcdefgh');
+    expect(() => loadConfig({ ...base, APP_READ_KEY: 'short' }, '/data')).toThrow(
+      'APP_READ_KEY는 영문·숫자·-·_ 로만 20자 이상이어야 합니다.',
+    );
+    expect(() => loadConfig({ ...base, APP_READ_KEY: base.APP_ACCESS_KEY }, '/data')).toThrow(
+      'APP_READ_KEY는 APP_ACCESS_KEY와 달라야 합니다.',
     );
   });
 });

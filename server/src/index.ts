@@ -34,6 +34,7 @@ async function main(): Promise<void> {
   const projects = new ProjectsStore(join(config.dataDir, 'projects.json'));
   const app = createApp({
     accessKey: config.appAccessKey,
+    readKey: config.appReadKey,
     aps,
     drawings,
     damages: new DamagesStore(join(config.dataDir, 'damages')),

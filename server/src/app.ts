@@ -15,6 +15,7 @@ import { findFrames, type FrameBounds } from './export/frames.js';
 import type { OriginalsStore } from './originalsStore.js';
 import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
+import { buildDrawingLedger, frameLocationsFor, type DrawingLedger } from './ledger.js';
 import {
   isDamageId,
   isPhotoNumber,
@@ -35,6 +36,8 @@ export const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
 
 export interface AppDeps {
   accessKey: string;
+  /** 읽기 전용 접근키(GET만). 없으면 accessKey 하나만 받는다 */
+  readKey?: string | null;
   aps: Pick<ApsService, 'getViewerToken' | 'uploadDrawing' | 'startTranslation' | 'getTranslationStatus'>;
   drawings: DrawingsStore;
   damages: DamagesStore;
@@ -175,6 +178,11 @@ async function zipFramesOf(deps: AppDeps, drawing: DrawingRecord): Promise<Frame
   return framesOf(original, drawing.objectKey);
 }
 
+async function ledgerOf(deps: AppDeps, drawing: DrawingRecord): Promise<DrawingLedger> {
+  const doc = await deps.damages.get(drawing.id);
+  return buildDrawingLedger(drawing, doc.damages, await zipFramesOf(deps, drawing));
+}
+
 // 도면 하나를 산출한다. 단일 도면 라우트(export.dxf)와 프로젝트 zip 라우트(export.zip)가
 // 같이 쓴다 — DWG·원본 없음·ExportError·그 밖의 오류를 가르는 판단은 하나만 둔다. 문구는
 // 라우트마다 다르므로(export.zip의 건너뜀.txt는 더 짧은 문구를 쓴다) kind만 돌려주고 문구는
@@ -282,7 +290,7 @@ export function createApp(deps: AppDeps) {
   app.use(express.static(deps.publicDir));
 
   const api = express.Router();
-  api.use(requireAccessKey(deps.accessKey));
+  api.use(requireAccessKey(deps.accessKey, deps.readKey ?? undefined));
   api.use(express.json({ limit: '5mb' }));
 
   api.post('/drawings', upload.single('file'), async (req, res) => {
@@ -370,25 +378,41 @@ export function createApp(deps: AppDeps) {
       return;
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    if (!('projectId' in body)) {
-      res.status(400).json({ error: 'projectId가 필요합니다.' });
+    if (!('projectId' in body) && !('frameLocations' in body)) {
+      res.status(400).json({ error: 'projectId 또는 frameLocations가 필요합니다.' });
       return;
     }
-    const value = body.projectId;
-    let projectId: string | null;
-    if (value === null) {
-      projectId = null;
-    } else if (typeof value === 'string') {
-      if (!isProjectId(value) || !(await deps.projects.get(value))) {
-        res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+    const patch: { projectId?: string | null; frameLocations?: string[] } = {};
+    if ('projectId' in body) {
+      const value = body.projectId;
+      if (value === null) {
+        patch.projectId = null;
+      } else if (typeof value === 'string') {
+        if (!isProjectId(value) || !(await deps.projects.get(value))) {
+          res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+          return;
+        }
+        patch.projectId = value;
+      } else {
+        res.status(400).json({ error: 'projectId 형식이 올바르지 않습니다.' });
         return;
       }
-      projectId = value;
-    } else {
-      res.status(400).json({ error: 'projectId 형식이 올바르지 않습니다.' });
-      return;
     }
-    const updated = await deps.drawings.update(drawing.id, { projectId });
+    if ('frameLocations' in body) {
+      // 틀마다 한 번 적는 손상위치(부재). 틀 수에 맞춰 자르고, 빈 칸은 ''로 둔다.
+      const value = body.frameLocations;
+      if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+        res.status(400).json({ error: 'frameLocations는 문자열 배열이어야 합니다.' });
+        return;
+      }
+      if (value.some((item: string) => item.length > 100 || /[\r\n]/.test(item))) {
+        res.status(400).json({ error: '손상위치는 줄바꿈 없이 100자까지 적을 수 있습니다.' });
+        return;
+      }
+      const withFrames = await ensureFrames(deps, drawing);
+      patch.frameLocations = frameLocationsFor(withFrames.frames ?? [], value);
+    }
+    const updated = await deps.drawings.update(drawing.id, patch);
     res.json(await ensureFrames(deps, updated ?? drawing));
   });
 
@@ -863,6 +887,38 @@ export function createApp(deps: AppDeps) {
       archive.file(deps.photos.pathOf(drawing.id, entry), { name });
     }
     await archive.finalize();
+  });
+
+  // 손상 원장: 도면의 손상을 손상물량표 행 모양으로. 웹(daenong)이 읽어 집계표·사진첩을 만든다.
+  // 번호·손상현황·물량은 산출 DXF·사진 zip과 같은 함수로 구하고, 틀도 같은 길(zipFramesOf)로 얻는다.
+  api.get('/drawings/:id/ledger', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    res.json(await ledgerOf(deps, drawing));
+  });
+
+  // 프로젝트(와 하위 프로젝트)의 모든 도면 원장. 도면 순서는 사진 zip·산출 zip과 같다(drawingFoldersFor).
+  api.get('/projects/:id/ledger', async (req, res) => {
+    const id = req.params.id;
+    if (!isProjectId(id)) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const project = await deps.projects.get(id);
+    if (!project) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const [projectRecords, drawingRecords] = await Promise.all([deps.projects.list(), deps.drawings.list()]);
+    const drawings: (DrawingLedger & { subProject: string | null })[] = [];
+    for (const { drawing, folder } of drawingFoldersFor(id, projectRecords, drawingRecords)) {
+      const ledger = await ledgerOf(deps, drawing);
+      drawings.push({ ...ledger, subProject: folder ? folder.replace(/\/$/, '') : null });
+    }
+    res.json({ projectId: project.id, projectName: project.name, drawings });
   });
 
   api.get('/drawings/:id/export.dxf', async (req, res) => {

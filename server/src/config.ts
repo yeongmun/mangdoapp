@@ -4,6 +4,8 @@ export interface AppConfig {
   apsClientId: string;
   apsClientSecret: string;
   appAccessKey: string;
+  /** 읽기 전용 접근키(선택). 웹(daenong)이 손상 원장을 읽을 때 쓴다. 없으면 읽기 전용 접근은 꺼진다. */
+  appReadKey: string | null;
   bucketKey: string;
   port: number;
   dataDir: string;
@@ -23,6 +25,16 @@ export function loadConfig(env: NodeJS.ProcessEnv, dataDir: string): AppConfig {
     throw new Error('APP_ACCESS_KEY는 영문·숫자·-·_ 로만 20자 이상이어야 합니다.');
   }
 
+  const appReadKey = env.APP_READ_KEY?.trim() || null;
+  if (appReadKey !== null) {
+    if (!ACCESS_KEY_PATTERN.test(appReadKey)) {
+      throw new Error('APP_READ_KEY는 영문·숫자·-·_ 로만 20자 이상이어야 합니다.');
+    }
+    if (appReadKey === env.APP_ACCESS_KEY!.trim()) {
+      throw new Error('APP_READ_KEY는 APP_ACCESS_KEY와 달라야 합니다.');
+    }
+  }
+
   const port = env.PORT?.trim() ? Number(env.PORT) : 3000;
   if (!Number.isInteger(port) || port <= 0) {
     throw new Error(`PORT 값이 올바르지 않습니다: ${env.PORT}`);
@@ -33,6 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, dataDir: string): AppConfig {
     apsClientId,
     apsClientSecret: env.APS_CLIENT_SECRET!.trim(),
     appAccessKey: env.APP_ACCESS_KEY!.trim(),
+    appReadKey,
     bucketKey: env.APS_BUCKET_KEY?.trim() || defaultBucketKey(apsClientId),
     port,
     dataDir,

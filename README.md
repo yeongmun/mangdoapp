@@ -32,6 +32,7 @@ npm --prefix server install
 APS_CLIENT_ID=발급받은 Client ID
 APS_CLIENT_SECRET=발급받은 Client Secret
 APP_ACCESS_KEY=직접 정한 접근키(영문·숫자·-·_ 로만 20자 이상)
+APP_READ_KEY=선택. 읽기 전용 접근키(같은 규칙, 본 키와 다르게). 웹(daenong)이 손상 원장을 읽을 때 쓴다 — 이 키로는 GET만 된다
 ```
 접근키에 `#`, `$`, 한글 등 다른 문자가 있으면 서버가 시작되지 않습니다 (앱 쪽 설정 파일에서 값이 달라지기 때문).
 APS 콘솔에서 앱에 **Data Management API**, **Model Derivative API**가 켜져 있어야 합니다.
@@ -107,6 +108,14 @@ npx expo start --tunnel
    - 도면에 손상물량표가 없으면 `표 없음` 경고가 뜨고 도형·라벨만 들어갑니다
    - 그 도면의 사진은 같은 줄의 **사진 zip**으로 한 번에 받습니다. 파일 이름은 `<도면이름>_사진.zip`이고, 안의 사진은 `<손상번호>_<손상현황>_<사진번호>.jpg`입니다(예: `1_균열(0.3mm미만)_101530.jpg`). 손상번호는 산출 DXF의 번호와 같습니다 — 망도틀마다 1번부터입니다
    - 도면 줄의 **삭제**를 누르면(확인 창이 뜹니다) 도면과 그 손상 기록·사진이 **휴지통**으로 옮겨지고 앱 목록에서도 사라집니다. 페이지 아래 **휴지통**의 **복구**로 그대로 되살릴 수 있습니다. 앱에서는 도면 목록의 도면을 **길게 눌러** 삭제합니다(복구는 PC에서). 서버는 아무것도 영구 삭제하지 않습니다 — 휴지통은 `server/data/trash/<도면id>/`에 쌓이고, 디스크를 비우려면 그 폴더를 직접 지우세요
+
+## 웹(daenong) 연동 — 손상 원장
+
+웹이 손상물량표·사진첩을 만들 때 쓰는 읽기 전용 API입니다. 번호·손상현황·물량은 산출 DXF·사진 zip과 같은 규칙입니다.
+
+- `GET /api/drawings/:id/ledger` — 도면 하나의 손상을 표 행(`rows`)으로. 행마다 `frameIndex`(틀 순번), `no`(틀마다 1부터), `location`(틀별 손상위치), `statusText`, `width`/`widthUnit`, `length`, `count`, `quantity`, `unit`, `photoNumbers`, `note`
+- `GET /api/projects/:id/ledger` — 프로젝트(와 하위 프로젝트)의 모든 도면 원장. 도면 순서는 사진 zip과 같고, 하위 프로젝트 도면은 `subProject`에 이름이 실립니다
+- 손상위치(부재)는 손상마다가 아니라 **망도틀마다 한 번** 적습니다: `PATCH /api/drawings/:id` 에 `{ "frameLocations": ["교대", "거더"] }` (틀 순서대로, 왼쪽부터). 아직 PC 업로드 페이지에 입력칸은 없습니다
 
 ## 문제 해결
 
