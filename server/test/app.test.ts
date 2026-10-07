@@ -99,6 +99,7 @@ function setup(
   offlineApsOverrides: Record<string, unknown> = {},
   fetchCdnImpl?: (url: string) => Promise<{ status: number; body: Buffer; contentEncoding: string | null }>,
   readKey?: string,
+  converter?: import('../src/oda.js').DrawingConverter | null,
 ) {
   const aps = fakeAps(apsOverrides);
   const drawings = new DrawingsStore(join(dir, 'data', 'drawings.json'));
@@ -123,6 +124,7 @@ function setup(
   const app = createApp({
     accessKey: KEY,
     readKey,
+    converter,
     aps,
     drawings,
     damages,
@@ -1989,5 +1991,95 @@ describe('GET /api/viewer-bundle/files/*path', () => {
       (await request(app).get('/api/viewer-bundle/files/not-listed.js').set('x-access-key', KEY)).status,
     ).toBe(404);
     expect((await request(app).get('/api/viewer-bundle/files/viewer.html')).status).toBe(401);
+  });
+});
+
+// DWG ↔ DXF 변환기(ODA)가 있을 때. 변환기는 가짜 — DWG 바이트를 템플릿 DXF로, DXF 글자를 'DWG:' 접두 바이트로.
+describe('DWG 변환기(ODA)가 있을 때', () => {
+  async function fakeConverter(opts: { failDwgToDxf?: boolean } = {}) {
+    const dxf = await readFile(templatePath);
+    return {
+      dwgToDxf: vi.fn(async () => {
+        if (opts.failDwgToDxf) throw new Error('oda broke');
+        return dxf;
+      }),
+      dxfToDwg: vi.fn(async (text: string) => Buffer.from(`DWG:${text.length}`)),
+    };
+  }
+
+  it('DWG를 올리면 DXF로 바꿔 DXF로 올린 것과 똑같이 다룬다(objectKey .dxf, APS에 DXF, 틀 계산)', async () => {
+    const converter = await fakeConverter();
+    const { app, aps, drawings, originals } = setup({}, undefined, undefined, {}, undefined, undefined, converter);
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('name', '교량 A.dwg')
+      .attach('file', Buffer.from('dwg-bytes'), 'bridge.dwg');
+
+    expect(res.status).toBe(201);
+    const id = res.body.id as string;
+    expect(res.body.name).toBe('교량 A.dwg');
+    expect(res.body.objectKey).toBe(`${id}.dxf`);
+    expect(converter.dwgToDxf).toHaveBeenCalledWith(Buffer.from('dwg-bytes'));
+    expect(aps.uploadDrawing).toHaveBeenCalledWith(await readFile(templatePath), `${id}.dxf`);
+    expect(res.body.frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect((await originals.read(`${id}.dxf`))?.equals(await readFile(templatePath))).toBe(true);
+    expect((await drawings.get(id))?.objectKey).toBe(`${id}.dxf`);
+    expect(res.headers['x-mangdo-warning']).toBeUndefined();
+  });
+
+  it('변환에 실패하면 예전처럼 DWG 그대로 올리고 경고 헤더를 준다', async () => {
+    const converter = await fakeConverter({ failDwgToDxf: true });
+    const { app, aps } = setup({}, undefined, undefined, {}, undefined, undefined, converter);
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('name', '교량.dwg')
+      .attach('file', Buffer.from('dwg-bytes'), 'bridge.dwg');
+    expect(res.status).toBe(201);
+    expect(res.body.objectKey).toBe(`${res.body.id}.dwg`);
+    expect(res.body.frames).toEqual([]);
+    expect(aps.uploadDrawing).toHaveBeenCalledWith(Buffer.from('dwg-bytes'), `${res.body.id}.dwg`);
+    expect(decodeURIComponent(res.headers['x-mangdo-warning'])).toContain('oda broke');
+  });
+
+  it('DXF 업로드는 변환기를 거치지 않는다', async () => {
+    const converter = await fakeConverter();
+    const { app } = setup({}, undefined, undefined, {}, undefined, undefined, converter);
+    const res = await request(app)
+      .post('/api/drawings')
+      .set('x-access-key', KEY)
+      .field('name', '망도.dxf')
+      .attach('file', await readFile(templatePath), 'template.dxf');
+    expect(res.status).toBe(201);
+    expect(converter.dwgToDxf).not.toHaveBeenCalled();
+  });
+
+  it('export.dwg: 산출 DXF를 DWG로 바꿔 준다', async () => {
+    const converter = await fakeConverter();
+    const { app, drawings, damages, originals } = setup({}, undefined, undefined, {}, undefined, undefined, converter);
+    const drawing = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete' });
+    await originals.save(drawing.objectKey, await readFile(templatePath));
+    await damages.save(crackDoc(drawing.id));
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dwg`).set('x-access-key', KEY).buffer(true).parse((r, cb) => {
+      const chunks: Buffer[] = [];
+      r.on('data', (c: Buffer) => chunks.push(c));
+      r.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/acad');
+    expect(decodeURIComponent(/filename\*=UTF-8''([^;]+)/.exec(res.headers['content-disposition'])![1])).toBe('망도_손상.dwg');
+    expect((res.body as Buffer).toString()).toMatch(/^DWG:\d+$/);
+    expect(converter.dxfToDwg).toHaveBeenCalledTimes(1);
+  });
+
+  it('export.dwg: 변환기가 없으면 400', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { name: '망도.dxf' });
+    const res = await request(app).get(`/api/drawings/${drawing.id}/export.dwg`).set('x-access-key', KEY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('ODA_PATH');
   });
 });

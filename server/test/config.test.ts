@@ -25,6 +25,7 @@ describe('loadConfig', () => {
       apsClientSecret: 'secret',
       appAccessKey: 'key-1234567890abcdefgh',
       appReadKey: null,
+      odaPath: null,
       bucketKey: defaultBucketKey('AbC123'),
       port: 3000,
       dataDir: '/data',

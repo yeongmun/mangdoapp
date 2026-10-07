@@ -17,6 +17,7 @@ import type { OriginalsStore } from './originalsStore.js';
 import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
 import { buildDrawingLedger, type DrawingLedger } from './ledger.js';
+import type { DrawingConverter } from './oda.js';
 import {
   isDamageId,
   isPhotoNumber,
@@ -40,6 +41,8 @@ export interface AppDeps {
   accessKey: string;
   /** 읽기 전용 접근키(GET만). 없으면 accessKey 하나만 받는다 */
   readKey?: string | null;
+  /** DWG↔DXF 변환기(ODA). 없으면 DWG는 보기만 되고 산출은 안 된다(예전과 같다) */
+  converter?: DrawingConverter | null;
   aps: Pick<ApsService, 'getViewerToken' | 'uploadDrawing' | 'startTranslation' | 'getTranslationStatus'>;
   drawings: DrawingsStore;
   damages: DamagesStore;
@@ -340,17 +343,31 @@ export function createApp(deps: AppDeps) {
     }
 
     const id = newDrawingId();
-    const extension = isDwg ? '.dwg' : '.dxf';
+    // 변환기가 있으면 DWG를 여기서 DXF로 바꿔 **DXF로 올린 것과 똑같이** 다룬다(APS·틀·산출 전부).
+    // 변환에 실패하면 예전처럼 DWG 그대로 올린다(보기만 되고 산출은 안 됨) — 업로드가 막히지 않게.
+    let data = file.buffer;
+    let asDxf = isDxf;
+    let convertWarning: string | null = null;
+    if (isDwg && deps.converter) {
+      try {
+        data = await deps.converter.dwgToDxf(file.buffer);
+        asDxf = true;
+      } catch (err) {
+        convertWarning = `DWG를 DXF로 바꾸지 못해 DWG 그대로 올렸습니다(산출 불가): ${messageOf(err)}`;
+        console.error('[upload] ODA DWG→DXF 실패', id, err);
+      }
+    }
+    const extension = asDxf ? '.dxf' : '.dwg';
     const objectKey = `${id}${extension}`;
     try {
-      const { urn } = await deps.aps.uploadDrawing(file.buffer, objectKey);
+      const { urn } = await deps.aps.uploadDrawing(data, objectKey);
       await deps.aps.startTranslation(urn);
       // 산출은 이 사본에서 시작한다(스펙 2장). APS가 성공한 뒤에 시도한다. 디스크 저장이
       // 실패해도(디스크 꽉 참 등) 업로드 자체(APS 업로드·변환 요청)는 이미 성공했으므로 여기서
       // 502로 되돌리지 않는다 — 로그만 남기고 레코드는 그대로 만든다. 원본이 없다는 사실은
       // 나중에 산출을 시도할 때 "원본 파일이 없습니다"로 드러난다(R17).
       try {
-        await deps.originals.save(objectKey, file.buffer);
+        await deps.originals.save(objectKey, data);
       } catch (err) {
         console.error('[upload] 원본 보관 실패', objectKey, err);
       }
@@ -363,14 +380,15 @@ export function createApp(deps: AppDeps) {
         progress: '',
         error: null,
         uploadedAt: new Date(now()).toISOString(),
-        // DWG는 원본을 읽을 수 없으므로 틀이 없다(설계 3장).
-        frames: isDxf ? framesOf(file.buffer, objectKey) : [],
+        // DWG(변환 안 됨)는 원본을 읽을 수 없으므로 틀이 없다(설계 3장).
+        frames: asDxf ? framesOf(data, objectKey) : [],
         // 오프라인 모드(설계 2장): 새로 올리는 도면은 항상 SVF(2D)로 변환한다.
         viewFormat: 'svf',
         // 없거나 미분류면 키 자체를 넣지 않는다(설계 2.2 — 기존 도면과 같은 모양으로 남는다).
         ...(projectId !== undefined ? { projectId } : {}),
       };
       await deps.drawings.add(record);
+      if (convertWarning) res.setHeader('X-Mangdo-Warning', encodeURIComponent(convertWarning));
       res.status(201).json(withOfflineReady(record));
     } catch (err) {
       console.error('[upload]', err);
@@ -1064,6 +1082,55 @@ export function createApp(deps: AppDeps) {
       res.setHeader('X-Mangdo-Warning', encodeURIComponent(result.warnings.join('; ')));
     }
     res.send(Buffer.from(result.dxfText, 'utf8'));
+  });
+
+  // DWG 산출: DXF 산출 결과를 ODA로 DWG로 바꿔 준다. 변환기(ODA_PATH)가 없으면 400.
+  api.get('/drawings/:id/export.dwg', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    if (!deps.converter) {
+      res.status(400).json({ error: 'DWG 산출은 서버에 ODA_PATH가 설정돼 있어야 합니다. DXF로 내려받으세요.' });
+      return;
+    }
+    const outcome = await exportDrawing(deps, drawing);
+    if (!outcome.ok) {
+      if (outcome.kind === 'notDxf') {
+        res.status(400).json({ error: '변환되지 않은 DWG 도면은 산출할 수 없습니다. 다시 올려 주세요' });
+        return;
+      }
+      if (outcome.kind === 'noOriginal') {
+        res.status(400).json({ error: '원본 파일이 없습니다. 도면을 다시 올려 주세요' });
+        return;
+      }
+      if (outcome.kind === 'exportError') {
+        res.status(400).json({ error: outcome.detail });
+        return;
+      }
+      res.status(500).json({ error: 'DXF 산출에 실패했습니다.' });
+      return;
+    }
+    let dwg: Buffer;
+    try {
+      dwg = await deps.converter.dxfToDwg(outcome.result.dxfText);
+    } catch (err) {
+      console.error('[export.dwg]', drawing.id, err);
+      res.status(502).json({ error: `DXF→DWG 변환에 실패했습니다: ${messageOf(err)}` });
+      return;
+    }
+    const fileName = `${drawing.name.replace(/\.[^.]*$/, '')}_손상.dwg`;
+    res.setHeader('Content-Type', 'application/acad');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="damage.dwg"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+    );
+    res.setHeader('X-Mangdo-Skipped', String(outcome.result.skipped));
+    if (outcome.result.warnings.length > 0) {
+      res.setHeader('X-Mangdo-Warning', encodeURIComponent(outcome.result.warnings.join('; ')));
+    }
+    res.send(dwg);
   });
 
   api.use((_req, res) => {

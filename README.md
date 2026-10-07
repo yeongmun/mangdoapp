@@ -33,6 +33,7 @@ APS_CLIENT_ID=발급받은 Client ID
 APS_CLIENT_SECRET=발급받은 Client Secret
 APP_ACCESS_KEY=직접 정한 접근키(영문·숫자·-·_ 로만 20자 이상)
 APP_READ_KEY=선택. 읽기 전용 접근키(같은 규칙, 본 키와 다르게). 웹(daenong)이 손상 원장을 읽을 때 쓴다 — 이 키로는 GET만 된다
+ODA_PATH=선택. ODA File Converter 실행 파일 경로(Windows). 있으면 DWG를 올릴 수 있고(서버가 DXF로 바꿔 올림) DWG로도 내려받는다
 ```
 접근키에 `#`, `$`, 한글 등 다른 문자가 있으면 서버가 시작되지 않습니다 (앱 쪽 설정 파일에서 값이 달라지기 때문).
 APS 콘솔에서 앱에 **Data Management API**, **Model Derivative API**가 켜져 있어야 합니다.

@@ -204,11 +204,11 @@
         <section class="card">
           <div class="card-head">
             <h2>도면 올리기</h2>
-            <span class="hint">DXF만 됩니다. DWG는 캐드에서 DXF로 저장해 올리세요.</span>
+            <span class="hint">DWG·DXF. DWG는 서버가 DXF로 바꿔 올립니다(ODA 설정 필요).</span>
           </div>
           <div class="card-body">
             <form id="uploadForm">
-              <input id="file" type="file" accept=".dxf" required />
+              <input id="file" type="file" accept=".dxf,.dwg" required />
               <button id="uploadButton" type="submit">업로드</button>
               <p id="uploadTarget">올릴 곳: 미분류</p>
             </form>

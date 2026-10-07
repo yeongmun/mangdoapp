@@ -6,6 +6,8 @@ export interface AppConfig {
   appAccessKey: string;
   /** 읽기 전용 접근키(선택). 웹(daenong)이 손상 원장을 읽을 때 쓴다. 없으면 읽기 전용 접근은 꺼진다. */
   appReadKey: string | null;
+  /** ODA File Converter 실행 파일 경로(선택). 있으면 DWG 업로드·DWG 산출이 된다. Windows PC 전용. */
+  odaPath: string | null;
   bucketKey: string;
   port: number;
   dataDir: string;
@@ -35,6 +37,8 @@ export function loadConfig(env: NodeJS.ProcessEnv, dataDir: string): AppConfig {
     }
   }
 
+  const odaPath = env.ODA_PATH?.trim() || null;
+
   const port = env.PORT?.trim() ? Number(env.PORT) : 3000;
   if (!Number.isInteger(port) || port <= 0) {
     throw new Error(`PORT 값이 올바르지 않습니다: ${env.PORT}`);
@@ -46,6 +50,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, dataDir: string): AppConfig {
     apsClientSecret: env.APS_CLIENT_SECRET!.trim(),
     appAccessKey: env.APP_ACCESS_KEY!.trim(),
     appReadKey,
+    odaPath,
     bucketKey: env.APS_BUCKET_KEY?.trim() || defaultBucketKey(apsClientId),
     port,
     dataDir,

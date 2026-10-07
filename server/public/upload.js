@@ -58,6 +58,9 @@ async function api(path, options = {}) {
   if (!res.ok) {
     throw new Error(res.status === 401 ? '접근키를 확인하세요.' : body.error ?? `요청에 실패했습니다 (${res.status}).`);
   }
+  // 업로드 때 DWG 변환 실패 같은 경고가 오면 본문에 실어 준다(헤더는 퍼센트 인코딩).
+  const warning = res.headers.get('x-mangdo-warning');
+  if (warning && body && typeof body === 'object') body.__warning = decodeURIComponent(warning);
   return body;
 }
 
@@ -137,10 +140,16 @@ function renderRows(drawings) {
       const exportButton = document.createElement('button');
       exportButton.type = 'button';
       exportButton.textContent = 'DXF 내려받기';
-      exportButton.addEventListener('click', () => exportDxf(drawing, exportButton));
+      exportButton.addEventListener('click', () => exportDrawing(drawing, exportButton, 'dxf'));
       exportTd.append(exportButton);
+      // DWG는 서버에 ODA_PATH가 있을 때만 된다 — 없으면 서버가 400으로 안내한다.
+      const dwgButton = document.createElement('button');
+      dwgButton.type = 'button';
+      dwgButton.textContent = 'DWG 내려받기';
+      dwgButton.addEventListener('click', () => exportDrawing(drawing, dwgButton, 'dwg'));
+      exportTd.append(' ', dwgButton);
     } else {
-      exportTd.textContent = 'DXF로 올린 도면만';
+      exportTd.textContent = '변환 안 된 DWG — 다시 올리세요';
     }
     tr.append(exportTd);
 
@@ -534,11 +543,11 @@ async function retranslate(drawing, button) {
   }
 }
 
-async function exportDxf(drawing, button) {
+async function exportDrawing(drawing, button, format) {
   button.disabled = true;
-  showMessage('산출 중…');
+  showMessage(format === 'dwg' ? '산출·DWG 변환 중…' : '산출 중…');
   try {
-    const result = await download(`/drawings/${drawing.id}/export.dxf`, 'damage.dxf');
+    const result = await download(`/drawings/${drawing.id}/export.${format}`, `damage.${format}`);
     const notes = [];
     if (result.skipped > 0) notes.push(`도면 좌표를 구하지 못한 손상 ${result.skipped}개는 빠졌습니다.`);
     if (result.warning) notes.push(result.warning);
@@ -593,17 +602,10 @@ $('uploadForm').addEventListener('submit', async (event) => {
   const file = $('file').files[0];
   if (!file) return;
   const nameLower = file.name.toLowerCase();
-  // DWG는 화면에는 뜨지만 손상 DXF 산출·망도틀별 번호·물량표 채우기가 안 된다(원본을 서버가 읽지
-  // 못한다). 결과물을 못 내는 도면이라 올리는 단계에서 막는다(2026-09-22 사용자 결정). 서버 API는
-  // 예전에 올린 DWG 도면을 위해 그대로 둔다.
-  if (nameLower.endsWith('.dwg')) {
-    const text = 'DWG는 올릴 수 없습니다. 캐드에서 DXF로 저장한 뒤 올려 주세요. (DWG는 손상 DXF 산출과 물량표 채우기가 되지 않습니다)';
-    showMessage(text, true);
-    window.alert(text);
-    return;
-  }
-  if (!nameLower.endsWith('.dxf')) {
-    showMessage('.dxf 파일만 업로드할 수 있습니다.', true);
+  // DWG는 서버가 ODA로 DXF로 바꿔 올린다(ODA_PATH 설정 시). 변환이 안 되면 서버가 DWG 그대로 올리고
+  // X-Mangdo-Warning으로 알린다 — 그 도면은 보기만 되고 산출은 안 된다.
+  if (!nameLower.endsWith('.dxf') && !nameLower.endsWith('.dwg')) {
+    showMessage('.dwg 또는 .dxf 파일만 업로드할 수 있습니다.', true);
     return;
   }
   if (file.size > MAX_UPLOAD_BYTES) {
@@ -623,7 +625,8 @@ $('uploadForm').addEventListener('submit', async (event) => {
   showMessage(`업로드 중… (${(file.size / 1024 / 1024).toFixed(1)}MB) APS로 전송하는 동안 잠시 기다려 주세요.`);
   try {
     const record = await api('/drawings', { method: 'POST', body: form });
-    showMessage(`업로드 완료: ${record.name} — 변환을 시작했습니다.`);
+    if (record.__warning) showMessage(`업로드 완료: ${record.name} — ${record.__warning}`, true);
+    else showMessage(`업로드 완료: ${record.name} — 변환을 시작했습니다.`);
     $('uploadForm').reset();
     await loadList();
   } catch (err) {

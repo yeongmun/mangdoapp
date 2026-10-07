@@ -5,6 +5,7 @@ import { ApsService } from './aps.js';
 import { createSdkClients } from './apsSdk.js';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
+import { OdaConverter } from './oda.js';
 import { DamagesStore } from './damagesStore.js';
 import { DrawingsStore } from './drawingsStore.js';
 import { DrawingTrash } from './drawingTrash.js';
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
   const app = createApp({
     accessKey: config.appAccessKey,
     readKey: config.appReadKey,
+    converter: config.odaPath ? new OdaConverter(config.odaPath) : null,
     aps,
     drawings,
     damages: new DamagesStore(join(config.dataDir, 'damages')),
