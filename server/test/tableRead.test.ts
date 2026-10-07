@@ -73,6 +73,8 @@ describe('findFrames + 기존 손상', () => {
     const [frame] = findFrames(doc);
     expect(frame.existing?.startNumber).toBe(3);
     expect(frame.bounds.startNumber).toBe(3);
+    // 기존 행 자체도 bounds에 실린다 — 저장된 틀만으로 뷰어 현황표·원장이 기존 행을 낸다(2026-10-07)
+    expect(frame.bounds.existing?.map((r) => r.status)).toEqual(['균열(0.3mm미만)', '박락', '균열/백태(0.3mm이상)']);
     const numbers = computeNumbers([damage('n1', rectAt(3000, 3000))], [frame.bounds]);
     expect(numbers.get('n1')).toBe(4);
   });

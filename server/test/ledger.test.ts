@@ -117,4 +117,14 @@ describe('buildDrawingLedger — 표에 이미 적힌 기존 손상', () => {
     expect(ledger.rows[0]).toMatchObject({ width: 0.2, widthUnit: 'mm', length: 5, count: 1, quantity: 5, unit: 'm', damageId: '', type: '' });
     expect(ledger.rows[1]).toMatchObject({ widthUnit: 'm', note: '동측' });
   });
+
+  it('existing을 생략하면 틀(bounds.existing)에 실린 기존 행을 쓴다 — 저장된 틀만으로 원장을 낼 때', () => {
+    const frames: FrameBounds[] = [{ ...FRAMES_WITH_EXISTING[0], existing: existing[0]!.rows }, FRAMES_WITH_EXISTING[1]];
+    const ledger = buildDrawingLedger({ id: 'd_1', name: '교량.dxf' }, [damage('n', 'spalling', RECT_LEFT, { width: 1, length: 1, count: 1 })], frames);
+    expect(ledger.rows.map((r) => [r.source, r.no])).toEqual([
+      ['existing', 1],
+      ['existing', 2],
+      ['app', 3],
+    ]);
+  });
 });

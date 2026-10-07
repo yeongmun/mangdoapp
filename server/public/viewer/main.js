@@ -31,6 +31,7 @@ import {
 import { blocksDrawing, photoStripItems } from './photoStrip.js';
 import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlineApi.js';
 import { clampPage, frameWorldBox, pageCount, pageLabel } from './pageView.js';
+import { statusTableRows, statusTableTotals } from './statusTable.js';
 
 const $ = (id) => document.getElementById(id);
 // 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다. 어떤 WebView가
@@ -283,6 +284,8 @@ async function start() {
   let editor = createEditor(initial.doc);
   // 선택은 (손상 id, 도형 번호)다. 0이 geometry, 1부터 copies[i-1](설계 3.3).
   let selectedId = null;
+  // 페이지 모드가 정해지는 아래쪽(showPage)에서 채운다 — 현황표 패널이 지금 틀을 묻는다.
+  let currentPageIndex = null;
   let selectedShape = 0;
   let fingerDraw = false;
   let coordCheck = false;
@@ -350,7 +353,66 @@ async function start() {
     const outside = overlay.outsideFrameCount();
     $('frameWarning').textContent = `망도틀 밖 손상 ${outside}개 — 번호 없음`;
     $('frameWarning').hidden = outside === 0;
+    renderStatusTable();
   }
+
+  // 손상현황표 패널(2026-10-07): 지금 보는 틀의 행(기존 + 신규). 행 계산은 statusTable.js(순수)가 하고
+  // 여기서는 표만 그린다. 패널이 닫혀 있으면 그리지 않는다. 신규 행을 누르면 그 손상을 선택한다.
+  const STATUS_HEAD = ['번호', '손상위치', '손상현황', '폭', '길이', '개소', '물량', '단위', '사진', '비고'];
+  function renderStatusTable() {
+    const panel = $('statusPanel');
+    if (panel.hidden) return;
+    const page = typeof currentPageIndex === 'function' ? currentPageIndex() : 0;
+    const rows = statusTableRows(editor.doc.damages, frames, page);
+    const count = pageCount(frames);
+    $('statusTitle').textContent = count > 0 ? `손상현황표 — 틀 ${page + 1} / ${count}` : '손상현황표';
+    const body = $('statusBody');
+    body.textContent = '';
+    if (rows.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = '이 틀에 손상이 없습니다';
+      body.appendChild(empty);
+    } else {
+      const table = document.createElement('table');
+      const thead = table.createTHead().insertRow();
+      for (const name of STATUS_HEAD) {
+        const th = document.createElement('th');
+        th.textContent = name;
+        thead.appendChild(th);
+      }
+      const tbody = table.createTBody();
+      for (const r of rows) {
+        const tr = tbody.insertRow();
+        tr.className = r.source + (r.id !== null && r.id === selectedId ? ' selected' : '');
+        const cells = [r.no ?? '', r.location, r.status, r.width, r.length, r.count, r.quantity, r.unit, r.photos, r.note];
+        cells.forEach((value, i) => {
+          const td = tr.insertCell();
+          td.textContent = String(value);
+          if (i === 1 || i === 2 || i === 9) td.className = 'left';
+        });
+        if (r.source === 'app') {
+          tr.addEventListener('click', () => {
+            setSelection(r.id, 0);
+            refresh();
+          });
+        }
+      }
+      body.appendChild(table);
+    }
+    const totals = statusTableTotals(rows);
+    $('statusTotals').textContent = totals.length === 0 ? '' : '합계  ' + totals.map((t) => `${t.status} ${t.quantity}${t.unit} (${t.count}건)`).join(' · ');
+  }
+  function toggleStatusTable(open = $('statusPanel').hidden) {
+    $('statusPanel').hidden = !open;
+    $('statusTable').setAttribute('aria-pressed', String(open));
+    if (open) {
+      $('propsPanel').hidden = true;
+      renderStatusTable();
+    }
+  }
+  $('statusTable').addEventListener('click', () => toggleStatusTable());
+  $('statusClose').addEventListener('click', () => toggleStatusTable(false));
 
   function apply(nextEditor) {
     if (nextEditor !== editor) {
@@ -465,6 +527,8 @@ async function start() {
   function openProps() {
     const damage = selectedDamage();
     if (!damage) return;
+    // 속성창과 현황표는 같은 자리(오른쪽)라 하나만 연다.
+    toggleStatusTable(false);
     // 속성창을 새로 열 때마다 📷 버튼을 되살린다 — 앱이 답을 못 준 채 창을 닫았던 경우의 탈출구다.
     // (photoRequestId·resetPhotoButton은 아래에서 정의되지만 이 함수는 초기화가 끝난 뒤에만 불린다.)
     photoRequestId = null;
@@ -906,6 +970,7 @@ async function start() {
   const pagesAvailable = pageCount(frames) > 0 && frameWorldBox(frames[0], mapper.dwgToWorld) !== null;
   const viewMode = pagesAvailable ? 'page' : 'all';
   let pageIndex = clampPage(injectedOffline?.pageIndex ?? 0, frames);
+  currentPageIndex = () => pageIndex;
 
   function fitPage(index) {
     const box = frameWorldBox(frames[index], mapper.dwgToWorld);
@@ -931,6 +996,7 @@ async function start() {
     pageIndex = clampPage(index, frames);
     fitPage(pageIndex);
     renderPageControls();
+    renderStatusTable();
     postViewPrefs();
   }
 

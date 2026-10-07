@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, inflateRawSync } from 'node:zlib';
+import ExcelJS from 'exceljs';
 import sharp from 'sharp';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1853,6 +1854,58 @@ describe('GET /api/projects/:id/ledger', () => {
     const { app } = setup();
     const res = await request(app).get(`/api/projects/${newProjectId()}/ledger`).set('x-access-key', KEY);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET …/ledger.xlsx — 손상현황표 엑셀', () => {
+  async function sheetRows(body: Buffer): Promise<unknown[][]> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(body as unknown as ArrayBuffer);
+    const sheet = workbook.getWorksheet('손상현황표')!;
+    const rows: unknown[][] = [];
+    sheet.eachRow((row) => rows.push((row.values as unknown[]).slice(1)));
+    return rows;
+  }
+
+  it('도면 하나: 제목·머리글·행', async () => {
+    const { app, drawings, damages, originals } = setup();
+    const drawing = await seed(drawings, { name: '망도.dxf', status: 'success', progress: 'complete' });
+    await originals.save(drawing.objectKey, await readFile(templatePath));
+    const doc = crackDoc(drawing.id);
+    (doc.damages[0].geometry as { dwg: number[][] }).dwg = [[2100, 3200], [2300, 3200]];
+    await damages.save(doc);
+
+    const res = await request(app).get(`/api/drawings/${drawing.id}/ledger.xlsx`).set('x-access-key', KEY).responseType('blob');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('spreadsheetml');
+    expect(res.headers['content-disposition']).toContain(encodeURIComponent('망도_손상현황표.xlsx'));
+    const rows = await sheetRows(res.body);
+    expect(rows[0]).toEqual(['망도']);
+    expect(rows[1]).toEqual(['도면', '틀', '번호', '손상위치', '손상현황', '폭', '길이', '개소', '물량', '단위', '구/신', '사진번호', '비고']);
+    // 손상위치(4번째)는 신규라 비어 있다 — exceljs는 빈 셀을 건너뛰므로 자리만 확인한다
+    expect(rows[2].slice(0, 3)).toEqual(['망도.dxf', '001', 1]);
+    expect(rows[2].slice(4, 12)).toEqual(['균열(0.3mm이상)', 0.3, 5, 2, 10, 'm', '신', '12, 13']);
+  });
+
+  it('프로젝트: 하위 프로젝트 도면은 "하위/도면"으로', async () => {
+    const { app, drawings, damages, projects } = setup();
+    const parent = await projects.create({ name: '오봉대교' }, '2026-09-01T00:00:00.000Z');
+    const child = await projects.create({ name: 'A교', parentId: parent.id }, '2026-09-01T00:00:00.000Z');
+    const sub = await seed(drawings, { name: '교대.dwg', projectId: child.id });
+    await damages.save(crackDoc(sub.id));
+
+    const res = await request(app).get(`/api/projects/${parent.id}/ledger.xlsx`).set('x-access-key', KEY).responseType('blob');
+    expect(res.status).toBe(200);
+    const rows = await sheetRows(res.body);
+    expect(rows[2][0]).toBe('A교/교대.dwg');
+    expect(rows[2][1]).toBe('000');
+  });
+
+  it('없는 도면·프로젝트는 404', async () => {
+    const { app } = setup();
+    expect((await request(app).get(`/api/drawings/${newDrawingId()}/ledger.xlsx`).set('x-access-key', KEY)).status).toBe(404);
+    expect((await request(app).get(`/api/projects/${newProjectId()}/ledger.xlsx`).set('x-access-key', KEY)).status).toBe(404);
   });
 });
 

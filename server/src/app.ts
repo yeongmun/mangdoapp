@@ -17,6 +17,7 @@ import type { OriginalsStore } from './originalsStore.js';
 import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
 import { buildDrawingLedger, type DrawingLedger } from './ledger.js';
+import { ledgerToXlsx } from './ledgerXlsx.js';
 import { mergeDamageDocs } from './mergeDamages.js';
 import type { DrawingConverter } from './oda.js';
 import {
@@ -200,18 +201,13 @@ async function zipFramesOf(deps: AppDeps, drawing: DrawingRecord): Promise<Frame
 }
 
 // 원장은 틀의 기존 손상 행(표에 이미 적힌 것)까지 내므로 bounds만이 아니라 findFrames 결과 전체가 필요하다.
+// 저장된 틀(bounds.existing)에도 기존 행이 실려 있어 원본을 못 읽으면 그것으로 낸다.
 async function ledgerOf(deps: AppDeps, drawing: DrawingRecord): Promise<DrawingLedger> {
   const doc = await deps.damages.get(drawing.id);
   const isDxf = drawing.objectKey.toLowerCase().endsWith('.dxf');
   const original = isDxf ? await deps.originals.read(drawing.objectKey) : null;
-  if (!original) return buildDrawingLedger(drawing, doc.damages, drawing.frames ?? []);
-  try {
-    const frames = findFrames(parseDxf(original.toString('utf8')));
-    return buildDrawingLedger(drawing, doc.damages, frames.map((f) => f.bounds), frames.map((f) => f.existing));
-  } catch (err) {
-    console.error('[ledger]', drawing.id, messageOf(err));
-    return buildDrawingLedger(drawing, doc.damages, drawing.frames ?? []);
-  }
+  const frames = original ? framesOf(original, drawing.objectKey) : (drawing.frames ?? []);
+  return buildDrawingLedger(drawing, doc.damages, frames);
 }
 
 // 도면 하나를 산출한다. 단일 도면 라우트(export.dxf)와 프로젝트 zip 라우트(export.zip)가
@@ -1077,6 +1073,39 @@ export function createApp(deps: AppDeps) {
       drawings.push({ ...ledger, subProject: folder ? folder.replace(/\/$/, '') : null });
     }
     res.json({ projectId: project.id, projectName: project.name, drawings });
+  });
+
+  // 손상현황표 엑셀(2026-10-07): 원장을 한 시트로. PC 페이지·웹이 내려받는다.
+  function sendXlsx(res: Response, fileName: string, data: Buffer) {
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ledger.xlsx"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.send(data);
+  }
+
+  api.get('/drawings/:id/ledger.xlsx', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    const ledger = await ledgerOf(deps, drawing);
+    const base = drawing.name.replace(/\.[^.]*$/, '');
+    sendXlsx(res, `${base}_손상현황표.xlsx`, await ledgerToXlsx(base, [ledger]));
+  });
+
+  api.get('/projects/:id/ledger.xlsx', async (req, res) => {
+    const id = req.params.id;
+    const project = isProjectId(id) ? await deps.projects.get(id) : null;
+    if (!project) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    const [projectRecords, drawingRecords] = await Promise.all([deps.projects.list(), deps.drawings.list()]);
+    const drawings: (DrawingLedger & { subProject: string | null })[] = [];
+    for (const { drawing, folder } of drawingFoldersFor(id, projectRecords, drawingRecords)) {
+      drawings.push({ ...(await ledgerOf(deps, drawing)), subProject: folder ? folder.replace(/\/$/, '') : null });
+    }
+    sendXlsx(res, `${project.name}_손상현황표.xlsx`, await ledgerToXlsx(project.name, drawings));
   });
 
   api.get('/drawings/:id/export.dxf', async (req, res) => {

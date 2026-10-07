@@ -22,7 +22,7 @@ import {
   type TableCandidate,
   type Transform,
 } from './tableGrid.js';
-import { existingTableOf, type ExistingTable } from './tableRead.js';
+import { existingTableOf, type ExistingRow, type ExistingTable } from './tableRead.js';
 
 /** 틀의 영역(mm, 모델 좌표). 앱까지 이 모양 그대로 간다(DrawingRecord.frames) */
 export interface FrameBounds {
@@ -35,6 +35,11 @@ export interface FrameBounds {
    * 기존 행이 없으면 넣지 않는다 — 옛 레코드·기기 index와 모양이 같게.
    */
   startNumber?: number;
+  /**
+   * 표에 이미 적힌 기존 손상 행(2026-10-07). 뷰어의 현황표 패널과 원본을 못 읽는 경우의 원장이 쓴다.
+   * 행이 있을 때만 싣는다.
+   */
+  existing?: ExistingRow[];
 }
 
 export interface Frame {
@@ -241,7 +246,7 @@ export function findFrames(doc: DxfDocument): Frame[] {
   return found.map((frame, index) => {
     const startNumber = frame.existing?.startNumber ?? 0;
     // 기존 행이 있을 때만 bounds에 startNumber를 싣는다 — 화면·산출·원장이 같은 값으로 번호를 잇는다.
-    const bounds = startNumber > 0 ? { ...frame.bounds, startNumber } : frame.bounds;
+    const bounds = startNumber > 0 ? { ...frame.bounds, startNumber, existing: frame.existing!.rows } : frame.bounds;
     return { ...frame, bounds, index };
   });
 }

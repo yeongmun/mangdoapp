@@ -21,6 +21,7 @@
       <button id="duplicate" type="button" disabled>복제</button>
       <button id="delete" type="button" disabled>선택 삭제</button>
       <button id="coordCheck" type="button" aria-pressed="false">좌표 확인</button>
+      <button id="statusTable" type="button" aria-pressed="false">현황표</button>
       <span id="saveStatus" class="status saved">저장됨</span>
       <span id="frameWarning" class="status outside" hidden></span>
     </div>
@@ -41,6 +42,12 @@
         <button id="propsSave" type="button">저장</button>
         <button id="propsClose" type="button">닫기</button>
       </div>
+    </div>
+
+    <div id="statusPanel" hidden>
+      <div class="row"><h2 id="statusTitle">손상현황표</h2><button id="statusClose" type="button">닫기</button></div>
+      <div id="statusBody"></div>
+      <p id="statusTotals"></p>
     </div>
 
     <div id="photoView" hidden><img id="photoViewImage" alt="" /></div>

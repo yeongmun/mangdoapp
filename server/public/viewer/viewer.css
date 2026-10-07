@@ -348,3 +348,35 @@ body {
   /* 좌표·경고 상자가 속성창과 겹치지 않게 속성창 오른쪽 옆으로 */
   #coordPanel, #warning, #saveError { left: calc(270px + env(safe-area-inset-left)); }
 }
+
+/* 손상현황표 패널(2026-10-07): 오른쪽에서 열리는 표. 지금 보는 틀(페이지)의 행만 보인다. 기존 손상(표에 이미
+   적힌 행)은 회색, 신규 행을 누르면 그 손상을 선택한다. 자기 상자 안에서만 스크롤·누름을 받는다. */
+#statusPanel {
+  position: absolute;
+  right: 12px;
+  top: calc(12px + env(safe-area-inset-top));
+  bottom: calc(24px + var(--toolbar-h, 58px) + env(safe-area-inset-bottom));
+  z-index: 11;
+  width: min(560px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+}
+#statusPanel[hidden] { display: none; }
+#statusPanel .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+#statusPanel h2 { font-size: 15px; margin: 0; }
+#statusPanel #statusClose { font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px solid #c7c9cf; background: #fff; }
+#statusBody { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; }
+#statusBody table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+#statusBody th, #statusBody td { border: 1px solid #d9dbe0; padding: 4px 6px; text-align: center; white-space: nowrap; }
+#statusBody th { background: #f1f3f6; position: sticky; top: 0; }
+#statusBody td.left { text-align: left; }
+#statusBody tr.existing td { color: #8a8f98; background: #fafafa; }
+#statusBody tr.app { cursor: pointer; }
+#statusBody tr.selected td { background: #e3edff; }
+#statusBody .empty { color: #8a8f98; padding: 12px 0; text-align: center; }
+#statusTotals { margin: 8px 0 0; color: #3c4149; font-size: 12px; line-height: 1.5; }

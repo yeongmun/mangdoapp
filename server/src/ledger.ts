@@ -76,8 +76,8 @@ export function buildDrawingLedger(
   drawing: { id: string; name: string },
   damages: unknown[],
   frames: FrameBounds[],
-  /** 틀마다 표에 이미 적힌 기존 손상(findFrames의 existing). 없으면 신규 손상만 */
-  existing: Array<ExistingTable | null> = [],
+  /** 틀마다 표에 이미 적힌 기존 손상(findFrames의 existing). 생략하면 frames[i].existing(저장된 틀)을 쓴다 */
+  existing: Array<Pick<ExistingTable, 'rows'> | null> = frames.map((f) => (f.existing?.length ? { rows: f.existing } : null)),
 ): DrawingLedger {
   const list = Array.isArray(damages) ? damages : [];
   const numbers = computeNumbers(list, frames);
@@ -86,6 +86,7 @@ export function buildDrawingLedger(
   const rows: LedgerRow[] = [];
   let outsideFrames = 0;
   existing.forEach((table, frameIndex) => {
+    if (!table) return;
     for (const r of table?.rows ?? []) {
       rows.push({
         source: 'existing',

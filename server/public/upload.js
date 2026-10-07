@@ -179,6 +179,12 @@ function renderRows(drawings) {
     photoButton.textContent = '사진 zip';
     photoButton.addEventListener('click', () => downloadPhotos(drawing, photoButton));
     photoTd.append(photoButton);
+    // 손상현황표 엑셀(2026-10-07): 도면의 손상(기존 행 포함)을 표 한 장으로.
+    const ledgerButton = document.createElement('button');
+    ledgerButton.type = 'button';
+    ledgerButton.textContent = '현황표 엑셀';
+    ledgerButton.addEventListener('click', () => downloadLedger(drawing, ledgerButton));
+    photoTd.append(' ', ledgerButton);
     tr.append(photoTd);
 
     tr.append(moveSelectCell(drawing));
@@ -312,6 +318,7 @@ function renderProjects() {
   $('deleteProject').disabled = !current;
   $('projectPhotos').disabled = !current;
   $('projectExport').disabled = !current;
+  $('projectLedger').disabled = !current;
 }
 
 // 프로젝트 카드의 동작이 거절되면 **창으로도** 알린다(2026-09-22 사용자 확인: 같은 이름·비어 있지 않은
@@ -382,6 +389,35 @@ async function downloadProjectPhotos() {
   showMessage('사진을 모으는 중…');
   try {
     const result = await download(`/projects/${current.id}/photos.zip`, `${current.name}_사진.zip`);
+    showMessage(`내려받았습니다: ${result.name}`);
+  } catch (err) {
+    notifyProjectError(err);
+  } finally {
+    renderProjects();
+  }
+}
+
+async function downloadLedger(drawing, button) {
+  button.disabled = true;
+  showMessage('현황표를 만드는 중…');
+  try {
+    const base = drawing.name.replace(/\.[^.]*$/, '');
+    const result = await download(`/drawings/${drawing.id}/ledger.xlsx`, `${base}_손상현황표.xlsx`);
+    showMessage(`내려받았습니다: ${result.name}`);
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function downloadProjectLedger() {
+  const current = projects.find((p) => p.id === selected);
+  if (!current) return;
+  $('projectLedger').disabled = true;
+  showMessage('현황표를 만드는 중…');
+  try {
+    const result = await download(`/projects/${current.id}/ledger.xlsx`, `${current.name}_손상현황표.xlsx`);
     showMessage(`내려받았습니다: ${result.name}`);
   } catch (err) {
     notifyProjectError(err);
@@ -615,6 +651,7 @@ $('editProject').addEventListener('click', editSelectedProject);
 $('deleteProject').addEventListener('click', deleteSelectedProject);
 $('projectPhotos').addEventListener('click', downloadProjectPhotos);
 $('projectExport').addEventListener('click', downloadProjectExport);
+$('projectLedger').addEventListener('click', downloadProjectLedger);
 
 $('uploadForm').addEventListener('submit', async (event) => {
   event.preventDefault();
