@@ -22,6 +22,7 @@ import {
   type TableCandidate,
   type Transform,
 } from './tableGrid.js';
+import { existingTableOf, type ExistingTable } from './tableRead.js';
 
 /** 틀의 영역(mm, 모델 좌표). 앱까지 이 모양 그대로 간다(DrawingRecord.frames) */
 export interface FrameBounds {
@@ -29,6 +30,11 @@ export interface FrameBounds {
   minY: number;
   maxX: number;
   maxY: number;
+  /**
+   * 표에 이미 적힌 기존 손상 행의 마지막 번호. 신규 손상은 이 다음부터 매긴다(computeNumbers).
+   * 기존 행이 없으면 넣지 않는다 — 옛 레코드·기기 index와 모양이 같게.
+   */
+  startNumber?: number;
 }
 
 export interface Frame {
@@ -47,6 +53,8 @@ export interface Frame {
   tableKind: 'inBlock' | 'modelSpace';
   /** modelSpace일 때 그 ACAD_TABLE의 모델 공간 최상위 순번. inBlock이면 null */
   tableEntityIndex: number | null;
+  /** 표에 이미 적힌 기존 손상(전차 점검). 셀이 없거나 머리글을 못 읽으면 null */
+  existing: ExistingTable | null;
 }
 
 // 축 정렬 상자의 네 모서리. 회전한 삽입에서는 대각 두 점만으로 영역이 좁아진다.
@@ -152,13 +160,17 @@ export function findFrames(doc: DxfDocument): Frame[] {
     // 표는 배열에 담는다 — let 변수에 콜백 안에서 대입하면 TypeScript의 흐름 분석이 그 대입을
     // 보지 못해 호출 뒤에도 타입이 null로 남는다.
     const tables: TableCandidate[] = [];
+    const tableEntities: RawEntity[] = [];
     const transform = insertTransform(entity);
 
     // 최상위 INSERT는 이미 한 단계 내려온 것이므로 depth 1, seen에 자기 블록 이름을 넣고 시작한다.
     walkInserts(model, contents, transform, 1, new Set([name]), (child, childTransform) => {
       if (child.type === 'ACAD_TABLE' && tables.length === 0) {
         const candidate = tableCandidateOf(child, childTransform);
-        if (candidate) tables.push(candidate);
+        if (candidate) {
+          tables.push(candidate);
+          tableEntities.push(child);
+        }
       }
       for (const point of boundsPointsOf(child)) {
         const [x, y] = applyTransform(childTransform, point);
@@ -171,7 +183,16 @@ export function findFrames(doc: DxfDocument): Frame[] {
 
     // 블록 안에 표가 있으면(옛 구조) 그 표가 이 INSERT의 표다 — 영역 안 모델 공간 표보다 앞선다.
     if (tables.length > 0) {
-      found.push({ bounds: { minX, minY, maxX, maxY }, table: tables[0], blockName: name, entityIndex, transform, tableKind: 'inBlock', tableEntityIndex: null });
+      found.push({
+        bounds: { minX, minY, maxX, maxY },
+        table: tables[0],
+        blockName: name,
+        entityIndex,
+        transform,
+        tableKind: 'inBlock',
+        tableEntityIndex: null,
+        existing: existingTableOf(doc.pairs, tableEntities[0]),
+      });
       continue;
     }
     if (minX === Infinity) continue; // 점이 없는 블록은 영역이 없다
@@ -211,10 +232,16 @@ export function findFrames(doc: DxfDocument): Frame[] {
       transform: insert.transform,
       tableKind: 'modelSpace',
       tableEntityIndex: table.entityIndex,
+      existing: existingTableOf(doc.pairs, model.entities[table.entityIndex]),
     });
   }
 
   // 왼쪽 → 오른쪽, 같으면 위 → 아래. 이 순서가 인덱스다(설계 2장).
   found.sort((a, b) => a.bounds.minX - b.bounds.minX || b.bounds.maxY - a.bounds.maxY);
-  return found.map((frame, index) => ({ ...frame, index }));
+  return found.map((frame, index) => {
+    const startNumber = frame.existing?.startNumber ?? 0;
+    // 기존 행이 있을 때만 bounds에 startNumber를 싣는다 — 화면·산출·원장이 같은 값으로 번호를 잇는다.
+    const bounds = startNumber > 0 ? { ...frame.bounds, startNumber } : frame.bounds;
+    return { ...frame, bounds, index };
+  });
 }

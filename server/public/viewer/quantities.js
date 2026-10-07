@@ -66,7 +66,7 @@ function centerOf(damage) {
 }
 
 /**
- * @typedef {{ minX: number, minY: number, maxX: number, maxY: number }} FrameBounds
+ * @typedef {{ minX: number, minY: number, maxX: number, maxY: number, startNumber?: number }} FrameBounds
  * 망도틀 영역(mm, 도면 좌표). 서버의 server/src/export/frames.ts가 만드는 것과 같은 모양이고,
  * 도면 레코드(DrawingRecord.frames)에 실려 화면까지 온다.
  */
@@ -112,6 +112,7 @@ export function countOutsideFrames(damages, frames) {
 // frames를 주면 **틀마다 1번부터** 다시 매긴다(2026-09-16 설계 5장). 사내 표기가 그렇다 —
 // 첫 틀이 15번에서 끝나도 다음 틀은 1번이다. 틀 밖 손상은 Map에 넣지 않는다(번호 없음).
 // frames가 비어 있으면 예전과 똑같다 — 전체를 한 묶음으로 1부터, dwg가 없는 손상도 번호를 받는다.
+// 틀에 startNumber가 있으면(표에 이미 적힌 기존 손상 행, 2026-10-07) 그 다음 번호부터 잇는다.
 /** @type {(damages: any[], frames?: FrameBounds[]) => Map<string, number>} */
 export function computeNumbers(damages, frames = []) {
   const list = Array.isArray(damages) ? damages : [];
@@ -128,15 +129,22 @@ export function computeNumbers(damages, frames = []) {
 
   const numbers = new Map();
   let group = sorted.length > 0 ? sorted[0].frame : 0;
-  let next = 1;
+  let next = startNumberOf(frameList[group]) + 1;
   for (const entry of sorted) {
     if (entry.frame !== group) {
       group = entry.frame;
-      next = 1;
+      next = startNumberOf(frameList[group]) + 1;
     }
     numbers.set(entry.id, next++);
   }
   return numbers;
+}
+
+// 틀의 기존 손상 마지막 번호. 없거나 숫자가 아니면 0.
+/** @type {(frame: FrameBounds | undefined) => number} */
+export function startNumberOf(frame) {
+  const value = frame?.startNumber;
+  return Number.isInteger(value) && value > 0 ? value : 0;
 }
 
 export function statusTextOf(damage) {

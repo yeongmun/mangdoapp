@@ -147,6 +147,12 @@ export function mtextPlainText(raw: string): string {
 export interface RawEntity {
   type: string;
   values: Map<number, string[]>;
+  /**
+   * 이 엔티티가 차지하는 쌍 범위 — rawEntityAt에 준 pairs 배열 기준이다(readModelSpace·readBlocks는
+   * doc.pairs 기준). values는 코드별로 묶여 순서를 잃으므로, 순서가 필요한 읽기(ACAD_TABLE 셀)는 이 범위로
+   * 원본 쌍을 다시 본다.
+   */
+  range: EntityRange;
 }
 
 export function numberAt(entity: RawEntity, code: number, fallback: number): number {
@@ -183,7 +189,7 @@ export function entityRanges(pairs: DxfPair[], from: number, to: number): Entity
 }
 
 export function rawEntityAt(pairs: DxfPair[], range: EntityRange): RawEntity {
-  const entity: RawEntity = { type: range.type, values: new Map() };
+  const entity: RawEntity = { type: range.type, values: new Map(), range };
   for (let i = range.start + 1; i < range.end; i++) {
     const p = pairs[i];
     const list = entity.values.get(p.code);

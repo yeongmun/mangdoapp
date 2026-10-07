@@ -14,14 +14,20 @@ import {
   widthUnitOf,
 } from '../public/viewer/quantities.js';
 import type { FrameBounds } from './export/frames.js';
+import type { ExistingTable } from './export/tableRead.js';
 
 export interface LedgerRow {
+  /** 'app' = 태블릿에서 그린 신규 손상, 'existing' = 올린 도면의 표에 이미 적혀 있던 기존 손상 */
+  source: 'app' | 'existing';
+  /** 신규 손상의 id. 기존 손상은 '' */
   damageId: string;
   /** 망도틀 순번(왼쪽부터 0). 틀이 없는 도면은 0, 틀 밖 손상은 null */
   frameIndex: number | null;
-  /** 틀마다 1부터. 틀 밖 손상은 null(산출 DXF·사진 zip과 같다) */
+  /** 틀마다 1부터. 틀 밖 손상은 null(산출 DXF·사진 zip과 같다). 신규는 기존 행 다음 번호부터 */
   no: number | null;
-  /** 손상 유형 id(crack, spalling …) */
+  /** 손상위치(부재). 기존 손상은 표의 값, 신규는 ''(캐드에서 적는다) */
+  location: string;
+  /** 손상 유형 id(crack, spalling …). 기존 손상은 '' */
   type: string;
   /** 손상현황. 균열류는 폭 구간이 붙는다 — '균열(0.3mm미만)' */
   statusText: string;
@@ -56,10 +62,22 @@ function stringsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function numberOrNullText(value: string): number | null {
+  const n = Number(value.replace(/,/g, ''));
+  return value.trim() !== '' && Number.isFinite(n) ? n : null;
+}
+
+/** 기존 손상의 폭 단위: 균열류(망상균열 제외)는 mm, 나머지는 m — 화면 규칙(widthUnitOf)과 같다 */
+function existingWidthUnit(status: string): 'mm' | 'm' {
+  return /균열/.test(status) && !/망상균열/.test(status) ? 'mm' : 'm';
+}
+
 export function buildDrawingLedger(
   drawing: { id: string; name: string },
   damages: unknown[],
   frames: FrameBounds[],
+  /** 틀마다 표에 이미 적힌 기존 손상(findFrames의 existing). 없으면 신규 손상만 */
+  existing: Array<ExistingTable | null> = [],
 ): DrawingLedger {
   const list = Array.isArray(damages) ? damages : [];
   const numbers = computeNumbers(list, frames);
@@ -67,6 +85,27 @@ export function buildDrawingLedger(
 
   const rows: LedgerRow[] = [];
   let outsideFrames = 0;
+  existing.forEach((table, frameIndex) => {
+    for (const r of table?.rows ?? []) {
+      rows.push({
+        source: 'existing',
+        damageId: '',
+        frameIndex,
+        no: r.number,
+        location: r.location,
+        type: '',
+        statusText: r.status,
+        width: numberOrNullText(r.width),
+        widthUnit: existingWidthUnit(r.status),
+        length: numberOrNullText(r.length),
+        count: numberOrNullText(r.count),
+        quantity: numberOrNullText(r.quantity),
+        unit: r.unit || null,
+        photoNumbers: [],
+        note: r.note,
+      });
+    }
+  });
   for (const raw of list) {
     const damage = raw as {
       id?: unknown;
@@ -79,9 +118,11 @@ export function buildDrawingLedger(
     if (frameIndex === null) outsideFrames += 1;
     const type = String(damage?.type ?? '');
     rows.push({
+      source: 'app',
       damageId: id,
       frameIndex,
       no: numbers.get(id) ?? null,
+      location: '',
       type,
       statusText: statusTextOf(damage),
       width: numberOrNull(damage?.measured?.width),

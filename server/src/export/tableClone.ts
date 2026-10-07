@@ -6,7 +6,7 @@
 
 import { findBlock, formatReal, pair, type DxfDocument, type DxfPair, type HandleAllocator } from './dxfDocument.js';
 import { numberColumnWrites, stripGraphicsCache, writeCellValues } from './tableCells.js';
-import { entityRanges, indexOfBand, isPrintedNumber, rawEntityAt, type TableGrid } from './tableGrid.js';
+import { entityRanges, indexOfBand, isPrintedNumber, numberAt, rawEntityAt, type RawEntity, type TableGrid } from './tableGrid.js';
 
 const TABLE_BLOCK_NAME = /^\*T(\d+)$/;
 
@@ -90,6 +90,13 @@ function cloneTablePairs(source: DxfPair[], options: CloneOptions, tableHandle: 
 
 // 글자 블록 사본: 모든 5는 새 핸들, 330이 원본 레코드면 새 레코드, 2·3의 이름은 새 이름,
 // 번호 열 데이터 행의 MTEXT/TEXT 글자는 page·N + i.
+// 글자가 데이터 행의 (번호 열이 아닌) 칸 안에 있는가.
+function isDataCellText(grid: TableGrid, entity: RawEntity): boolean {
+  const column = indexOfBand(grid.colBoundaries, numberAt(entity, 10, 0));
+  const row = indexOfBand(grid.rowBoundaries, numberAt(entity, 20, 0));
+  return column >= 0 && column !== grid.numberColumn && row >= grid.firstDataRow;
+}
+
 function cloneBlockPairs(doc: DxfDocument, grid: TableGrid, originalRecord: string, options: CloneOptions, recordHandle: string): DxfPair[] | null {
   const block = findBlock(doc, grid.blockName);
   if (!block) return null;
@@ -97,7 +104,10 @@ function cloneBlockPairs(doc: DxfDocument, grid: TableGrid, originalRecord: stri
   const out: DxfPair[] = [];
   for (const range of entityRanges(source, 0, source.length)) {
     const entity = rawEntityAt(source, range);
-    const printed = (range.type === 'MTEXT' || range.type === 'TEXT') && isPrintedNumber(grid, entity);
+    const isText = range.type === 'MTEXT' || range.type === 'TEXT';
+    // 데이터 행의 번호 열 밖 글자(기존 손상 행의 셀 글자)는 복제본에 넣지 않는다 — 그 장의 값은 따로 쓴다.
+    if (isText && !isPrintedNumber(grid, entity) && isDataCellText(grid, entity)) continue;
+    const printed = isText && isPrintedNumber(grid, entity);
     let number = 0;
     if (printed) {
       const y = Number(entity.values.get(20)?.[0]?.trim());

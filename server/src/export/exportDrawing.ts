@@ -49,7 +49,7 @@ import {
   type RegionIndex,
   type SheetContext,
 } from './sheetCopy.js';
-import { appendBeforeEndblk, cellMtextPairs, cellWritesFor, stripGraphicsCache, writeCellValues } from './tableCells.js';
+import { appendBeforeEndblk, cellMtextPairs, cellWritesFor, clearDataCellWrites, stripGraphicsCache, writeCellValues } from './tableCells.js';
 import { cloneTable, nextTableName, usedTableNames } from './tableClone.js';
 import { fillTable, resolvedColumnMap, rowValuesOf, type TableRow } from './tableFill.js';
 import {
@@ -421,9 +421,11 @@ export function exportDamagesToDxf(dxfText: string, damages: unknown[]): ExportR
           .filter((entry) => pageOf(entry.number, plan.dataRows) === page)
           .map((entry) => ({ ...entry, number: entry.number - page * plan.dataRows }));
         const pageMax = Math.min(plan.dataRows, plan.maxNumber - page * plan.dataRows);
-        const writes = cellWritesFor(plan.grid, rowsFor(pageEntries, pageMax));
+        // 복제 장은 데이터 칸을 먼저 비운다 — 원본 표의 기존 손상 행이 따라오지 않게(2026-10-07).
+        const valueWrites = cellWritesFor(plan.grid, rowsFor(pageEntries, pageMax));
+        const writes = [...clearDataCellWrites(plan.grid), ...valueWrites];
         const mtexts: DxfPair[] = [];
-        for (const write of writes) appendAll(mtexts, cellMtextPairs(plan.grid, write, alloc.next(), clone.recordHandle));
+        for (const write of valueWrites) appendAll(mtexts, cellMtextPairs(plan.grid, write, alloc.next(), clone.recordHandle));
         const originalBlock = findBlock(doc, plan.grid.blockName);
         if (!originalBlock) {
           copySkipped += 1;

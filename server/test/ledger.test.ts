@@ -83,3 +83,38 @@ describe('buildDrawingLedger', () => {
     expect(ledger.rows[1]).toMatchObject({ width: null, length: null, count: null, quantity: null });
   });
 });
+
+describe('buildDrawingLedger — 표에 이미 적힌 기존 손상', () => {
+  const FRAMES_WITH_EXISTING: FrameBounds[] = [
+    { minX: 0, minY: 0, maxX: 1000, maxY: 1000, startNumber: 2 },
+    { minX: 2000, minY: 0, maxX: 3000, maxY: 1000 },
+  ];
+  const existing = [
+    {
+      headerRow: 1,
+      startNumber: 2,
+      rows: [
+        { number: 1, location: '교대 A1', status: '균열(0.3mm미만)', width: '0.20', length: '5.00', count: '1', quantity: '5.00', unit: 'm', note: '' },
+        { number: 2, location: '교대 A1', status: '박락', width: '0.50', length: '2.00', count: '3', quantity: '3.00', unit: '㎡', note: '동측' },
+      ],
+    },
+    null,
+  ];
+
+  it("기존 행은 source 'existing'·위치 포함으로 먼저, 신규는 그 다음 번호부터", () => {
+    const ledger = buildDrawingLedger(
+      { id: 'd_1', name: '교량.dxf' },
+      [damage('n', 'spalling', RECT_LEFT, { width: 1, length: 1, count: 1 }), damage('r', 'spalling', RECT_RIGHT, { width: 1, length: 1, count: 1 })],
+      FRAMES_WITH_EXISTING,
+      existing,
+    );
+    expect(ledger.rows.map((r) => [r.source, r.frameIndex, r.no, r.location, r.statusText])).toEqual([
+      ['existing', 0, 1, '교대 A1', '균열(0.3mm미만)'],
+      ['existing', 0, 2, '교대 A1', '박락'],
+      ['app', 0, 3, '', '박락'],
+      ['app', 1, 1, '', '박락'],
+    ]);
+    expect(ledger.rows[0]).toMatchObject({ width: 0.2, widthUnit: 'mm', length: 5, count: 1, quantity: 5, unit: 'm', damageId: '', type: '' });
+    expect(ledger.rows[1]).toMatchObject({ widthUnit: 'm', note: '동측' });
+  });
+});

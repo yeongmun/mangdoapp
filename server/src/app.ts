@@ -198,9 +198,19 @@ async function zipFramesOf(deps: AppDeps, drawing: DrawingRecord): Promise<Frame
   return framesOf(original, drawing.objectKey);
 }
 
+// 원장은 틀의 기존 손상 행(표에 이미 적힌 것)까지 내므로 bounds만이 아니라 findFrames 결과 전체가 필요하다.
 async function ledgerOf(deps: AppDeps, drawing: DrawingRecord): Promise<DrawingLedger> {
   const doc = await deps.damages.get(drawing.id);
-  return buildDrawingLedger(drawing, doc.damages, await zipFramesOf(deps, drawing));
+  const isDxf = drawing.objectKey.toLowerCase().endsWith('.dxf');
+  const original = isDxf ? await deps.originals.read(drawing.objectKey) : null;
+  if (!original) return buildDrawingLedger(drawing, doc.damages, drawing.frames ?? []);
+  try {
+    const frames = findFrames(parseDxf(original.toString('utf8')));
+    return buildDrawingLedger(drawing, doc.damages, frames.map((f) => f.bounds), frames.map((f) => f.existing));
+  } catch (err) {
+    console.error('[ledger]', drawing.id, messageOf(err));
+    return buildDrawingLedger(drawing, doc.damages, drawing.frames ?? []);
+  }
 }
 
 // 도면 하나를 산출한다. 단일 도면 라우트(export.dxf)와 프로젝트 zip 라우트(export.zip)가
@@ -435,6 +445,23 @@ export function createApp(deps: AppDeps) {
     }
     const updated = await deps.drawings.update(drawing.id, { projectId });
     res.json(withOfflineReady(await ensureFrames(deps, updated ?? drawing)));
+  });
+
+  // 틀 정보를 원본에서 다시 읽어 저장한다 — 기존 손상 행(startNumber) 기능이 생기기 전에 올린 도면용.
+  api.post('/drawings/:id/reframe', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    const original = drawing.objectKey.toLowerCase().endsWith('.dxf') ? await deps.originals.read(drawing.objectKey) : null;
+    if (!original) {
+      res.status(400).json({ error: '원본 DXF가 없는 도면은 틀을 다시 읽을 수 없습니다.' });
+      return;
+    }
+    const frames = framesOf(original, drawing.objectKey);
+    const updated = await deps.drawings.update(drawing.id, { frames });
+    res.json(withOfflineReady(updated ?? { ...drawing, frames }));
   });
 
   api.post('/drawings/:id/retry', async (req, res) => {

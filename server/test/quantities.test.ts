@@ -642,3 +642,26 @@ describe('withPhotoNumber (찍은 번호를 저장된 목록에 바로 더한다
     expect(withPhotoNumber(null, '')).toEqual([]);
   });
 });
+
+describe('computeNumbers — 틀의 startNumber(표에 이미 적힌 기존 손상) 다음부터 잇는다', () => {
+  const rect = (x: number): number[][] => [[x, 10], [x + 10, 10], [x + 10, 20], [x, 20]];
+  const dmg = (id: string, x: number) => ({ id, geometry: { kind: 'rect', world: rect(x), dwg: rect(x) } });
+  const frames = [
+    { minX: 0, minY: 0, maxX: 100, maxY: 100, startNumber: 17 },
+    { minX: 200, minY: 0, maxX: 300, maxY: 100 },
+  ];
+
+  it('첫 틀은 18부터, 둘째 틀(startNumber 없음)은 1부터', () => {
+    const numbers = computeNumbers([dmg('a', 20), dmg('b', 50), dmg('c', 220)], frames);
+    expect(numbers.get('a')).toBe(18);
+    expect(numbers.get('b')).toBe(19);
+    expect(numbers.get('c')).toBe(1);
+  });
+
+  it('startNumber가 0·음수·숫자가 아니면 1부터', () => {
+    for (const bad of [0, -3, '5', null]) {
+      const numbers = computeNumbers([dmg('a', 20)], [{ ...frames[0], startNumber: bad as unknown as number }]);
+      expect(numbers.get('a')).toBe(1);
+    }
+  });
+});

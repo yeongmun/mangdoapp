@@ -35,6 +35,22 @@ export function cellWritesFor(grid: TableGrid, rows: TableRow[]): CellWrite[] {
   return writes;
 }
 
+/**
+ * 데이터 행의 번호 열을 뺀 모든 칸을 비우는 쓰기(복제 표용). 원본 표에 이미 적혀 있던 기존 손상 행이
+ * 다음 장 복사본까지 따라오지 않게 한다. 실제 값 쓰기를 뒤에 이어 붙이면 그 칸만 덮인다(Map이라 나중 것이 이긴다).
+ */
+export function clearDataCellWrites(grid: TableGrid): CellWrite[] {
+  const columnCount = grid.colBoundaries.length - 1;
+  const writes: CellWrite[] = [];
+  for (let i = 0; i < grid.dataRowCount; i++) {
+    for (let column = 0; column < columnCount; column++) {
+      if (column === grid.numberColumn) continue;
+      writes.push({ row: grid.firstDataRow + i, column, value: '' });
+    }
+  }
+  return writes;
+}
+
 /** 번호 열의 데이터 행 전부를 장 번호에 맞춰 `page·N + i`로 쓴다(복제 표용). */
 export function numberColumnWrites(grid: TableGrid, page: number): CellWrite[] {
   const writes: CellWrite[] = [];
@@ -53,7 +69,20 @@ export function escapeMtext(text: string): string {
 }
 
 // 셀 값 묶음(설계 2장). 93 플래그·90 자료형·값·94·302 표시 글자·304 끝.
+// 빈 문자열은 "값 없음" 묶음(93=3, 90=0)으로 쓴다 — 복제 표에서 기존 행을 비울 때 쓴다.
 function valueGroup(value: string | number): DxfPair[] {
+  if (value === '') {
+    return [
+      pair(301, 'CELL_VALUE'),
+      pair(93, '        3'),
+      pair(90, '        0'),
+      pair(91, '        0'),
+      pair(94, '        0'),
+      pair(300, ''),
+      pair(302, ''),
+      pair(304, 'ACVALUE_END'),
+    ];
+  }
   if (typeof value === 'number') {
     return [
       pair(301, 'CELL_VALUE'),

@@ -148,6 +148,25 @@ function renderRows(drawings) {
       dwgButton.textContent = 'DWG 내려받기';
       dwgButton.addEventListener('click', () => exportDrawing(drawing, dwgButton, 'dwg'));
       exportTd.append(' ', dwgButton);
+      // 표에 적힌 기존 손상 행을 다시 세어 신규 번호를 잇는다(옛 도면용).
+      const reframeButton = document.createElement('button');
+      reframeButton.type = 'button';
+      reframeButton.textContent = '틀 다시 읽기';
+      reframeButton.title = '표에 이미 적힌 기존 손상 행을 다시 세어 신규 손상 번호를 그 다음부터 잇습니다';
+      reframeButton.addEventListener('click', async () => {
+        reframeButton.disabled = true;
+        try {
+          const updated = await api(`/drawings/${drawing.id}/reframe`, { method: 'POST' });
+          const starts = (updated.frames ?? []).map((f) => f.startNumber ?? 0);
+          showMessage(`틀 ${starts.length}개 — 기존 손상 행: ${starts.join(', ') || '없음'}`);
+          await loadList();
+        } catch (err) {
+          showMessage(err.message, true);
+        } finally {
+          reframeButton.disabled = false;
+        }
+      });
+      exportTd.append(' ', reframeButton);
     } else {
       exportTd.textContent = '변환 안 된 DWG — 다시 올리세요';
     }
