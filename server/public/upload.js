@@ -137,17 +137,13 @@ function renderRows(drawings) {
 
     const exportTd = document.createElement('td');
     if (drawing.objectKey && drawing.objectKey.toLowerCase().endsWith('.dxf')) {
-      const exportButton = document.createElement('button');
-      exportButton.type = 'button';
-      exportButton.textContent = 'DXF 내려받기';
-      exportButton.addEventListener('click', () => exportDrawing(drawing, exportButton, 'dxf'));
-      exportTd.append(exportButton);
-      // DWG는 서버에 ODA_PATH가 있을 때만 된다 — 없으면 서버가 400으로 안내한다.
+      // 산출은 DWG로만 받는다(2026-10-09 사용자 결정, 지스타캐드에서 바로 연다). 서버에 ODA_PATH가
+      // 있어야 하고 없으면 서버가 400으로 안내한다. DXF는 API(export.dxf)로는 여전히 받을 수 있다.
       const dwgButton = document.createElement('button');
       dwgButton.type = 'button';
       dwgButton.textContent = 'DWG 내려받기';
       dwgButton.addEventListener('click', () => exportDrawing(drawing, dwgButton, 'dwg'));
-      exportTd.append(' ', dwgButton);
+      exportTd.append(dwgButton);
       // 표에 적힌 기존 손상 행을 다시 세어 신규 번호를 잇는다(옛 도면용).
       const reframeButton = document.createElement('button');
       reframeButton.type = 'button';
