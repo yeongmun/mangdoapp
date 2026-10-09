@@ -1896,6 +1896,26 @@ describe('POST /api/drawings/:id/handwriting — 손글씨 인식', () => {
   });
 });
 
+describe('PUT damages — 붙여 온 손글씨를 서버가 읽어 채운다', () => {
+  it('응답 뒤 백그라운드로 처리돼 문서가 갱신된다', async () => {
+    const transcriber = { transcribe: async () => '0.2/0.3' };
+    const { app, drawings, damages } = setup({}, undefined, undefined, {}, undefined, undefined, undefined, transcriber);
+    const drawing = await seed(drawings, { name: '망도.dxf' });
+    const doc = crackDoc(drawing.id);
+    (doc.damages[0] as { measured: Record<string, unknown>; attrs: Record<string, unknown> }).measured = { width: null, length: null, count: 1 };
+    (doc.damages[0] as { attrs: Record<string, unknown> }).attrs = { note: '', statusText: '', photoNumbers: [], handwriting: { image: Buffer.from('png').toString('base64') } };
+
+    const res = await request(app).put(`/api/drawings/${drawing.id}/damages`).set('x-access-key', KEY).send(doc);
+    expect(res.status).toBe(200);
+    await vi.waitFor(async () => {
+      const saved = await damages.get(drawing.id);
+      const d = saved.damages[0] as { measured: Record<string, unknown>; attrs: { handwriting?: unknown } };
+      expect(d.measured).toEqual({ width: 0.2, length: 0.3, count: 1 });
+      expect(d.attrs.handwriting).toEqual({ text: '0.2/0.3' });
+    });
+  });
+});
+
 describe('GET …/ledger.xlsx — 손상현황표 엑셀', () => {
   async function sheetRows(body: Buffer): Promise<unknown[][]> {
     const workbook = new ExcelJS.Workbook();

@@ -19,6 +19,7 @@ import { zipEntryNamesFor } from './photoZip.js';
 import { buildDrawingLedger, type DrawingLedger } from './ledger.js';
 import { ledgerToXlsx } from './ledgerXlsx.js';
 import { parseHandwriting, type Transcriber } from './handwriting.js';
+import { pendingHandwritingIds, processPendingHandwriting } from './handwritingQueue.js';
 import { mergeDamageDocs } from './mergeDamages.js';
 import type { DrawingConverter } from './oda.js';
 import {
@@ -896,6 +897,13 @@ export function createApp(deps: AppDeps) {
       return result;
     });
     res.json(merged);
+    // 현장에서 인터넷이 없어 못 읽은 손글씨가 붙어 왔으면 응답 뒤에 서버가 읽어 채운다(2026-10-09).
+    if (deps.transcriber && pendingHandwritingIds(merged.damages).length > 0) {
+      const transcriber = deps.transcriber;
+      void processPendingHandwriting(deps.damages, transcriber, drawing.id).catch((err) =>
+        console.error('[handwriting]', drawing.id, messageOf(err)),
+      );
+    }
   });
 
   // 찍은 사진을 그 손상 폴더에 저장한다. 사진번호는 **파일 이름에서** 뽑는다(스펙 2장) —

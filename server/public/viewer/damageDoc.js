@@ -164,6 +164,16 @@ function validateAttrs(damage, type, path, errors) {
   if (type !== null && type.id !== 'etc' && attrs.statusText !== '') {
     errors.push(`${path}.attrs.statusText는 기타 유형에서만 쓸 수 있습니다.`);
   }
+  // 손글씨(선택, 2026-10-09). 인터넷이 없어 바로 못 읽은 획 그림(image, base64 PNG)을 손상에 붙여 두면
+  // 서버가 전송받은 뒤 읽어 빈 칸을 채우고 text만 남긴다. 둘 다 없는 빈 객체는 허용하지 않는다.
+  if (attrs.handwriting !== undefined) {
+    const h = attrs.handwriting;
+    const okImage = typeof h?.image === 'string' && h.image !== '';
+    const okText = typeof h?.text === 'string';
+    if (typeof h !== 'object' || h === null || (!okImage && !okText)) {
+      errors.push(`${path}.attrs.handwriting은 image(base64) 또는 text를 가진 객체여야 합니다.`);
+    }
+  }
   if (!isValidPhotoNumbers(attrs.photoNumbers)) {
     errors.push(`${path}.attrs.photoNumbers는 문자열 배열이며 앞뒤 공백 없는 빈 문자열 아닌 값, 중복 없이 있어야 합니다.`);
   } else if (attrs.photoNumbers.some(hasLineBreak)) {

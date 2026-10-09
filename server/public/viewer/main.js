@@ -555,6 +555,14 @@ async function start() {
     resetPhotoButton();
     setInkMode(false);
     $('inkHint').hidden = true;
+    const handwriting = damage.attrs.handwriting;
+    if (handwriting && typeof handwriting.image === 'string') {
+      $('inkHint').hidden = false;
+      $('inkHint').textContent = '손글씨 대기 중 — 전송되면 서버가 읽어 빈 칸을 채웁니다. 지금 읽으려면 ✍를 눌러 다시 쓰세요';
+    } else if (handwriting && typeof handwriting.text === 'string') {
+      $('inkHint').hidden = false;
+      $('inkHint').textContent = `손글씨로 읽음: "${handwriting.text}" — 값이 맞는지 확인하세요`;
+    }
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
     fillTypeSelect(damage);
@@ -876,6 +884,7 @@ async function start() {
   // window.mangdoHandwritingResult로 답을 받는다 — 📷와 같은 방식. PC 브라우저(앱 밖)에서는 서버를 직접 부른다.
   let inkMode = false;
   let inkRequestId = null;
+  let inkPendingImage = null;
   const ink = createInkInput({
     svg: $('ink'),
     container: $('viewer'),
@@ -906,8 +915,22 @@ async function start() {
       $('inkHint').textContent = '화면이 움직여 획을 지웠습니다. 다시 써 주세요';
     }
   });
-  function applyHandwriting(result) {
+  // 인터넷이 없어 못 읽었으면 획 그림을 손상에 붙여 둔다 — 서버가 전송받은 뒤 읽어 빈 칸을 채운다(2026-10-09).
+  function deferHandwriting(image) {
+    const damage = selectedDamage();
+    if (!damage) return;
+    apply(updateDamage(editor, damage.id, { attrs: { handwriting: { image } } }, nowIso()));
+    ink.clear();
+    setInkMode(false);
+    $('inkHint').hidden = false;
+    $('inkHint').textContent = '인터넷이 없어 손글씨를 붙여 뒀습니다. 전송되면 서버가 읽어 빈 칸을 채우고, 다음에 도면을 열 때 보입니다';
+  }
+  function applyHandwriting(result, image) {
     if (!result.ok) {
+      if (/연결|오프라인/.test(String(result.reason))) {
+        deferHandwriting(image);
+        return;
+      }
       showPropsError(`손글씨를 읽지 못했습니다: ${result.reason}`);
       return;
     }
@@ -921,6 +944,9 @@ async function start() {
       : `읽은 글 "${result.text}" — 숫자를 알아보지 못했습니다. 다시 쓰거나 키패드로 입력하세요`;
     updateSummary();
     ink.clear();
+    // 읽은 글은 손상에 남긴다(붙여 뒀던 그림은 지운다). 값은 사용자가 저장을 눌러야 들어간다.
+    const target = selectedDamage();
+    if (target) apply(updateDamage(editor, target.id, { attrs: { handwriting: { text: result.text } } }, nowIso()));
     if (got.length > 0) {
       inkMode = false;
       $('inkStart').setAttribute('aria-pressed', 'false');
@@ -937,6 +963,7 @@ async function start() {
     }
     const requestId = crypto.randomUUID();
     inkRequestId = requestId;
+    inkPendingImage = image;
     $('inkRecognize').disabled = true;
     $('inkHint').textContent = '읽는 중…';
     if (window.ReactNativeWebView) {
@@ -953,9 +980,11 @@ async function start() {
   window.mangdoHandwritingResult = (result) => {
     if (!result || result.requestId !== inkRequestId) return;
     inkRequestId = null;
+    const image = inkPendingImage;
+    inkPendingImage = null;
     $('inkRecognize').disabled = false;
     if (!isPropsOpen()) return;
-    applyHandwriting(result);
+    applyHandwriting(result, image);
   };
 
   // 📷 버튼(2026-09-17 카메라 버튼 설계 6장). 앱에 takePhoto를 보내고 window.mangdoPhotoResult로
