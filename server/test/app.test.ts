@@ -101,6 +101,7 @@ function setup(
   fetchCdnImpl?: (url: string) => Promise<{ status: number; body: Buffer; contentEncoding: string | null }>,
   readKey?: string,
   converter?: import('../src/oda.js').DrawingConverter | null,
+  transcriber?: import('../src/handwriting.js').Transcriber | null,
 ) {
   const aps = fakeAps(apsOverrides);
   const drawings = new DrawingsStore(join(dir, 'data', 'drawings.json'));
@@ -126,6 +127,7 @@ function setup(
     accessKey: KEY,
     readKey,
     converter,
+    transcriber,
     aps,
     drawings,
     damages,
@@ -386,7 +388,7 @@ describe('POST /api/drawings', () => {
 
     expect(res.status).toBe(201);
     // 픽스처의 틀 하나(frames.test.ts에서 손으로 계산한 값)
-    expect(res.body.frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect(res.body.frames).toMatchObject([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
     expect((await drawings.get(res.body.id))?.frames).toEqual(res.body.frames);
   });
 
@@ -497,7 +499,7 @@ describe('GET /api/drawings', () => {
 
     const res = await request(app).get('/api/drawings').set('x-access-key', KEY);
 
-    expect(res.body[0].frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect(res.body[0].frames).toMatchObject([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
     expect((await drawings.get(old.id))?.frames).toEqual(res.body[0].frames);
   });
 
@@ -554,7 +556,7 @@ describe('GET /api/drawings', () => {
     expect(res.status).toBe(200);
     const byId = Object.fromEntries((res.body as WithOfflineReady[]).map((r) => [r.id, r]));
     expect(byId[bad.id].frames).toEqual([]);
-    expect(byId[good.id].frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect(byId[good.id].frames).toMatchObject([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
     expect(errorSpy).toHaveBeenCalledWith('[frames]', bad.id, expect.any(String));
     // 저장은 건너뛰었으므로 다음 요청에서 다시 시도한다.
     expect((await drawings.get(bad.id))?.frames).toBeUndefined();
@@ -583,7 +585,7 @@ describe('POST /api/drawings/:id/retry', () => {
     const res = await request(app).post(`/api/drawings/${failed.id}/retry`).set('x-access-key', KEY);
 
     expect(res.status).toBe(200);
-    expect(res.body.frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect(res.body.frames).toMatchObject([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
     expect((await drawings.get(failed.id))?.frames).toEqual(res.body.frames);
   });
 
@@ -1857,6 +1859,43 @@ describe('GET /api/projects/:id/ledger', () => {
   });
 });
 
+describe('POST /api/drawings/:id/handwriting — 손글씨 인식', () => {
+  it('AI가 옮겨 적은 글을 폭/길이/개소로 풀어 준다', async () => {
+    const transcriber = { transcribe: vi.fn(async (png: Buffer) => (png.toString() === 'png-bytes' ? '0.2/0.3 2EA' : '')) };
+    const { app, drawings } = setup({}, undefined, undefined, {}, undefined, undefined, undefined, transcriber);
+    const drawing = await seed(drawings, { name: '망도.dxf' });
+    const res = await request(app)
+      .post(`/api/drawings/${drawing.id}/handwriting`)
+      .set('x-access-key', KEY)
+      .send({ image: Buffer.from('png-bytes').toString('base64') });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ width: 0.2, length: 0.3, count: 2, text: '0.2/0.3 2EA' });
+  });
+
+  it('키(transcriber)가 없으면 400, 이미지가 없으면 400, 없는 도면은 404', async () => {
+    const { app, drawings } = setup();
+    const drawing = await seed(drawings, { name: '망도.dxf' });
+    const noKey = await request(app).post(`/api/drawings/${drawing.id}/handwriting`).set('x-access-key', KEY).send({ image: 'eA==' });
+    expect(noKey.status).toBe(400);
+    expect(noKey.body.error).toContain('ANTHROPIC_API_KEY');
+
+    const transcriber = { transcribe: async () => '1' };
+    const withKey = setup({}, undefined, undefined, {}, undefined, undefined, undefined, transcriber);
+    const d2 = await seed(withKey.drawings, { name: 'x.dxf' });
+    expect((await request(withKey.app).post(`/api/drawings/${d2.id}/handwriting`).set('x-access-key', KEY).send({})).status).toBe(400);
+    expect((await request(withKey.app).post(`/api/drawings/${newDrawingId()}/handwriting`).set('x-access-key', KEY).send({ image: 'eA==' })).status).toBe(404);
+  });
+
+  it('AI 호출이 실패하면 502', async () => {
+    const transcriber = { transcribe: async () => { throw new Error('quota'); } };
+    const { app, drawings } = setup({}, undefined, undefined, {}, undefined, undefined, undefined, transcriber);
+    const drawing = await seed(drawings, { name: '망도.dxf' });
+    const res = await request(app).post(`/api/drawings/${drawing.id}/handwriting`).set('x-access-key', KEY).send({ image: 'eA==' });
+    expect(res.status).toBe(502);
+    expect(res.body.error).toContain('quota');
+  });
+});
+
 describe('GET …/ledger.xlsx — 손상현황표 엑셀', () => {
   async function sheetRows(body: Buffer): Promise<unknown[][]> {
     const workbook = new ExcelJS.Workbook();
@@ -2076,7 +2115,7 @@ describe('DWG 변환기(ODA)가 있을 때', () => {
     expect(res.body.objectKey).toBe(`${id}.dxf`);
     expect(converter.dwgToDxf).toHaveBeenCalledWith(Buffer.from('dwg-bytes'));
     expect(aps.uploadDrawing).toHaveBeenCalledWith(await readFile(templatePath), `${id}.dxf`);
-    expect(res.body.frames).toEqual([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
+    expect(res.body.frames).toMatchObject([{ minX: 2000, minY: 3160, maxX: 4280, maxY: 3400 }]);
     expect((await originals.read(`${id}.dxf`))?.equals(await readFile(templatePath))).toBe(true);
     expect((await drawings.get(id))?.objectKey).toBe(`${id}.dxf`);
     expect(res.headers['x-mangdo-warning']).toBeUndefined();

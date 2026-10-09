@@ -180,6 +180,33 @@ export async function putDamages(drawingId: string, doc: DamageDoc): Promise<Dam
   return (await res.json()) as DamageDoc;
 }
 
+export interface HandwritingResult {
+  width: number | null;
+  length: number | null;
+  count: number | null;
+  text: string;
+}
+
+// 손글씨 인식(2026-10-09): 뷰어가 그린 펜 획 PNG(base64)를 서버에 보내 폭/길이/개소로 받는다.
+// 인터넷이 될 때만 된다 — 뷰어는 기기 파일로 열리므로 서버 호출은 앱이 대신한다(ViewerScreen).
+export async function recognizeHandwriting(drawingId: string, imageBase64: string): Promise<HandwritingResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/drawings/${encodeURIComponent(drawingId)}/handwriting`, {
+      method: 'POST',
+      headers: { 'x-access-key': ACCESS_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageBase64 }),
+    });
+  } catch {
+    throw new Error('서버에 연결하지 못했습니다 — 인터넷이 될 때 다시 해 보세요');
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `손글씨 인식에 실패했습니다 (${res.status})`);
+  }
+  return (await res.json()) as HandwritingResult;
+}
+
 // path의 '/'는 그대로 두고 구간마다만 인코딩한다 — 서버의 와일드카드 라우트(/*path)는 슬래시로
 // 구간을 가르므로 encodeURIComponent를 통째로 쓰면(슬래시까지 %2F로 바뀌어) 404가 난다.
 function encodeFilePath(path: string): string {

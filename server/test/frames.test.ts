@@ -31,7 +31,7 @@ describe('findFrames', () => {
     const frames = await framesOf(await templateText());
     expect(frames).toHaveLength(1);
     expect(frames[0].index).toBe(0);
-    expect(frames[0].bounds).toEqual(FRAME_0);
+    expect(frames[0].bounds).toMatchObject(FRAME_0);
     expect(frames[0].table.blockName).toBe('*TX');
     expect(frames[0].table.position).toEqual([500, 700]);
     expect(frames[0].table.transform).toMatchObject({ x: 1000, y: 2000, scaleX: 2, scaleY: 2 });
@@ -45,8 +45,8 @@ describe('findFrames', () => {
     // → 영역 x -9000+1000 = -8000 ~ -9000+3280 = -5720, y는 원본과 같다.
     const frames = await framesOf(withSecondFrame(await templateText(), -9000));
     expect(frames.map((frame) => frame.index)).toEqual([0, 1]);
-    expect(frames[0].bounds).toEqual({ minX: -8000, minY: 3160, maxX: -5720, maxY: 3400 });
-    expect(frames[1].bounds).toEqual(FRAME_0);
+    expect(frames[0].bounds).toMatchObject({ minX: -8000, minY: 3160, maxX: -5720, maxY: 3400 });
+    expect(frames[1].bounds).toMatchObject(FRAME_0);
     // 틀마다 자기 표를 들고 있다(표의 절대 변환이 서로 다르다).
     expect(frames[0].table.transform.x).toBe(-9000);
     expect(frames[1].table.transform.x).toBe(1000);
@@ -65,7 +65,7 @@ describe('findFrames', () => {
     // → 모델 좌표 x 1000+0=1000 ~ 1000+4000=5000, y 2000+0=2000 ~ 2000+4000=6000
     const frames = await framesOf(withFrameLine(await templateText()));
     expect(frames).toHaveLength(1);
-    expect(frames[0].bounds).toEqual({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
+    expect(frames[0].bounds).toMatchObject({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
   });
 
   it('중첩 INSERT 안의 도형도 변환을 겹쳐 감싼다', async () => {
@@ -75,7 +75,7 @@ describe('findFrames', () => {
     // → 모델 좌표 x 1000~4280, y 3160~12000
     const frames = await framesOf(withNestedInsert(await templateText()));
     expect(frames).toHaveLength(1);
-    expect(frames[0].bounds).toEqual({ minX: 1000, minY: 3160, maxX: 4280, maxY: 12000 });
+    expect(frames[0].bounds).toMatchObject({ minX: 1000, minY: 3160, maxX: 4280, maxY: 12000 });
   });
 
   it('회전한 삽입은 회전한 네 모서리를 감싼 축 정렬 상자다', async () => {
@@ -103,7 +103,7 @@ describe('findFrames — 표가 블록 밖(모델 공간)에 놓인 새 템플�
     const frames = await framesOf(await modelSpaceTemplate());
     expect(frames).toHaveLength(1);
     expect(frames[0].tableKind).toBe('modelSpace');
-    expect(frames[0].bounds).toEqual({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
+    expect(frames[0].bounds).toMatchObject({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
     expect(frames[0].table.blockName).toBe('*TX');
     expect(frames[0].table.position).toEqual([2000, 3400]);
     expect(frames[0].table.transform).toMatchObject({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotationRad: 0 });
@@ -139,7 +139,7 @@ describe('findFrames — 표가 블록 밖(모델 공간)에 놓인 새 템플�
     expect(frames).toHaveLength(1);
     expect(frames[0].blockName).toBe('망도틀');
     expect(frames[0].entityIndex).toBe(1); // 0번은 테두리 INSERT
-    expect(frames[0].bounds).toEqual({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
+    expect(frames[0].bounds).toMatchObject({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
     expect(frames[0].tableKind).toBe('modelSpace');
     expect(frames[0].tableEntityIndex).toBe(2);
     expect(frames.some((f) => f.blockName === '테두리')).toBe(false);
@@ -150,6 +150,26 @@ describe('findFrames — 표가 블록 밖(모델 공간)에 놓인 새 템플�
     expect(frames).toHaveLength(1);
     expect(frames[0].tableKind).toBe('inBlock');
     expect(frames[0].tableEntityIndex).toBeNull();
-    expect(frames[0].bounds).toEqual(FRAME_0);
+    expect(frames[0].bounds).toMatchObject(FRAME_0);
+  });
+});
+
+describe('findFrames — 뷰어용 표 칸 자리(bounds.table, 2026-10-09)', () => {
+  it('값 열의 중심 x·너비와 데이터 행의 중심 y를 모델 좌표로 싣는다', async () => {
+    const [frame] = findFrames(parseDxf(await templateText()));
+    const table = frame.bounds.table!;
+    expect(table.rowCount).toBeGreaterThan(0);
+    expect(table.rowY).toHaveLength(table.rowCount);
+    expect(table.textHeight).toBeGreaterThan(0);
+    for (const field of ['status', 'width', 'length', 'count', 'quantity', 'unit'] as const) {
+      const col = table.columns[field]!;
+      expect(col.width).toBeGreaterThan(0);
+      // 열 중심은 틀 영역 안
+      expect(col.x).toBeGreaterThanOrEqual(frame.bounds.minX);
+      expect(col.x).toBeLessThanOrEqual(frame.bounds.maxX);
+    }
+    // 손상현황 열은 폭 열보다 왼쪽, 행은 위에서 아래로
+    expect(table.columns.status!.x).toBeLessThan(table.columns.width!.x);
+    expect(table.rowY[0]).toBeGreaterThan(table.rowY[table.rowCount - 1]);
   });
 });

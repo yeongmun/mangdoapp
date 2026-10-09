@@ -26,6 +26,8 @@ describe('loadConfig', () => {
       appAccessKey: 'key-1234567890abcdefgh',
       appReadKey: null,
       odaPath: null,
+      anthropicApiKey: null,
+      handwritingModel: null,
       bucketKey: defaultBucketKey('AbC123'),
       port: 3000,
       dataDir: '/data',

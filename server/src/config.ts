@@ -8,6 +8,10 @@ export interface AppConfig {
   appReadKey: string | null;
   /** ODA File Converter 실행 파일 경로(선택). 있으면 DWG 업로드·DWG 산출이 된다. Windows PC 전용. */
   odaPath: string | null;
+  /** 손글씨 인식용 Anthropic API 키(선택). 없으면 뷰어의 손글씨 입력이 "서버에 키 없음"으로 안내한다 */
+  anthropicApiKey: string | null;
+  /** 손글씨 인식 모델(선택). 기본은 handwriting.ts의 DEFAULT_HANDWRITING_MODEL */
+  handwritingModel: string | null;
   bucketKey: string;
   port: number;
   dataDir: string;
@@ -38,6 +42,8 @@ export function loadConfig(env: NodeJS.ProcessEnv, dataDir: string): AppConfig {
   }
 
   const odaPath = env.ODA_PATH?.trim() || null;
+  const anthropicApiKey = env.ANTHROPIC_API_KEY?.trim() || null;
+  const handwritingModel = env.HANDWRITING_MODEL?.trim() || null;
 
   const port = env.PORT?.trim() ? Number(env.PORT) : 3000;
   if (!Number.isInteger(port) || port <= 0) {
@@ -51,6 +57,8 @@ export function loadConfig(env: NodeJS.ProcessEnv, dataDir: string): AppConfig {
     appAccessKey: env.APP_ACCESS_KEY!.trim(),
     appReadKey,
     odaPath,
+    anthropicApiKey,
+    handwritingModel,
     bucketKey: env.APS_BUCKET_KEY?.trim() || defaultBucketKey(apsClientId),
     port,
     dataDir,

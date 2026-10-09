@@ -18,6 +18,7 @@ import { makeThumbnail } from './photoThumb.js';
 import { zipEntryNamesFor } from './photoZip.js';
 import { buildDrawingLedger, type DrawingLedger } from './ledger.js';
 import { ledgerToXlsx } from './ledgerXlsx.js';
+import { parseHandwriting, type Transcriber } from './handwriting.js';
 import { mergeDamageDocs } from './mergeDamages.js';
 import type { DrawingConverter } from './oda.js';
 import {
@@ -45,6 +46,8 @@ export interface AppDeps {
   readKey?: string | null;
   /** DWG↔DXF 변환기(ODA). 없으면 DWG는 보기만 되고 산출은 안 된다(예전과 같다) */
   converter?: DrawingConverter | null;
+  /** 손글씨 인식(AI). 없으면 손글씨 입력은 400으로 안내한다 */
+  transcriber?: Transcriber | null;
   aps: Pick<ApsService, 'getViewerToken' | 'uploadDrawing' | 'startTranslation' | 'getTranslationStatus'>;
   drawings: DrawingsStore;
   damages: DamagesStore;
@@ -1106,6 +1109,32 @@ export function createApp(deps: AppDeps) {
       drawings.push({ ...(await ledgerOf(deps, drawing)), subProject: folder ? folder.replace(/\/$/, '') : null });
     }
     sendXlsx(res, `${project.name}_손상현황표.xlsx`, await ledgerToXlsx(project.name, drawings));
+  });
+
+  // 손글씨 인식(2026-10-09): 뷰어가 펜 획을 PNG(base64)로 보내면 AI가 글자로 옮기고 여기서 숫자로 푼다.
+  // 도면 id는 권한·로그용이다(저장은 뷰어가 속성창에서 사용자 확인 뒤에 한다).
+  api.post('/drawings/:id/handwriting', async (req, res) => {
+    const drawing = await findDrawing(deps, req.params.id);
+    if (!drawing) {
+      res.status(404).json({ error: '도면을 찾을 수 없습니다.' });
+      return;
+    }
+    if (!deps.transcriber) {
+      res.status(400).json({ error: '손글씨 인식은 서버에 ANTHROPIC_API_KEY가 설정돼 있어야 합니다.' });
+      return;
+    }
+    const image = (req.body as { image?: unknown })?.image;
+    if (typeof image !== 'string' || image === '') {
+      res.status(400).json({ error: 'image(base64 PNG)가 필요합니다.' });
+      return;
+    }
+    try {
+      const text = await deps.transcriber.transcribe(Buffer.from(image, 'base64'));
+      res.json(parseHandwriting(text));
+    } catch (err) {
+      console.error('[handwriting]', drawing.id, messageOf(err));
+      res.status(502).json({ error: `손글씨를 읽지 못했습니다: ${messageOf(err)}` });
+    }
   });
 
   api.get('/drawings/:id/export.dxf', async (req, res) => {

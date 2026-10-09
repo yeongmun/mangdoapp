@@ -7,10 +7,13 @@ import { getDamageType } from './damageTypes.js';
 import { boundsOf, rectCenter } from './geometry.js';
 import { placeLabels } from './labelCollision.js';
 import { estimateTextWidth, labelBlock, placeBlock } from './labelLayout.js';
-import { computeNumbers, countOutsideFrames, dimensionTextOf, drawingNameOf, photoTextOf } from './quantities.js';
+import { computeNumbers, countOutsideFrames, dimensionTextOf, drawingNameOf, frameIndexOf, photoTextOf } from './quantities.js';
+import { tableCellTexts } from './tableValues.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 export const CRACK_COLOR = '#e53935';
+/** 표 칸에 얹는 값 글자색 — 도면 글자처럼 검정 */
+const TABLE_TEXT_COLOR = '#1a1a1a';
 export const SELECTED_COLOR = '#fb8c00';
 // 사진 줄은 도면의 `사진번호` 레이어(노랑, 색 2)와 같아 보이게 그린다. 선택해도 노란색 그대로다.
 // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3장
@@ -404,11 +407,14 @@ export function createOverlay(svg, mapper) {
   // 한 묶음이라 예전과 똑같이 동작한다(2026-09-16 frame-numbering 설계 5장).
   let frames = [];
   let outsideCount = 0;
+  // 표 칸에 그릴 글자(2026-10-09). 번호와 같이 (손상 목록, 틀 목록)이 바뀔 때만 다시 계산한다.
+  let tableCells = [];
 
   // 번호·라벨 자리·틀 밖 개수는 셋 다 (손상 목록, 틀 목록)에서만 정해진다. 한 자리에서 같이 구한다.
   function recompute() {
     numbers = computeNumbers(damages, frames);
     outsideCount = countOutsideFrames(damages, frames);
+    tableCells = tableCellTexts(damages, numbers, frames, (damage) => frameIndexOf(damage, frames));
     // 도면 좌표 변환이 있는 도면에서만 dwgToWorld를 넘긴다 — mapper.dwgToWorld 자체는 항상
     // 함수이지만(createCoordinateMapper), dwgStatus.matrix가 없으면 늘 null을 돌려줄 뿐이다.
     // 여기서 미리 null로 걸러 둬야 computeLabelPlacements가 "변환 불가 = 겹침 방지 안 함"과
@@ -487,12 +493,39 @@ export function createOverlay(svg, mapper) {
     }
   }
 
+  // 손상물량표 칸 채우기(2026-10-09): 틀의 표 칸 자리(frames[i].table, 도면 좌표)에 신규 손상의 값을 그린다 —
+  // 산출 DXF가 셀에 쓰는 것과 같은 글자(tableValues.js). 글자 크기는 도면의 셀 글자 높이 그대로(배율 따라),
+  // 칸보다 길면 줄인다. 너무 작아 읽을 수 없는 배율(3px 미만)에서는 그리지 않는다. 선택한 손상의 행은 빨갛다.
+  function renderTableCells(elements, sizes) {
+    if (sizes.pxPerMm === null || !mapper.dwgStatus?.matrix) return;
+    const cells = tableCells.length > 0 ? tableCells : [];
+    for (const cell of cells) {
+      let fontPx = cell.textHeight * sizes.pxPerMm;
+      if (fontPx < 3) return; // 모두 같은 글자 높이라 하나가 작으면 전부 작다
+      const maxWidthPx = cell.cellWidth * sizes.pxPerMm * 0.92;
+      const estimated = estimateTextWidthPx(cell.text, fontPx);
+      if (estimated > maxWidthPx) fontPx *= maxWidthPx / estimated;
+      const world = mapper.dwgToWorld(cell.dwg);
+      if (!world) continue;
+      const [x, y] = mapper.worldToClient(world);
+      const el = document.createElementNS(SVG_NS, 'text');
+      el.setAttribute('x', x.toFixed(1));
+      el.setAttribute('y', (y + fontPx * 0.35).toFixed(1));
+      el.setAttribute('fill', cell.id === selectedId ? CRACK_COLOR : TABLE_TEXT_COLOR);
+      el.setAttribute('font-size', String(fontPx));
+      el.setAttribute('text-anchor', 'middle');
+      el.textContent = cell.text;
+      elements.push(el);
+    }
+  }
+
   function render() {
     frame = 0;
     const scale = computeScale(mapper);
     const sizes = computeRenderSizes(scale.pxPerMm);
     const elements = [];
     const patternsNeeded = new Map();
+    renderTableCells(elements, sizes);
     // 번호는 저장하지 않는다. setDamages에서 이미 계산해 둔 값을 그대로 쓴다(위 numbers 캐시).
     for (const damage of damages) {
       // 크기·회전·이동 중인 도형은 움직이는 draft가 대신 보여준다 — 그대로 두면 손 떼기 전 원래

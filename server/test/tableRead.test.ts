@@ -81,7 +81,7 @@ describe('findFrames + 기존 손상', () => {
 
   it('기존 행이 없는 틀의 bounds에는 startNumber가 없다(옛 모양 그대로)', async () => {
     const [frame] = findFrames(parseDxf(await modelSpaceTemplate(1)));
-    expect(frame.bounds).toEqual({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
+    expect(frame.bounds).toMatchObject({ minX: 1000, minY: 2000, maxX: 5000, maxY: 6000 });
   });
 });
 

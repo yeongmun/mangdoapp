@@ -25,12 +25,31 @@ body {
   z-index: 5;
 }
 
+/* 손글씨 획(2026-10-09). 오버레이와 같은 자리, 그 위. 입력은 ink.js가 window에서 받으므로 pointer-events 없음 */
+#ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+}
+#propsPanel .inkRow { margin-bottom: 8px; }
+#propsPanel .inkRow button[aria-pressed='true'] { background: #1e66f5; border-color: #1e66f5; color: #fff; }
+#inkHint { margin: 0 0 8px; color: #3c4149; font-size: 12px; line-height: 1.4; }
+
 #toolbar {
   position: absolute;
   left: 50%;
   bottom: calc(16px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   display: flex;
+  /* left:50%로 두면 상자가 화면 절반 너비로 잡혀 버튼이 많을 때 글자가 세로로 감긴다 — 내용 너비로 잡고,
+     화면보다 넓어질 때만(폰 세로) 버튼 단위로 줄을 바꾼다(2026-10-09). */
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -43,6 +62,7 @@ body {
 #toolbar button {
   font-size: 15px;
   padding: 10px 14px;
+  white-space: nowrap;
   border-radius: 8px;
   border: 1px solid #c7c9cf;
   background: #fff;
@@ -136,7 +156,7 @@ body {
 
 #propsPanel h2 { font-size: 15px; margin: 0 0 8px; }
 #propsPanel label { display: block; margin-bottom: 8px; }
-#propsPanel input { width: 100%; font-size: 15px; padding: 6px 8px; box-sizing: border-box; }
+#propsPanel input, #propsPanel select { width: 100%; font-size: 15px; padding: 6px 8px; box-sizing: border-box; }
 #propsPanel .row { display: flex; gap: 8px; }
 #propsPanel button { flex: 1; font-size: 15px; padding: 9px 0; border-radius: 8px; border: 1px solid #c7c9cf; background: #fff; }
 #propsPanel #propsSave { background: #1e66f5; border-color: #1e66f5; color: #fff; }

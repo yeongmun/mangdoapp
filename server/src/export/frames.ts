@@ -9,8 +9,12 @@ import { arcExtentPoints } from './entityTransform.js';
 import type { Point } from './dxfEntities.js';
 import {
   applyTransform,
+  buildGrid,
+  cellCenter,
+  hasUniformScale,
   IDENTITY,
   insertTransform,
+  modelTextHeight,
   numberAt,
   numbersAt,
   readModelSpace,
@@ -23,6 +27,7 @@ import {
   type Transform,
 } from './tableGrid.js';
 import { existingTableOf, type ExistingRow, type ExistingTable } from './tableRead.js';
+import { resolvedColumnMap } from './tableFill.js';
 
 /** 틀의 영역(mm, 모델 좌표). 앱까지 이 모양 그대로 간다(DrawingRecord.frames) */
 export interface FrameBounds {
@@ -40,6 +45,23 @@ export interface FrameBounds {
    * 행이 있을 때만 싣는다.
    */
   existing?: ExistingRow[];
+  /**
+   * 틀 손상물량표의 칸 자리(2026-10-09). 뷰어가 신규 손상의 값을 표 칸 위에 바로 보여 주는 데 쓴다
+   * (산출 DXF가 채우는 것과 같은 칸). 표 격자를 못 읽은 틀에는 없다.
+   */
+  table?: FrameTable;
+}
+
+/** 표 격자의 요약. 좌표는 도면(모델) 좌표 mm. cells[dataRow-1][field] = 칸 중심 */
+export interface FrameTable {
+  /** 데이터 행 수(표 용량). 번호가 이보다 크면 뷰어는 그리지 않는다(산출은 넘침 표를 따로 만든다) */
+  rowCount: number;
+  /** 모델 좌표 글자 높이 */
+  textHeight: number;
+  /** 값 칸의 열별 중심 x·너비는 행마다 같으므로 열 정보와 행 중심 y를 따로 둔다 */
+  columns: Partial<Record<'status' | 'width' | 'length' | 'count' | 'quantity' | 'unit', { x: number; width: number }>>;
+  /** 데이터 행 i(0부터)의 중심 y(모델 좌표). 표가 회전돼 있으면 비어 있다(뷰어가 그리지 않는다) */
+  rowY: number[];
 }
 
 export interface Frame {
@@ -246,7 +268,33 @@ export function findFrames(doc: DxfDocument): Frame[] {
   return found.map((frame, index) => {
     const startNumber = frame.existing?.startNumber ?? 0;
     // 기존 행이 있을 때만 bounds에 startNumber를 싣는다 — 화면·산출·원장이 같은 값으로 번호를 잇는다.
-    const bounds = startNumber > 0 ? { ...frame.bounds, startNumber, existing: frame.existing!.rows } : frame.bounds;
+    let bounds: FrameBounds = startNumber > 0 ? { ...frame.bounds, startNumber, existing: frame.existing!.rows } : frame.bounds;
+    const table = frameTableOf(doc, frame.table);
+    if (table) bounds = { ...bounds, table };
     return { ...frame, bounds, index };
   });
+}
+
+const VIEWER_FIELDS = ['status', 'width', 'length', 'count', 'quantity', 'unit'] as const;
+
+/** 표 격자를 뷰어용 요약으로. 격자를 못 읽거나 회전·비균일 배율이면 null */
+export function frameTableOf(doc: DxfDocument, candidate: TableCandidate): FrameTable | null {
+  if (!hasUniformScale(candidate.transform) || candidate.transform.rotationRad !== 0) return null;
+  const grid = buildGrid(doc, candidate);
+  if (!grid) return null;
+  const { map } = resolvedColumnMap(grid.headers);
+  const columns: FrameTable['columns'] = {};
+  for (const field of VIEWER_FIELDS) {
+    const column = map[field];
+    if (column === undefined || column + 1 >= grid.colBoundaries.length) continue;
+    const left = grid.colBoundaries[column];
+    const right = grid.colBoundaries[column + 1];
+    columns[field] = {
+      x: applyTransform(grid.transform, [grid.position[0] + (left + right) / 2, 0])[0],
+      width: Math.abs(right - left) * Math.abs(grid.transform.scaleX),
+    };
+  }
+  const rowY: number[] = [];
+  for (let row = 1; row <= grid.dataRowCount; row++) rowY.push(cellCenter(grid, row, 0)[1]);
+  return { rowCount: grid.dataRowCount, textHeight: modelTextHeight(grid), columns, rowY };
 }

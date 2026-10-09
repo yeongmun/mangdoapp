@@ -32,6 +32,7 @@ import { blocksDrawing, photoStripItems } from './photoStrip.js';
 import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlineApi.js';
 import { clampPage, frameWorldBox, pageCount, pageLabel } from './pageView.js';
 import { statusTableRows, statusTableTotals } from './statusTable.js';
+import { createInkInput } from './ink.js';
 
 const $ = (id) => document.getElementById(id);
 // 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다. 어떤 WebView가
@@ -289,19 +290,38 @@ async function start() {
   let selectedShape = 0;
   let fingerDraw = false;
   let coordCheck = false;
-  let activeTypeId = DEFAULT_DAMAGE_TYPE_ID;
   const nowIso = () => new Date().toISOString();
 
-  for (const type of DAMAGE_TYPES) {
-    const option = document.createElement('option');
-    option.value = type.id;
-    option.textContent = type.label;
-    $('damageType').append(option);
+  // 그리기 도구는 모양(선/네모)만 고른다(2026-10-09 사용자 결정, 인프라스마트 태블릿 Pro 방식). 손상
+  // 유형은 그린 뒤 속성창에서 고른다. 새 손상은 그 모양으로 마지막에 고른 유형으로 시작한다
+  // (처음엔 선=균열, 네모=박락).
+  let activeKind = 'line';
+  const lastTypeFor = { line: DEFAULT_DAMAGE_TYPE_ID, area: 'spalling' };
+  const activeTypeIdOf = () => lastTypeFor[activeKind];
+  function setActiveKind(kind) {
+    activeKind = kind;
+    $('toolLine').setAttribute('aria-pressed', String(kind === 'line'));
+    $('toolRect').setAttribute('aria-pressed', String(kind === 'area'));
   }
-  $('damageType').value = activeTypeId;
-  $('damageType').addEventListener('change', () => {
-    activeTypeId = $('damageType').value;
-  });
+  $('toolLine').addEventListener('click', () => setActiveKind('line'));
+  $('toolRect').addEventListener('click', () => setActiveKind('area'));
+
+  // 속성창의 유형 목록: 그 손상의 모양(선 ↔ line 유형, 네모 ↔ area 유형)에 맞는 유형만 보인다.
+  function fillTypeSelect(damage) {
+    const kind = damage.geometry.kind === 'polyline' ? 'line' : 'area';
+    const select = $('typeSelect');
+    select.textContent = '';
+    for (const type of DAMAGE_TYPES) {
+      if (type.kind !== kind) continue;
+      const option = document.createElement('option');
+      option.value = type.id;
+      option.textContent = type.label;
+      select.append(option);
+    }
+    select.value = damage.type;
+    // 저장된 유형이 목록에 없으면(옛 데이터·모양 불일치) 첫 항목을 보여 주되 바꾸진 않는다.
+    if (select.value !== damage.type) select.value = '';
+  }
 
   const selectedDamage = () => editor.doc.damages.find((damage) => damage.id === selectedId) ?? null;
 
@@ -457,7 +477,7 @@ async function start() {
     isFingerDrawEnabled: () => fingerDraw,
     // 사진 오버레이가 열린 동안도 그리기·탭을 막는다(설계 5장). 판정은 순수 함수가 갖는다.
     isPropsOpen: () => blocksDrawing(isPropsOpen(), isPhotoViewOpen()),
-    getActiveTypeKind: () => getDamageType(activeTypeId)?.kind ?? 'line',
+    getActiveTypeKind: () => activeKind,
     getSelectedScreenShape: selectedScreenShape,
     // 선택된 손상의 모든 도형(원본 + 복제본). 선택된 도형이 아니어도 같은 손상의 도형을 끌면 그 도형을
     // 옮긴다(2026-09-30 사용자 요청: 복제한 뒤 원본도 바로 옮길 수 있게). 다른 손상의 도형은 그대로
@@ -477,7 +497,7 @@ async function start() {
         handleTap(lastPoint);
         return;
       }
-      const damage = finalizeStroke(points, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeId });
+      const damage = finalizeStroke(points, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeIdOf() });
       if (!damage) {
         // 너무 짧은 획은 탭으로 보고 손상 선택에 쓴다.
         handleTap(lastPoint);
@@ -491,7 +511,7 @@ async function start() {
         handleTap(end);
         return;
       }
-      const damage = finalizeRect(start, end, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeId });
+      const damage = finalizeRect(start, end, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeIdOf() });
       if (!damage) {
         handleTap(end);
         return;
@@ -533,8 +553,11 @@ async function start() {
     // (photoRequestId·resetPhotoButton은 아래에서 정의되지만 이 함수는 초기화가 끝난 뒤에만 불린다.)
     photoRequestId = null;
     resetPhotoButton();
+    setInkMode(false);
+    $('inkHint').hidden = true;
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
+    fillTypeSelect(damage);
     // 균열류의 가로/폭만 mm다. 0.3mm·0.5mm 경계로 손상현황이 갈리고, 물량 계산에는 쓰이지 않는다.
     // 단위 판정은 quantities.js의 widthUnitOf가 갖는다 — 2단계 물량표도 같은 판정을 써야 하므로.
     $('widthLabel').textContent = `가로/폭 (${widthUnitOf(type)})`;
@@ -794,6 +817,20 @@ async function start() {
   for (const id of ['widthInput', 'lengthInput', 'countInput', 'statusInput']) {
     $(id).addEventListener('input', updateSummary);
   }
+  $('typeSelect').addEventListener('change', () => {
+    const damage = selectedDamage();
+    const type = getDamageType($('typeSelect').value);
+    if (!damage || !type) return;
+    lastTypeFor[type.kind] = type.id;
+    // 기타가 아닌 유형으로 바꾸면 직접 적은 손상현황은 지운다(검증 규칙: 기타에서만 허용).
+    apply(updateDamage(editor, damage.id, { type: type.id, attrs: { statusText: type.id === 'etc' ? damage.attrs.statusText : '' } }, nowIso()));
+    // 제목·폭 단위·기타 줄을 새 유형에 맞춘다. 입력 중인 값은 그대로 둔다.
+    $('propsTitle').textContent = `${type.label} 속성`;
+    $('widthLabel').textContent = `가로/폭 (${widthUnitOf(type)})`;
+    $('statusRow').hidden = type.id !== 'etc';
+    updateSummary();
+  });
+
   $('propsSave').addEventListener('click', () => {
     const damage = selectedDamage();
     if (!damage) return;
@@ -833,6 +870,93 @@ async function start() {
     $('propsPanel').hidden = true;
     closePhotoStrip();
   });
+
+  // ✍ 손글씨로 입력(2026-10-09). 모드가 켜지고 속성창이 열려 있는 동안만 펜 획을 모은다. 속성창이 닫히면
+  // (저장·닫기·다른 손상 선택) 모드도 꺼진 것으로 보고 획을 버린다. 인식은 앱(→서버→AI)에 맡기고
+  // window.mangdoHandwritingResult로 답을 받는다 — 📷와 같은 방식. PC 브라우저(앱 밖)에서는 서버를 직접 부른다.
+  let inkMode = false;
+  let inkRequestId = null;
+  const ink = createInkInput({
+    svg: $('ink'),
+    container: $('viewer'),
+    isActive: () => inkMode && isPropsOpen(),
+    isFingerDrawEnabled: () => fingerDraw,
+  });
+  function setInkMode(on) {
+    inkMode = on;
+    $('inkStart').setAttribute('aria-pressed', String(on));
+    $('inkStart').textContent = on ? '✍ 쓰는 중' : '✍ 손글씨로 입력';
+    $('inkRecognize').hidden = !on;
+    $('inkClear').hidden = !on;
+    if (on) {
+      $('inkHint').textContent = '도면 위에 펜으로 쓰세요: 균열은 폭/길이(0.2/0.3), 면형은 가로x세로(1.2x0.5), 개소는 3EA. 다 쓰면 인식하기';
+      $('inkHint').hidden = false;
+    } else {
+      ink.clear();
+      inkRequestId = null;
+      $('inkRecognize').disabled = false;
+    }
+  }
+  $('inkStart').addEventListener('click', () => setInkMode(!inkMode));
+  $('inkClear').addEventListener('click', () => ink.clear());
+  // 카메라가 움직이면(손가락 팬·줌) 화면 좌표로 모은 획이 어긋난다 — 버린다.
+  viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
+    if (inkMode && ink.hasInk()) {
+      ink.clear();
+      $('inkHint').textContent = '화면이 움직여 획을 지웠습니다. 다시 써 주세요';
+    }
+  });
+  function applyHandwriting(result) {
+    if (!result.ok) {
+      showPropsError(`손글씨를 읽지 못했습니다: ${result.reason}`);
+      return;
+    }
+    const got = [];
+    if (result.width !== null) { $('widthInput').value = String(result.width); got.push(`폭 ${result.width}`); }
+    if (result.length !== null) { $('lengthInput').value = String(result.length); got.push(`길이 ${result.length}`); }
+    if (result.count !== null) { $('countInput').value = String(result.count); got.push(`개소 ${result.count}`); }
+    $('inkHint').hidden = false;
+    $('inkHint').textContent = got.length > 0
+      ? `읽은 글 "${result.text}" → ${got.join(', ')}. 맞는지 확인하고 저장하세요`
+      : `읽은 글 "${result.text}" — 숫자를 알아보지 못했습니다. 다시 쓰거나 키패드로 입력하세요`;
+    updateSummary();
+    ink.clear();
+    if (got.length > 0) {
+      inkMode = false;
+      $('inkStart').setAttribute('aria-pressed', 'false');
+      $('inkStart').textContent = '✍ 손글씨로 입력';
+      $('inkRecognize').hidden = true;
+      $('inkClear').hidden = true;
+    }
+  }
+  $('inkRecognize').addEventListener('click', async () => {
+    const image = ink.toPngBase64();
+    if (!image) {
+      $('inkHint').textContent = '아직 쓴 글이 없습니다';
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    inkRequestId = requestId;
+    $('inkRecognize').disabled = true;
+    $('inkHint').textContent = '읽는 중…';
+    if (window.ReactNativeWebView) {
+      postToApp({ type: 'handwriting', requestId, drawingId, image });
+      return;
+    }
+    try {
+      const result = await api(`/drawings/${drawingId}/handwriting`, { method: 'POST', body: JSON.stringify({ image }) });
+      window.mangdoHandwritingResult({ requestId, ok: true, ...result });
+    } catch (err) {
+      window.mangdoHandwritingResult({ requestId, ok: false, reason: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  window.mangdoHandwritingResult = (result) => {
+    if (!result || result.requestId !== inkRequestId) return;
+    inkRequestId = null;
+    $('inkRecognize').disabled = false;
+    if (!isPropsOpen()) return;
+    applyHandwriting(result);
+  };
 
   // 📷 버튼(2026-09-17 카메라 버튼 설계 6장). 앱에 takePhoto를 보내고 window.mangdoPhotoResult로
   // 회신을 받는다 — mangdoFlush(170행)와 같은 방식. requestId로 다른 요청의 답을 가려낸다.

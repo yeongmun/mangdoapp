@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
-import type { DamageDoc, Drawing } from '../api';
+import { recognizeHandwriting, type DamageDoc, type Drawing } from '../api';
 import { syncDecision } from '../offlineRules';
 import {
   modelUri,
@@ -268,6 +268,14 @@ export function ViewerScreen({ drawing, onBack }: Props) {
         saveSyncTimerRef.current = null;
         void syncWhileViewing();
       }, SAVE_SYNC_DEBOUNCE_MS);
+    } else if (type === 'handwriting') {
+      // 손글씨 인식(2026-10-09): 뷰어가 준 PNG를 서버에 보내고 결과를 그대로 돌려준다. 오프라인이면 실패로 답한다.
+      if (typeof requestId !== 'string') return;
+      const { image } = message as { image?: unknown };
+      if (typeof image !== 'string') return;
+      recognizeHandwriting(drawing.id, image)
+        .then((result) => inject('mangdoHandwritingResult', { requestId, ok: true, ...result }))
+        .catch((err: unknown) => inject('mangdoHandwritingResult', { requestId, ok: false, reason: err instanceof Error ? err.message : String(err) }));
     } else if (type === 'takePhoto') {
       if (typeof requestId !== 'string') return;
       // 뷰어는 drawingId도 함께 보내지만(설계 4장) 저장에는 **앱이 연 도면의 id**를 쓴다 —
