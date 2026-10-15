@@ -36,3 +36,6 @@ server/data/
 *.bak
 *.dwl
 *.dwl2
+
+# npx skills가 이 PC 절대경로로 만드는 링크 — 원본은 .agents/skills, 다른 PC는 skills-lock.json으로 다시 설치
+.claude/skills/
