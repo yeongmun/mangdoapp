@@ -318,9 +318,10 @@ export function DrawingListScreen({ onOpen }: Props) {
         text: '휴지통으로 보내기',
         style: 'destructive',
         onPress: () => {
+          // 실패해도 목록을 다시 읽는다 — 서버가 절반만 처리했을 때 화면이 실제와 어긋나지 않게(2026-10-17).
           deleteDrawing(drawing.id)
-            .then(load)
-            .catch((err: unknown) => setError(errMessage(err)));
+            .catch((err: unknown) => setError(errMessage(err)))
+            .finally(() => void load());
         },
       });
       buttons.push({ text: '취소', style: 'cancel' });

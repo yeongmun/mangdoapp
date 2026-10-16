@@ -16,7 +16,7 @@
 //           남지만, 복구가 "휴지통에 없는 파일은 건너뛰기"라서 그대로 되살아난다.
 //   복구:   파일 되돌리기 → 목록에 넣기 → 휴지통 폴더 지우기.
 
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isDrawingId, type DrawingRecord, type DrawingsStore } from './drawingsStore.js';
 import { readJsonFile, writeJsonFileAtomic } from './jsonFile.js';
@@ -55,9 +55,27 @@ async function exists(path: string): Promise<boolean> {
 
 // from이 없으면 아무것도 안 한다(사진이 없는 도면, 손상을 한 번도 저장하지 않은 도면). to가 이미 있으면
 // 덮어쓰지 않고 그대로 둔다 — 제자리에 있는 쪽이 최신이다(위 "순서" 참고).
+// Windows에서는 폴더·파일이 잠깐 잠겨 있으면(다른 요청이 사진·원본을 읽는 중, 탐색기 미리보기 등) rename이
+// EPERM/EBUSY로 실패한다(2026-10-17 "휴지통으로 보내면 서버 오류, 새로고침하면 옮겨져 있음"). 몇 번 다시
+// 해 보고, 그래도 안 되면 복사한 뒤 지운다.
 async function moveIfPresent(from: string, to: string): Promise<void> {
   if (!(await exists(from)) || (await exists(to))) return;
-  await rename(from, to);
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (err) {
+      lastError = err;
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EXDEV' && code !== 'EACCES') throw err;
+      if (code === 'EXDEV') break;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+  }
+  console.warn('[trash] rename 실패 — 복사 후 삭제로 대신합니다', from, (lastError as NodeJS.ErrnoException)?.code);
+  await cp(from, to, { recursive: true });
+  await rm(from, { recursive: true, force: true });
 }
 
 export class DrawingTrash {
@@ -76,13 +94,13 @@ export class DrawingTrash {
     const folder = this.folderFor(record.id);
     await mkdir(folder, { recursive: true });
     await writeJsonFileAtomic(join(folder, 'record.json'), { record, deletedAt } satisfies TrashRecordFile);
-    await this.drawings.remove(record.id);
-
+    // 파일을 먼저 옮기고 레코드는 마지막에 뺀다 — 중간에 실패하면 목록에 그대로 남아 다시 누를 수 있다.
     if (OBJECT_KEY_PATTERN.test(record.objectKey)) {
       await moveIfPresent(join(this.dirs.originalsDir, record.objectKey), join(folder, record.objectKey));
     }
     await moveIfPresent(join(this.dirs.damagesDir, `${record.id}.json`), join(folder, 'damages.json'));
     await moveIfPresent(join(this.dirs.photosDir, record.id), join(folder, 'photos'));
+    await this.drawings.remove(record.id);
     return { id: record.id, name: record.name, uploadedAt: record.uploadedAt, deletedAt };
   }
 
