@@ -102,11 +102,16 @@ export function readTableCells(pairs: DxfPair[], entity: RawEntity): string[][] 
   return cells;
 }
 
-const VALUE_FIELDS: RowField[] = ['status', 'width', 'length', 'count', 'quantity', 'unit'];
+/**
+ * 기존 손상으로 보는 조건: 손상위치나 치수·개소·물량 중 하나라도 적혀 있어야 한다. 손상현황·단위만 있는 행
+ * (템플릿의 본보기 행, 또는 값 없는 손상을 산출했다가 다시 올린 흔적 — 2026-10-16 "1번이 항상 있다")은
+ * 기존 손상이 아니다.
+ */
+const SUBSTANCE_FIELDS: RowField[] = ['location', 'width', 'length', 'count', 'quantity'];
 
 /**
  * 셀 글자에서 기존 손상 행을 뽑는다. 머리글 행은 손상물량표 머리글 키워드(tableFill과 같은 규칙)가
- * 값 열 3개 이상 맞는 첫 행이다. 그 아래에서 손상현황·치수·물량 중 하나라도 적힌 행이 기존 손상이다.
+ * 값 열 3개 이상 맞는 첫 행이다. 그 아래에서 손상위치·치수·개소·물량 중 하나라도 적힌 행이 기존 손상이다.
  * 머리글을 못 찾으면 null.
  */
 export function existingRowsOf(cells: string[][]): ExistingTable | null {
@@ -120,7 +125,7 @@ export function existingRowsOf(cells: string[][]): ExistingTable | null {
     const rows: ExistingRow[] = [];
     for (let r = headerRow + 1; r < cells.length; r++) {
       const row = cells[r];
-      if (!VALUE_FIELDS.some((field) => at(row, field) !== '')) continue;
+      if (!SUBSTANCE_FIELDS.some((field) => at(row, field) !== '')) continue;
       rows.push({
         number: r - headerRow,
         location: at(row, 'location'),

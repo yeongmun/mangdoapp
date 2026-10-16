@@ -102,3 +102,17 @@ describe('산출 — 기존 행은 그대로 두고 그 다음 행에 쓴다', (
     expect(result.warnings.some((w) => w.includes('2장'))).toBe(true);
   });
 });
+
+describe('existingRowsOf — 손상현황·단위만 있는 행은 기존 손상이 아니다(2026-10-16)', () => {
+  const header = ['번호', '손상위치', '손상현황', '가로/폭', '세로/길이', '개소', '면적/연장', '단위'];
+  it('템플릿 본보기 행(균열, m)만 있으면 행 없음·startNumber 0', () => {
+    const table = existingRowsOf([['손상물량표'], header, ['1', '', '균열', '', '', '', '', 'm'], ['2', '', '', '', '', '', '', '']])!;
+    expect(table.rows).toEqual([]);
+    expect(table.startNumber).toBe(0);
+  });
+  it('손상위치만 있어도, 치수만 있어도 기존 손상', () => {
+    const table = existingRowsOf([header, ['1', '교대 A1', '', '', '', '', '', ''], ['2', '', '박락', '0.5', '', '', '', '㎡']])!;
+    expect(table.rows.map((r) => r.number)).toEqual([1, 2]);
+    expect(table.startNumber).toBe(2);
+  });
+});
