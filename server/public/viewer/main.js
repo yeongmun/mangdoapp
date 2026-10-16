@@ -18,9 +18,7 @@ import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, offsetSh
 import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
 import {
-  appendPhotoNumber,
   formatQuantity,
-  parsePhotoNumbers,
   photoNumberFromFilename,
   quantityOf,
   statusTextOf,
@@ -288,23 +286,24 @@ async function start() {
   // 페이지 모드가 정해지는 아래쪽(showPage)에서 채운다 — 현황표 패널이 지금 틀을 묻는다.
   let currentPageIndex = null;
   let selectedShape = 0;
-  let fingerDraw = false;
   let coordCheck = false;
   const nowIso = () => new Date().toISOString();
 
   // 그리기 도구는 모양(선/네모)만 고른다(2026-10-09 사용자 결정, 인프라스마트 태블릿 Pro 방식). 손상
   // 유형은 그린 뒤 속성창에서 고른다. 새 손상은 그 모양으로 마지막에 고른 유형으로 시작한다
   // (처음엔 선=균열, 네모=박락).
-  let activeKind = 'line';
+  // 선/네모는 토글이다(2026-10-17): 켜면 펜·손가락 모두 그 모양을 그리고, 둘 다 꺼지면 **이동 모드**(손가락은
+  // 팬·줌, 펜·손가락 탭은 선택, 선택한 손상은 끌어 옮김). 처음은 이동 모드.
+  let activeKind = null;
   const lastTypeFor = { line: DEFAULT_DAMAGE_TYPE_ID, area: 'spalling' };
-  const activeTypeIdOf = () => lastTypeFor[activeKind];
+  const activeTypeIdOf = () => lastTypeFor[activeKind ?? 'line'];
   function setActiveKind(kind) {
     activeKind = kind;
     $('toolLine').setAttribute('aria-pressed', String(kind === 'line'));
     $('toolRect').setAttribute('aria-pressed', String(kind === 'area'));
   }
-  $('toolLine').addEventListener('click', () => setActiveKind('line'));
-  $('toolRect').addEventListener('click', () => setActiveKind('area'));
+  $('toolLine').addEventListener('click', () => setActiveKind(activeKind === 'line' ? null : 'line'));
+  $('toolRect').addEventListener('click', () => setActiveKind(activeKind === 'area' ? null : 'area'));
 
   // 속성창의 유형 목록: 그 손상의 모양(선 ↔ line 유형, 네모 ↔ area 유형)에 맞는 유형만 보인다.
   function fillTypeSelect(damage) {
@@ -474,7 +473,7 @@ async function start() {
   createCrackInput({
     viewer,
     container: $('viewer'),
-    isFingerDrawEnabled: () => fingerDraw,
+    isDrawEnabled: () => activeKind !== null,
     // 사진 오버레이가 열린 동안도 그리기·탭을 막는다(설계 5장). 판정은 순수 함수가 갖는다.
     isPropsOpen: () => blocksDrawing(isPropsOpen(), isPhotoViewOpen()),
     getActiveTypeKind: () => activeKind,
@@ -566,24 +565,7 @@ async function start() {
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
     fillTypeSelect(damage);
-    // 균열류의 가로/폭만 mm다. 0.3mm·0.5mm 경계로 손상현황이 갈리고, 물량 계산에는 쓰이지 않는다.
-    // 단위 판정은 quantities.js의 widthUnitOf가 갖는다 — 2단계 물량표도 같은 판정을 써야 하므로.
-    $('widthLabel').textContent = `가로/폭 (${widthUnitOf(type)})`;
-    // 손상현황을 직접 적는 것은 기타뿐이다. 나머지는 유형 이름·폭 구간으로 자동으로 정해진다.
-    $('statusRow').hidden = type.id !== 'etc';
-    $('widthInput').value = damage.measured.width ?? '';
-    $('lengthInput').value = damage.measured.length ?? '';
-    $('countInput').value = damage.measured.count ?? '';
-    $('noteInput').value = damage.attrs.note;
-    $('statusInput').value = damage.attrs.statusText;
-    // 사진번호는 모든 유형에서 입력받는다(statusRow와 달리 숨기지 않는다). 저장된 배열을
-    // 쉼표로 이어 보여주고, 저장할 때 parsePhotoNumbers로 다시 나눈다(설계 9.1~9.2).
-    $('photoInput').value = damage.attrs.photoNumbers.join(', ');
-    // 참고값은 도면 단위(설계 8장 미해결)가 정해질 때까지 숨긴다. 도면 단위를 모르는 채 그대로 보여주면
-    // (예: mm 도면의 1.8㎡가 1800000.0으로) 실제 크기와 자릿수가 크게 달라 보여 오히려 오해를 준다.
-    $('computedHint').hidden = true;
-    // 지난번 저장 시도에서 남은 검증 오류를 새로 열 때 지운다. 그대로 두면 이번 손상과 무관한
-    // 메시지가 계속 보인다.
+    // 치수(폭·길이·개소)·비고 칸은 없다(2026-10-17 단순화) — 손글씨(AI)로 넣고 요약줄로 확인한다.
     $('propsError').hidden = true;
     updateSummary();
     // 사진 줄은 서버에 물어봐야 하므로 기다리지 않고 채운다 — 속성창은 바로 열린다.
@@ -591,51 +573,20 @@ async function start() {
     $('propsPanel').hidden = false;
   }
 
-  // 빈 입력은 null(측정 안 함)로 본다. 그 외에는 0 이상의 유한한 숫자여야 하며, 아니면 거부한다.
-  // type="number" 칸에 `0..5`처럼 숫자로 파싱할 수 없는 글자를 치면 DOM의 value는 ''를 돌려주면서도
-  // 화면에는 친 글자가 그대로 남는다. value만 보면 이것과 진짜 빈 칸을 구분할 수 없어 "측정 안 함"으로
-  // 조용히 저장돼 버리므로, validity.badInput(브라우저가 판단한 "숫자로 못 읽음")을 먼저 본다.
-  function parseAmount(input) {
-    if (input.validity.badInput) return { ok: false, value: null };
-    const text = input.value.trim();
-    if (text === '') return { ok: true, value: null };
-    const parsed = Number(text);
-    return Number.isFinite(parsed) && parsed >= 0 ? { ok: true, value: parsed } : { ok: false, value: null };
-  }
-
-  // 개소는 낱개를 세는 값이라 정수여야 한다. 1.5개소는 물량표에 적을 수 없다.
-  function parseCount(input) {
-    if (input.validity.badInput) return { ok: false, value: null };
-    const text = input.value.trim();
-    if (text === '') return { ok: true, value: null };
-    const parsed = Number(text);
-    return Number.isInteger(parsed) && parsed >= 0 ? { ok: true, value: parsed } : { ok: false, value: null };
-  }
-
-  // 입력 중인 값으로 만든 임시 손상. 요약줄을 미리 보여주는 데만 쓰고 저장하지 않는다.
-  function draftFromInputs(damage) {
-    return {
-      ...damage,
-      measured: {
-        width: parseAmount($('widthInput')).value,
-        length: parseAmount($('lengthInput')).value,
-        count: parseCount($('countInput')).value,
-      },
-      attrs: { ...damage.attrs, statusText: $('statusInput').value.trim() },
-    };
-  }
-
   // 번호·손상현황·물량은 저장하지 않는다. 보여줄 때마다 다시 계산한다.
   function updateSummary() {
     const damage = selectedDamage();
     if (!damage) return;
-    const draft = draftFromInputs(damage);
+    const draft = damage;
     // overlay가 setDamages에서 이미 계산해 둔 번호를 그대로 읽는다 — 여기서 computeNumbers를
     // 다시 부르면 같은 값을 두 번 계산하는 셈이라 캐시를 둔 의미가 없다.
     const number = overlay.numberOf(damage.id);
     const quantity = quantityOf(draft);
     const quantityText = quantity === null ? '-' : `${formatQuantity(quantity)} ${unitOf(draft)}`;
-    $('propsSummary').textContent = `번호 ${number ?? '-'} · 손상현황 ${statusTextOf(draft)} · 물량 ${quantityText}`;
+    const m = draft.measured ?? {};
+    const dims = [m.width, m.length, m.count].map((v) => (Number.isFinite(v) ? String(v) : '-'));
+    const photos = Array.isArray(draft.attrs?.photoNumbers) && draft.attrs.photoNumbers.length > 0 ? ` · 사진 ${draft.attrs.photoNumbers.join(', ')}` : '';
+    $('propsSummary').textContent = `번호 ${number ?? '-'} · ${statusTextOf(draft)} · 폭 ${dims[0]}(${widthUnitOf(getDamageType(draft.type))}) 길이 ${dims[1]}m 개소 ${dims[2]} · 물량 ${quantityText}${photos}`;
   }
 
   // 속성 패널 자신의 검증 메시지. #saveError는 동기화 상태 전용이라 여기서 건드리지 않는다 —
@@ -660,7 +611,7 @@ async function start() {
   let photoStripGeneration = 0;
 
   // 이 refreshPhotoStrip 호출(damageId·generation으로 식별)이 더 이상 최신이 아닌지. 손상이 바뀌거나
-  // (damageId 가드 — closePhotoStrip을 단독으로 부르는 propsClose·propsSave·setSelection은 generation을
+  // (damageId 가드 — closePhotoStrip을 단독으로 부르는 propsClose·setSelection은 generation을
   // 올리지 않으므로 이 가드가 여전히 필요하다) 같은 손상에 대한 더 최근 refreshPhotoStrip이 시작됐으면
   // (generation 가드) true다. 손상이 바뀌는 경우는 새 refreshPhotoStrip 호출이 generation도 함께 올리므로
   // 두 가드가 같이 걸린다.
@@ -706,7 +657,7 @@ async function start() {
     if (offline) {
       // 오프라인은 서버 사진 목록을 모른다 — 칸에 적힌 번호마다 자리표시 칩만 보인다(설계 3.4장).
       // 📷 촬영은 지금처럼 앱의 대기열에 맡기고, 연결되면 mangdoPhotoUploaded가 다시 부른다.
-      const numbers = parsePhotoNumbers($('photoInput').value);
+      const numbers = selectedDamage()?.attrs?.photoNumbers ?? [];
       for (const number of numbers) strip.append(chip(`${number} (연결되면 보임)`));
       strip.hidden = numbers.length === 0;
       return;
@@ -721,7 +672,7 @@ async function start() {
     }
     // 기다리는 동안 더 최신 호출이 생겼으면(손상 전환이든, 같은 손상에 대한 겹친 호출이든) 버린다.
     if (isStalePhotoStrip(damageId, generation)) return;
-    const items = photoStripItems(parsePhotoNumbers($('photoInput').value), list);
+    const items = photoStripItems(selectedDamage()?.attrs?.photoNumbers ?? [], list);
     if (items.length === 0) return;
     for (const item of items) {
       if (item.kind === 'missing') {
@@ -822,9 +773,6 @@ async function start() {
     $('propsPanel').hidden = true;
     closePhotoStrip();
   });
-  for (const id of ['widthInput', 'lengthInput', 'countInput', 'statusInput']) {
-    $(id).addEventListener('input', updateSummary);
-  }
   $('typeSelect').addEventListener('change', () => {
     const damage = selectedDamage();
     const type = getDamageType($('typeSelect').value);
@@ -834,158 +782,8 @@ async function start() {
     apply(updateDamage(editor, damage.id, { type: type.id, attrs: { statusText: type.id === 'etc' ? damage.attrs.statusText : '' } }, nowIso()));
     // 제목·폭 단위·기타 줄을 새 유형에 맞춘다. 입력 중인 값은 그대로 둔다.
     $('propsTitle').textContent = `${type.label} 속성`;
-    $('widthLabel').textContent = `가로/폭 (${widthUnitOf(type)})`;
-    $('statusRow').hidden = type.id !== 'etc';
     updateSummary();
   });
-
-  $('propsSave').addEventListener('click', () => {
-    const damage = selectedDamage();
-    if (!damage) return;
-    const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
-    const width = parseAmount($('widthInput'));
-    const length = parseAmount($('lengthInput'));
-    const count = parseCount($('countInput'));
-    // 범위를 벗어난 값·숫자로 읽을 수 없는 글자를 조용히 null로 바꿔 저장하면(예: -3, `0..5`) 사용자가
-    // 적은 값이 사라진 채 패널이 닫혀 저장된 것처럼 보인다. 대신 패널을 열어둔 채 알리고 다시 고치게 한다.
-    if (!width.ok || !length.ok) {
-      showPropsError('저장하지 못했습니다: 0 이상의 숫자를 입력하세요.');
-      return;
-    }
-    if (!count.ok) {
-      showPropsError('저장하지 못했습니다: 개소는 0 이상의 정수를 입력하세요.');
-      return;
-    }
-    apply(
-      updateDamage(
-        editor,
-        damage.id,
-        {
-          measured: { width: width.value, length: length.value, count: count.value },
-          attrs: {
-            note: $('noteInput').value.trim(),
-            // 손상현황은 기타에서만 저장한다. 다른 유형에 값이 남아 있으면 검증에서 막힌다.
-            statusText: type.id === 'etc' ? $('statusInput').value.trim() : '',
-            // 사진번호는 거부할 입력이 없다 — 어떤 문자열이든 parsePhotoNumbers의 결과가 유효하므로
-            // width·length·count와 달리 검증 오류 경로가 없다.
-            photoNumbers: parsePhotoNumbers($('photoInput').value),
-          },
-        },
-        nowIso(),
-      ),
-    );
-    $('propsError').hidden = true;
-    $('propsPanel').hidden = true;
-    closePhotoStrip();
-  });
-
-  // ✍ 손글씨로 입력(2026-10-09). 모드가 켜지고 속성창이 열려 있는 동안만 펜 획을 모은다. 속성창이 닫히면
-  // (저장·닫기·다른 손상 선택) 모드도 꺼진 것으로 보고 획을 버린다. 인식은 앱(→서버→AI)에 맡기고
-  // window.mangdoHandwritingResult로 답을 받는다 — 📷와 같은 방식. PC 브라우저(앱 밖)에서는 서버를 직접 부른다.
-  let inkMode = false;
-  let inkRequestId = null;
-  let inkPendingImage = null;
-  const ink = createInkInput({
-    svg: $('ink'),
-    container: $('viewer'),
-    isActive: () => inkMode && isPropsOpen(),
-    isFingerDrawEnabled: () => fingerDraw,
-  });
-  function setInkMode(on) {
-    inkMode = on;
-    $('inkStart').setAttribute('aria-pressed', String(on));
-    $('inkStart').textContent = on ? '✍ 쓰는 중' : '✍ 손글씨로 입력';
-    $('inkRecognize').hidden = !on;
-    $('inkClear').hidden = !on;
-    if (on) {
-      $('inkHint').textContent = '도면 위에 펜으로 쓰세요: 균열은 폭/길이(0.2/0.3), 면형은 가로x세로(1.2x0.5), 개소는 3EA. 다 쓰면 인식하기';
-      $('inkHint').hidden = false;
-    } else {
-      ink.clear();
-      inkRequestId = null;
-      $('inkRecognize').disabled = false;
-    }
-  }
-  $('inkStart').addEventListener('click', () => setInkMode(!inkMode));
-  $('inkClear').addEventListener('click', () => ink.clear());
-  // 카메라가 움직이면(손가락 팬·줌) 화면 좌표로 모은 획이 어긋난다 — 버린다.
-  viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
-    if (inkMode && ink.hasInk()) {
-      ink.clear();
-      $('inkHint').textContent = '화면이 움직여 획을 지웠습니다. 다시 써 주세요';
-    }
-  });
-  // 인터넷이 없어 못 읽었으면 획 그림을 손상에 붙여 둔다 — 서버가 전송받은 뒤 읽어 빈 칸을 채운다(2026-10-09).
-  function deferHandwriting(image) {
-    const damage = selectedDamage();
-    if (!damage) return;
-    apply(updateDamage(editor, damage.id, { attrs: { handwriting: { image } } }, nowIso()));
-    ink.clear();
-    setInkMode(false);
-    $('inkHint').hidden = false;
-    $('inkHint').textContent = '인터넷이 없어 손글씨를 붙여 뒀습니다. 전송되면 서버가 읽어 빈 칸을 채우고, 다음에 도면을 열 때 보입니다';
-  }
-  function applyHandwriting(result, image) {
-    if (!result.ok) {
-      if (/연결|오프라인/.test(String(result.reason))) {
-        deferHandwriting(image);
-        return;
-      }
-      showPropsError(`손글씨를 읽지 못했습니다: ${result.reason}`);
-      return;
-    }
-    const got = [];
-    if (result.width !== null) { $('widthInput').value = String(result.width); got.push(`폭 ${result.width}`); }
-    if (result.length !== null) { $('lengthInput').value = String(result.length); got.push(`길이 ${result.length}`); }
-    if (result.count !== null) { $('countInput').value = String(result.count); got.push(`개소 ${result.count}`); }
-    $('inkHint').hidden = false;
-    $('inkHint').textContent = got.length > 0
-      ? `읽은 글 "${result.text}" → ${got.join(', ')}. 맞는지 확인하고 저장하세요`
-      : `읽은 글 "${result.text}" — 숫자를 알아보지 못했습니다. 다시 쓰거나 키패드로 입력하세요`;
-    updateSummary();
-    ink.clear();
-    // 읽은 글은 손상에 남긴다(붙여 뒀던 그림은 지운다). 값은 사용자가 저장을 눌러야 들어간다.
-    const target = selectedDamage();
-    if (target) apply(updateDamage(editor, target.id, { attrs: { handwriting: { text: result.text } } }, nowIso()));
-    if (got.length > 0) {
-      inkMode = false;
-      $('inkStart').setAttribute('aria-pressed', 'false');
-      $('inkStart').textContent = '✍ 손글씨로 입력';
-      $('inkRecognize').hidden = true;
-      $('inkClear').hidden = true;
-    }
-  }
-  $('inkRecognize').addEventListener('click', async () => {
-    const image = ink.toPngBase64();
-    if (!image) {
-      $('inkHint').textContent = '아직 쓴 글이 없습니다';
-      return;
-    }
-    const requestId = crypto.randomUUID();
-    inkRequestId = requestId;
-    inkPendingImage = image;
-    $('inkRecognize').disabled = true;
-    $('inkHint').textContent = '읽는 중…';
-    if (window.ReactNativeWebView) {
-      postToApp({ type: 'handwriting', requestId, drawingId, image });
-      return;
-    }
-    try {
-      const result = await api(`/drawings/${drawingId}/handwriting`, { method: 'POST', body: JSON.stringify({ image }) });
-      window.mangdoHandwritingResult({ requestId, ok: true, ...result });
-    } catch (err) {
-      window.mangdoHandwritingResult({ requestId, ok: false, reason: err instanceof Error ? err.message : String(err) });
-    }
-  });
-  window.mangdoHandwritingResult = (result) => {
-    if (!result || result.requestId !== inkRequestId) return;
-    inkRequestId = null;
-    const image = inkPendingImage;
-    inkPendingImage = null;
-    $('inkRecognize').disabled = false;
-    if (!isPropsOpen()) return;
-    applyHandwriting(result, image);
-  };
 
   // 📷 버튼(2026-09-17 카메라 버튼 설계 6장). 앱에 takePhoto를 보내고 window.mangdoPhotoResult로
   // 회신을 받는다 — mangdoFlush(170행)와 같은 방식. requestId로 다른 요청의 답을 가려낸다.
@@ -1025,17 +823,15 @@ async function start() {
     if (!isPropsOpen()) return;
     if (result.ok) {
       const number = photoNumberFromFilename(result.filename);
-      $('photoInput').value = appendPhotoNumber($('photoInput').value, number);
-      updateSummary();
-      // 찍은 번호는 **바로 손상에 저장한다** — 속성창의 저장을 기다리지 않는다. 사진은 곧 서버로
-      // 올라가는데 번호가 손상에 없으면 zip에서 `미연결_`이 된다(2026-09-21 현장). 다른 칸(폭·길이·비고)은
-      // 건드리지 않는다: 그 값들은 여전히 저장을 눌러야 들어간다.
+      // 찍은 번호는 **바로 손상에 저장한다**. 사진은 곧 서버로 올라가는데 번호가 손상에 없으면 zip에서
+      // `미연결_`이 된다(2026-09-21 현장).
       const target = selectedDamage();
       if (target) {
         const saved = target.attrs?.photoNumbers;
         const next = withPhotoNumber(saved, number);
         if (next !== saved) apply(updateDamage(editor, target.id, { attrs: { photoNumbers: next } }, nowIso()));
       }
+      updateSummary();
       // 방금 붙인 번호는 아직 서버에 없다 — 칩으로 보인다. 전송이 끝나면 mangdoPhotoUploaded가
       // 다시 읽어 썸네일로 바뀐다.
       const shown = selectedDamage();
@@ -1063,10 +859,6 @@ async function start() {
     );
   };
 
-  $('fingerDraw').addEventListener('click', () => {
-    fingerDraw = !fingerDraw;
-    $('fingerDraw').setAttribute('aria-pressed', String(fingerDraw));
-  });
   $('coordCheck').addEventListener('click', () => {
     coordCheck = !coordCheck;
     $('coordCheck').setAttribute('aria-pressed', String(coordCheck));

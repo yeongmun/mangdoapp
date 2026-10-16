@@ -204,12 +204,15 @@ export function offsetShape(worldPoints, mapper, factor = DUPLICATE_OFFSET_FACTO
 export function createCrackInput({
   viewer,
   container,
-  isFingerDrawEnabled,
+  // 그리기 모드(선/네모 버튼이 켜짐)인가. 꺼져 있으면 이동 모드 — 손가락은 뷰어 팬·줌, 펜은 선택한 손상을
+  // 옮기거나 크기를 바꾸는 것만 되고 새 손상은 생기지 않는다(2026-10-17, 손가락 그리기 토글 대체).
+  isDrawEnabled,
   // 속성 패널이 열려 있는 동안은 그리기 제스처를 아예 시작하지 않는다(R3). 패널은 #viewer 밖의
   // 240px 모서리 오버레이라 inViewer() 검사로는 막히지 않으므로, 패널이 열려 있으면 펜이 도면에
   // 닿아도 새 손상이 생기거나 선택한 사각형이 움직이지 않아야 한다. 줌·팬은 뷰어 자신의 제스처이므로
   // 여기서 이벤트를 삼키지 않고(스크롤/네비게이션 이벤트는 그대로 두고) false를 돌려주는 방식으로 넘긴다.
   isPropsOpen,
+  // getActiveTypeKind(): 'line' | 'area' | null — null이면 이동 모드
   getActiveTypeKind,
   // getSelectedScreenShape(): { kind: 'polyline' | 'rect', points } | null — 선택된 손상의 화면 좌표.
   // 모서리·회전 핸들 판정(hitHandle)은 kind === 'rect'일 때만 하고, 몸통 이동 판정(hitSelectedShape)은
@@ -255,7 +258,15 @@ export function createCrackInput({
 
   function wantsDrawing(event) {
     if (event.pointerType === 'pen') return true;
-    return event.pointerType === 'mouse' && event.button === 0 && isFingerDrawEnabled();
+    return event.pointerType === 'mouse' && event.button === 0 && isDrawEnabled();
+  }
+
+  // 이동 모드에서 이 점을 누르면 선택한 손상을 다루게 되는가(핸들·몸통·같은 손상의 다른 도형).
+  function hitsSelected(point) {
+    const selectedShape = getSelectedScreenShape();
+    if (selectedShape && selectedShape.kind === 'rect' && hitHandle(point, selectedShape.points)) return true;
+    if (hitSelectedShape(point, selectedShape)) return true;
+    return getSelectedDamageScreenShapes().some((shape) => hitSelectedShape(point, shape));
   }
 
   // 입력 우선순위(설계 §4): ① 선택된 사각형의 모서리·회전 핸들 ② 선택된 손상의 몸통(이동)
@@ -284,7 +295,9 @@ export function createCrackInput({
       gesture = { kind: 'move', start: point, points: other.points };
       return;
     }
-    if (getActiveTypeKind() === 'area') {
+    const kind = getActiveTypeKind();
+    if (kind === null || kind === undefined) return; // 이동 모드: 새 손상은 그리지 않는다
+    if (kind === 'area') {
       gesture = { kind: 'rect', start: point };
       onDraft({ kind: 'rect', points: rectFromDrag(point, point) });
       return;
@@ -372,6 +385,8 @@ export function createCrackInput({
     // 이벤트가 뷰어에 그대로 전달되게 한다 — 두 손가락 줌·팬 등 뷰어 자신의 제스처가 막히지 않는다.
     if (isPropsOpen()) return;
     if (!inViewer(event) || !wantsDrawing(event)) return;
+    // 이동 모드에서는 선택한 손상을 건드리는 펜만 받는다 — 나머지는 뷰어가 팬·줌한다.
+    if (!isDrawEnabled() && !hitsSelected(toCanvas(event))) return;
     // 손가락 드래그 중 펜이 터치되면 손가락 제스처를 취소하고 펜을 우선한다.
     if (gesture !== null) {
       endGesture(toCanvas(event), true);
@@ -416,13 +431,13 @@ export function createCrackInput({
     window.addEventListener(type, onTouch, listenerOptions);
   }
 
-  // 손가락 그리기: 뷰어 도구로 등록해 한 손가락 드래그(drag*)만 가져간다.
+  // 그리기 모드의 손가락: 뷰어 도구로 등록해 한 손가락 드래그(drag*)만 가져간다.
   const tool = new Autodesk.Viewing.ToolInterface();
   tool.names = [TOOL_NAME];
   tool.getPriority = () => 100;
   tool.handleGesture = (event) => {
     if (activePointerId !== null) return false;
-    if (!isFingerDrawEnabled()) return false;
+    if (!isDrawEnabled()) return false;
     const point = [event.canvasX, event.canvasY];
     // 속성 패널이 열려 있으면 손가락 제스처를 받지 않는다. false를 돌려주면 툴 컨트롤러가 다음
     // 우선순위 도구(뷰어의 기본 줌·팬)에 넘기므로 핀치·회전 같은 뷰어 제스처는 그대로 동작한다.
