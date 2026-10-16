@@ -170,8 +170,13 @@ function validateAttrs(damage, type, path, errors) {
     const h = attrs.handwriting;
     const okImage = typeof h?.image === 'string' && h.image !== '';
     const okText = typeof h?.text === 'string';
-    if (typeof h !== 'object' || h === null || (!okImage && !okText)) {
-      errors.push(`${path}.attrs.handwriting은 image(base64) 또는 text를 가진 객체여야 합니다.`);
+    // strokes: 도면 좌표 획 목록 [[[x,y],...],...] (2026-10-17 방식 C — 화면에 남기고 한 번에 읽는다)
+    const okStrokes =
+      Array.isArray(h?.strokes) &&
+      h.strokes.length > 0 &&
+      h.strokes.every((s) => Array.isArray(s) && s.length > 0 && s.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)));
+    if (typeof h !== 'object' || h === null || (!okImage && !okText && !okStrokes)) {
+      errors.push(`${path}.attrs.handwriting은 strokes·image(base64)·text 중 하나를 가진 객체여야 합니다.`);
     }
   }
   if (!isValidPhotoNumbers(attrs.photoNumbers)) {

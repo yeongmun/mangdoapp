@@ -28,7 +28,11 @@ export function applyHandwritingToDamage(damage: unknown, values: { width: numbe
   if ((measured.width === null || measured.width === undefined) && values.width !== null) measured.width = values.width;
   if ((measured.length === null || measured.length === undefined) && values.length !== null) measured.length = values.length;
   if ((measured.count === null || measured.count === undefined) && values.count !== null) measured.count = values.count;
-  const attrs = { ...d.attrs, handwriting: { text: values.text } };
+  // 획(strokes)은 남긴다 — 뷰어가 "읽음"으로 회색으로 보여 준다. 그림(image)만 지운다.
+  const previous = (d.attrs?.handwriting ?? {}) as Record<string, unknown>;
+  const { image: _image, ...rest } = previous;
+  void _image;
+  const attrs = { ...d.attrs, handwriting: { ...rest, text: values.text } };
   return { ...d, measured, attrs, updatedAt: now };
 }
 

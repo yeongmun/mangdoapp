@@ -14,6 +14,8 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 export const CRACK_COLOR = '#e53935';
 /** 표 칸에 얹는 값 글자색 — 도면 글자처럼 검정 */
 const TABLE_TEXT_COLOR = '#1a1a1a';
+const INK_PENDING_COLOR = '#1e66f5';
+const INK_DONE_COLOR = '#9aa0a6';
 export const SELECTED_COLOR = '#fb8c00';
 // 사진 줄은 도면의 `사진번호` 레이어(노랑, 색 2)와 같아 보이게 그린다. 선택해도 노란색 그대로다.
 // 근거: docs/superpowers/specs/2026-09-16-label-layout-design.md 3장
@@ -519,6 +521,26 @@ export function createOverlay(svg, mapper) {
     }
   }
 
+  // 손상에 붙은 손글씨 획(attrs.handwriting.strokes, 도면 좌표, 2026-10-17). 아직 안 읽은 것은 파랑, 읽은 것은 회색.
+  function renderInk(elements) {
+    if (!mapper.dwgStatus?.matrix) return;
+    for (const damage of damages) {
+      const h = damage?.attrs?.handwriting;
+      if (!h || !Array.isArray(h.strokes)) continue;
+      const color = typeof h.text === 'string' ? INK_DONE_COLOR : INK_PENDING_COLOR;
+      for (const stroke of h.strokes) {
+        const screen = [];
+        for (const point of stroke) {
+          const world = mapper.dwgToWorld(point);
+          if (!world) continue;
+          screen.push(mapper.worldToClient(world));
+        }
+        if (screen.length === 1) screen.push([screen[0][0] + 0.5, screen[0][1]]);
+        if (screen.length >= 2) elements.push(polylineElement(screen, color, 2, 0.9));
+      }
+    }
+  }
+
   function render() {
     frame = 0;
     const scale = computeScale(mapper);
@@ -526,6 +548,7 @@ export function createOverlay(svg, mapper) {
     const elements = [];
     const patternsNeeded = new Map();
     renderTableCells(elements, sizes);
+    renderInk(elements);
     // 번호는 저장하지 않는다. setDamages에서 이미 계산해 둔 값을 그대로 쓴다(위 numbers 캐시).
     for (const damage of damages) {
       // 크기·회전·이동 중인 도형은 움직이는 draft가 대신 보여준다 — 그대로 두면 손 떼기 전 원래

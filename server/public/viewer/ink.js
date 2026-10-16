@@ -1,7 +1,7 @@
-// 손글씨 입력(2026-10-09, 인프라스마트 태블릿 Pro의 "펜으로 치수 쓰기"). 속성창의 「손글씨로 입력」이 켜진 동안
-// 펜 획을 화면 좌표로 모아 두고(#ink svg에 파랗게 보여 준다), 「인식하기」를 누르면 획을 작은 흑백 PNG로
-// 그려 앱(→ 서버 → AI)에 보낸다. 인식 결과를 칸에 넣고 저장하는 건 main.js의 속성창이 한다.
-// 획 → 그림 변환(rasterizeStrokes)은 DOM 없이 canvas 비슷한 것만 받아 테스트할 수 있게 떼어 둔다.
+// 손글씨 입력(2026-10-09 → 2026-10-17 방식 C). 이동 모드에서 펜으로 쓴 획을 받아(#ink svg에 그리는 동안만 파랗게)
+// 획이 끝나면 onStroke(화면 좌표)로 넘긴다 — 어느 손상에 붙일지·저장은 main.js(inkAttach.js 규칙)가 한다.
+// 아주 짧은 획은 탭으로 보고 onTap으로 넘긴다(펜 탭 선택). 획 → 그림 변환(rasterizeStrokes)은 DOM 없이
+// canvas 비슷한 것만 받아 테스트할 수 있게 떼어 둔다.
 
 const INK_COLOR = '#1e66f5';
 const INK_WIDTH_PX = 3;
@@ -9,6 +9,8 @@ const INK_WIDTH_PX = 3;
 const RASTER_PADDING = 24;
 const RASTER_MIN_HEIGHT = 160;
 const RASTER_MAX_WIDTH = 1200;
+/** 이보다 작은 획은 글씨가 아니라 탭이다(px) */
+const TAP_PX = 6;
 
 /** @typedef {number[][]} Stroke */
 
@@ -88,9 +90,7 @@ export function rasterizeStrokes(strokes, canvas) {
  * crackTool은 속성창이 열려 있으면 먼저 손을 떼므로(isPropsOpen) 여기까지 이벤트가 온다.
  * @param {{ svg: SVGSVGElement, container: Element, isActive: () => boolean, isFingerDrawEnabled: () => boolean }} deps
  */
-export function createInkInput({ svg, container, isActive, isFingerDrawEnabled }) {
-  /** @type {Stroke[]} */
-  let strokes = [];
+export function createInkInput({ svg, container, isActive, isFingerDrawEnabled, onStroke, onTap }) {
   let current = null;
   let activePointerId = null;
 
@@ -111,7 +111,7 @@ export function createInkInput({ svg, container, isActive, isFingerDrawEnabled }
 
   function render() {
     const elements = [];
-    for (const stroke of current ? [...strokes, current] : strokes) {
+    for (const stroke of current ? [current] : []) {
       if (stroke.length === 0) continue;
       const el = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
       el.setAttribute('points', stroke.map(([x, y]) => `${x},${y}`).join(' '));
@@ -144,9 +144,13 @@ export function createInkInput({ svg, container, isActive, isFingerDrawEnabled }
     if (activePointerId === null || event.pointerId !== activePointerId) return;
     swallow(event);
     activePointerId = null;
-    if (current && current.length > 0) strokes.push(current);
+    const stroke = current;
     current = null;
     render();
+    if (!stroke || stroke.length === 0) return;
+    const b = strokesBounds([stroke]);
+    if (b && b.maxX - b.minX < TAP_PX && b.maxY - b.minY < TAP_PX) onTap?.(stroke[stroke.length - 1]);
+    else onStroke?.(stroke);
   }
 
   const options = { capture: true, passive: false };
@@ -156,19 +160,17 @@ export function createInkInput({ svg, container, isActive, isFingerDrawEnabled }
   window.addEventListener('pointercancel', onEnd, options);
 
   return {
-    strokes: () => strokes,
-    hasInk: () => strokes.length > 0,
-    clear() {
-      strokes = [];
+    cancel() {
       current = null;
       activePointerId = null;
       render();
     },
-    /** 인식용 PNG(base64, data: 머리 없음). 획이 없으면 null */
-    toPngBase64() {
-      const canvas = rasterizeStrokes(strokes, document.createElement('canvas'));
-      if (!canvas) return null;
-      return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
-    },
   };
+}
+
+/** 획 목록(어느 좌표계든)을 인식용 PNG(base64, data: 머리 없음)로. 획이 없으면 null */
+export function strokesToPngBase64(strokes) {
+  const canvas = rasterizeStrokes(strokes, document.createElement('canvas'));
+  if (!canvas) return null;
+  return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
 }

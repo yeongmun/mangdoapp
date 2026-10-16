@@ -15,7 +15,7 @@ import {
 import { DAMAGE_TYPES, DEFAULT_DAMAGE_TYPE_ID, getDamageType } from './damageTypes.js';
 import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, offsetShape, pickDamage } from './crackTool.js';
-import { createOverlay } from './overlay.js';
+import { computeScale, createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
 import {
   formatQuantity,
@@ -30,7 +30,9 @@ import { blocksDrawing, photoStripItems } from './photoStrip.js';
 import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlineApi.js';
 import { clampPage, frameWorldBox, pageCount, pageLabel } from './pageView.js';
 import { statusTableRows, statusTableTotals } from './statusTable.js';
-import { createInkInput } from './ink.js';
+import { createInkInput, strokesToPngBase64 } from './ink.js';
+import { chooseTarget, pendingInkDamages, pointsBounds, unionBounds } from './inkAttach.js';
+import { simplifyPolyline } from './geometry.js';
 
 const $ = (id) => document.getElementById(id);
 // 오프라인(설계 3.4장)은 `?offline=1`로 온다 — 앱이 file://로 이 페이지를 열 때 붙인다. 어떤 WebView가
@@ -286,7 +288,8 @@ async function start() {
   // 페이지 모드가 정해지는 아래쪽(showPage)에서 채운다 — 현황표 패널이 지금 틀을 묻는다.
   let currentPageIndex = null;
   let selectedShape = 0;
-  let coordCheck = false;
+  // 손글씨 인식이 돌고 있는가(도구막대 버튼 잠금). 아래 손글씨 블록이 쓴다.
+  let inkBusy = false;
   const nowIso = () => new Date().toISOString();
 
   // 그리기 도구는 모양(선/네모)만 고른다(2026-10-09 사용자 결정, 인프라스마트 태블릿 Pro 방식). 손상
@@ -372,6 +375,9 @@ async function start() {
     const outside = overlay.outsideFrameCount();
     $('frameWarning').textContent = `망도틀 밖 손상 ${outside}개 — 번호 없음`;
     $('frameWarning').hidden = outside === 0;
+    const pendingInk = pendingInkDamages(editor.doc.damages).length;
+    $('inkRecognizeAll').textContent = pendingInk > 0 ? `손글씨 인식 (${pendingInk})` : '손글씨 인식';
+    $('inkRecognizeAll').disabled = pendingInk === 0 || inkBusy;
     renderStatusTable();
   }
 
@@ -441,20 +447,19 @@ async function start() {
     refresh();
   }
 
-  function showCoordinates([x, y]) {
-    const world = mapper.clientToWorld(x, y);
-    if (!world) return;
-    const dwg = mapper.worldToDwg(world);
-    const dwgText = dwg ? `X ${dwg[0].toFixed(3)}  Y ${dwg[1].toFixed(3)}` : '변환 불가';
-    $('coordPanel').textContent = `뷰어  X ${world[0].toFixed(6)}  Y ${world[1].toFixed(6)}\nDWG   ${dwgText}`;
+  // 짧은 안내 문구(좌표 확인 패널 자리를 그대로 쓴다). 몇 초 뒤 스스로 사라진다.
+  let noticeTimer = null;
+  function showNotice(text, ms = 4000) {
+    $('coordPanel').textContent = text;
     $('coordPanel').hidden = false;
+    if (noticeTimer !== null) clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => {
+      $('coordPanel').hidden = true;
+      noticeTimer = null;
+    }, ms);
   }
 
   function handleTap(point) {
-    if (coordCheck) {
-      showCoordinates(point);
-      return true;
-    }
     const picked = pickDamage(editor.doc.damages, point, mapper);
     setSelection(picked ? picked.id : null, picked ? picked.shapeIndex : 0);
     refresh();
@@ -492,10 +497,6 @@ async function start() {
     onStroke: (points) => {
       overlay.setDraft(null);
       const lastPoint = points[points.length - 1];
-      if (coordCheck) {
-        handleTap(lastPoint);
-        return;
-      }
       const damage = finalizeStroke(points, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeIdOf() });
       if (!damage) {
         // 너무 짧은 획은 탭으로 보고 손상 선택에 쓴다.
@@ -506,10 +507,6 @@ async function start() {
     },
     onRect: (start, end) => {
       overlay.setDraft(null);
-      if (coordCheck) {
-        handleTap(end);
-        return;
-      }
       const damage = finalizeRect(start, end, mapper, { now: nowIso(), newId: () => crypto.randomUUID(), typeId: activeTypeIdOf() });
       if (!damage) {
         handleTap(end);
@@ -552,15 +549,19 @@ async function start() {
     // (photoRequestId·resetPhotoButton은 아래에서 정의되지만 이 함수는 초기화가 끝난 뒤에만 불린다.)
     photoRequestId = null;
     resetPhotoButton();
-    setInkMode(false);
     $('inkHint').hidden = true;
     const handwriting = damage.attrs.handwriting;
-    if (handwriting && typeof handwriting.image === 'string') {
+    const hasStrokes = Array.isArray(handwriting?.strokes) && handwriting.strokes.length > 0;
+    $('inkErase').hidden = !handwriting;
+    if (handwriting && typeof handwriting.text === 'string') {
       $('inkHint').hidden = false;
-      $('inkHint').textContent = '손글씨 대기 중 — 전송되면 서버가 읽어 빈 칸을 채웁니다. 지금 읽으려면 ✍를 눌러 다시 쓰세요';
-    } else if (handwriting && typeof handwriting.text === 'string') {
+      $('inkHint').textContent = `손글씨로 읽음: "${handwriting.text}" — 틀렸으면 지우고 옆에 다시 쓰세요`;
+    } else if (handwriting && typeof handwriting.image === 'string') {
       $('inkHint').hidden = false;
-      $('inkHint').textContent = `손글씨로 읽음: "${handwriting.text}" — 값이 맞는지 확인하세요`;
+      $('inkHint').textContent = '손글씨 대기 중 — 전송되면 서버가 읽어 빈 칸을 채웁니다';
+    } else if (hasStrokes) {
+      $('inkHint').hidden = false;
+      $('inkHint').textContent = '손글씨 있음(아직 안 읽음) — 도구막대 「손글씨 인식」을 누르세요';
     }
     const type = getDamageType(damage.type) ?? getDamageType(DEFAULT_DAMAGE_TYPE_ID);
     $('propsTitle').textContent = `${type.label} 속성`;
@@ -785,6 +786,155 @@ async function start() {
     updateSummary();
   });
 
+  // ── 손글씨(2026-10-17 방식 C) ──────────────────────────────────────────────────────────
+  // 이동 모드(선·네모 꺼짐)에서 펜으로 쓴 획은 전부 손글씨다. 획이 끝나면 도면 좌표로 바꿔 가장 가까운
+  // 손상(바로 전 획 옆이면 그 손상)에 붙여 **문서에 저장**하고(attrs.handwriting.strokes), 그 손상을 선택해
+  // 어디에 붙었는지 보여 준다. 읽기는 도구막대 「손글씨 인식」으로 한 번에: 손상마다 획을 PNG로 그려
+  // 앱(→서버→AI)에 보내고 결과를 폭/길이/개소에 넣는다. 인터넷이 없으면 그림을 손상에 붙여 두고
+  // 전송될 때 서버가 읽는다. 다 읽은 획은 회색으로 남는다.
+  const INK_MAX_DISTANCE_PX = 250;
+  const INK_GROUP_GAP_PX = 80;
+  const INK_GROUP_GAP_MS = 2500;
+  let previousInk = null; // { damageId, at, bounds(dwg) }
+
+  function toDwgPoints(clientPoints) {
+    if (!mapper.dwgStatus?.matrix) return null;
+    const out = [];
+    for (const [x, y] of clientPoints) {
+      const world = mapper.clientToWorld(x, y);
+      const dwg = world ? mapper.worldToDwg(world) : null;
+      if (!dwg || !isFinitePoint(dwg)) return null;
+      out.push([Number(dwg[0].toFixed(2)), Number(dwg[1].toFixed(2))]);
+    }
+    return out;
+  }
+
+  function attachInkStroke(clientPoints) {
+    const simplified = simplifyPolyline(clientPoints, 1.5);
+    const dwg = toDwgPoints(simplified);
+    if (!dwg) {
+      showNotice('이 도면은 좌표 변환이 없어 손글씨를 붙일 수 없습니다');
+      return;
+    }
+    const pxPerMm = computeScale(mapper).pxPerMm;
+    const unit = pxPerMm && Number.isFinite(pxPerMm) && pxPerMm > 0 ? 1 / pxPerMm : 1;
+    const now = Date.now();
+    const target = chooseTarget({
+      strokeDwg: dwg,
+      damages: editor.doc.damages,
+      shapesOf,
+      previous: previousInk,
+      now,
+      maxDistance: INK_MAX_DISTANCE_PX * unit,
+      groupGapMs: INK_GROUP_GAP_MS,
+      groupGapDwg: INK_GROUP_GAP_PX * unit,
+    });
+    if (!target) {
+      showNotice('가까운 손상이 없어 글씨를 붙이지 못했습니다 — 손상 바로 옆에 써 주세요');
+      previousInk = null;
+      return;
+    }
+    const damage = editor.doc.damages.find((d) => d.id === target.damageId);
+    const current = damage?.attrs?.handwriting;
+    // 이미 읽은 손상 옆에 다시 쓰면 새 글씨로 시작한다(옛 획·읽은 글은 버린다). 안 읽은 글씨면 이어 쓴다.
+    const strokes = current && !('text' in current) && Array.isArray(current.strokes) ? [...current.strokes, dwg] : [dwg];
+    apply(updateDamage(editor, target.damageId, { attrs: { handwriting: { strokes } } }, nowIso()));
+    const bounds = pointsBounds(dwg);
+    previousInk = { damageId: target.damageId, at: now, bounds: previousInk && previousInk.damageId === target.damageId && target.reason === 'group' ? unionBounds(previousInk.bounds, bounds) : bounds };
+    if (selectedId !== target.damageId) {
+      setSelection(target.damageId, 0);
+      refresh();
+    }
+  }
+
+  createInkInput({
+    svg: $('ink'),
+    container: $('viewer'),
+    // 이동 모드이고 어떤 창도 열려 있지 않을 때만 펜 획을 받는다. 선택한 손상을 끌 때는 crackTool이 먼저 삼킨다.
+    isActive: () => activeKind === null && !isPropsOpen() && !isPhotoViewOpen() && $('statusPanel').hidden,
+    isFingerDrawEnabled: () => false,
+    onStroke: attachInkStroke,
+    onTap: handleTap,
+  });
+
+  $('inkErase').addEventListener('click', () => {
+    const damage = selectedDamage();
+    if (!damage) return;
+    apply(updateDamage(editor, damage.id, { attrs: { handwriting: undefined } }, nowIso()));
+    $('inkErase').hidden = true;
+    $('inkHint').hidden = true;
+    previousInk = null;
+  });
+
+  // 인식 요청 한 건: 앱이 있으면 앱에 보내고(window.mangdoHandwritingResult로 회신), 아니면 서버를 직접 부른다.
+  const inkWaiters = new Map(); // requestId → resolve
+  function recognizeImage(image) {
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      inkWaiters.set(requestId, resolve);
+      if (window.ReactNativeWebView) {
+        postToApp({ type: 'handwriting', requestId, drawingId, image });
+        return;
+      }
+      api(`/drawings/${drawingId}/handwriting`, { method: 'POST', body: JSON.stringify({ image }) })
+        .then((result) => window.mangdoHandwritingResult({ requestId, ok: true, ...result }))
+        .catch((err) => window.mangdoHandwritingResult({ requestId, ok: false, reason: err instanceof Error ? err.message : String(err) }));
+    });
+  }
+  window.mangdoHandwritingResult = (result) => {
+    const resolve = result && inkWaiters.get(result.requestId);
+    if (!resolve) return;
+    inkWaiters.delete(result.requestId);
+    resolve(result);
+  };
+
+  // 도면 좌표는 y가 위로 자라므로 그림으로 그릴 때 뒤집는다.
+  const flipY = (strokes) => strokes.map((stroke) => stroke.map(([x, y]) => [x, -y]));
+
+  $('inkRecognizeAll').addEventListener('click', async () => {
+    if (inkBusy) return;
+    const targets = pendingInkDamages(editor.doc.damages);
+    if (targets.length === 0) return;
+    inkBusy = true;
+    refresh();
+    showNotice(`손글씨 ${targets.length}개 읽는 중…`, 60000);
+    let read = 0;
+    let deferred = 0;
+    let failed = [];
+    for (const target of targets) {
+      const latest = editor.doc.damages.find((d) => d.id === target.id);
+      const strokes = latest?.attrs?.handwriting?.strokes;
+      if (!Array.isArray(strokes) || strokes.length === 0) continue;
+      const image = strokesToPngBase64(flipY(strokes));
+      if (!image) continue;
+      const result = await recognizeImage(image);
+      const again = editor.doc.damages.find((d) => d.id === target.id);
+      if (!again || again.attrs?.handwriting?.strokes !== strokes) continue; // 읽는 동안 바뀜
+      if (result.ok) {
+        const measured = {};
+        if (result.width !== null) measured.width = result.width;
+        if (result.length !== null) measured.length = result.length;
+        if (result.count !== null) measured.count = result.count;
+        apply(updateDamage(editor, target.id, { measured, attrs: { handwriting: { strokes, text: result.text } } }, nowIso()));
+        read += 1;
+      } else if (/연결|오프라인/.test(String(result.reason))) {
+        // 인터넷 없음: 그림을 붙여 두면 전송될 때 서버가 읽는다
+        apply(updateDamage(editor, target.id, { attrs: { handwriting: { strokes, image } } }, nowIso()));
+        deferred += 1;
+      } else {
+        failed.push(result.reason);
+      }
+    }
+    inkBusy = false;
+    refresh();
+    const parts = [];
+    if (read > 0) parts.push(`${read}개 읽어 넣음`);
+    if (deferred > 0) parts.push(`${deferred}개는 인터넷 되면 서버가 읽음`);
+    if (failed.length > 0) parts.push(`${failed.length}개 실패: ${failed[0]}`);
+    showNotice(parts.join(' · ') || '읽을 손글씨가 없습니다', 6000);
+    if (isPropsOpen()) openProps();
+  });
+
   // 📷 버튼(2026-09-17 카메라 버튼 설계 6장). 앱에 takePhoto를 보내고 window.mangdoPhotoResult로
   // 회신을 받는다 — mangdoFlush(170행)와 같은 방식. requestId로 다른 요청의 답을 가려낸다.
   // 시간제한은 두지 않는다 — 카메라가 앱 위에 떠 있는 동안(사진 구도 잡기, 권한 대화상자) 얼마나
@@ -859,11 +1009,6 @@ async function start() {
     );
   };
 
-  $('coordCheck').addEventListener('click', () => {
-    coordCheck = !coordCheck;
-    $('coordCheck').setAttribute('aria-pressed', String(coordCheck));
-    if (!coordCheck) $('coordPanel').hidden = true;
-  });
   // 번호는 이미 추가·삭제 때마다 자동으로 다시 계산된다(overlay.setDamages). 이 버튼은 문서를
   // 바꾸지 않고 같은 계산을 강제로 다시 돌려 화면에 확인시켜 주는 용도일 뿐이다 — 저장도,
   // updatedAt 변경도, 서버 요청도 하지 않는다. 도구막대에 있으므로 속성 패널이 열려 있어도
