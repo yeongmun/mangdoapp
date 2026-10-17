@@ -295,8 +295,9 @@ async function start() {
   // 그리기 도구는 모양(선/네모)만 고른다(2026-10-09 사용자 결정, 인프라스마트 태블릿 Pro 방식). 손상
   // 유형은 그린 뒤 속성창에서 고른다. 새 손상은 그 모양으로 마지막에 고른 유형으로 시작한다
   // (처음엔 선=균열, 네모=박락).
-  // 선/네모는 토글이다(2026-10-17): 켜면 펜·손가락 모두 그 모양을 그리고, 둘 다 꺼지면 **이동 모드**(손가락은
-  // 팬·줌, 펜·손가락 탭은 선택, 선택한 손상은 끌어 옮김). 처음은 이동 모드.
+  // 선/네모/손글씨는 토글이다(2026-10-17): 선·네모를 켜면 펜·손가락 모두 그 모양을 그리고, 손글씨를 켜면 손가락도
+  // 글씨를 쓴다. 다 꺼지면 **이동 모드**(손가락은 팬·줌, 펜·손가락 탭은 선택, 선택한 손상은 끌어 옮김, 펜은 글씨).
+  // 처음은 이동 모드. activeKind: null | 'line' | 'area' | 'ink'
   let activeKind = null;
   const lastTypeFor = { line: DEFAULT_DAMAGE_TYPE_ID, area: 'spalling' };
   const activeTypeIdOf = () => lastTypeFor[activeKind ?? 'line'];
@@ -304,9 +305,12 @@ async function start() {
     activeKind = kind;
     $('toolLine').setAttribute('aria-pressed', String(kind === 'line'));
     $('toolRect').setAttribute('aria-pressed', String(kind === 'area'));
+    $('toolInk').setAttribute('aria-pressed', String(kind === 'ink'));
   }
+  const isDrawKind = () => activeKind === 'line' || activeKind === 'area';
   $('toolLine').addEventListener('click', () => setActiveKind(activeKind === 'line' ? null : 'line'));
   $('toolRect').addEventListener('click', () => setActiveKind(activeKind === 'area' ? null : 'area'));
+  $('toolInk').addEventListener('click', () => setActiveKind(activeKind === 'ink' ? null : 'ink'));
 
   // 속성창의 유형 목록: 그 손상의 모양(선 ↔ line 유형, 네모 ↔ area 유형)에 맞는 유형만 보인다.
   function fillTypeSelect(damage) {
@@ -478,10 +482,13 @@ async function start() {
   createCrackInput({
     viewer,
     container: $('viewer'),
-    isDrawEnabled: () => activeKind !== null,
+    isDrawEnabled: isDrawKind,
+    isInkEnabled: () => activeKind === 'ink',
+    onInkDraft: (points) => ink.draft(points),
+    onInkStroke: (points) => attachInkStroke(points),
     // 사진 오버레이가 열린 동안도 그리기·탭을 막는다(설계 5장). 판정은 순수 함수가 갖는다.
     isPropsOpen: () => blocksDrawing(isPropsOpen(), isPhotoViewOpen()),
-    getActiveTypeKind: () => activeKind,
+    getActiveTypeKind: () => (isDrawKind() ? activeKind : null),
     getSelectedScreenShape: selectedScreenShape,
     // 선택된 손상의 모든 도형(원본 + 복제본). 선택된 도형이 아니어도 같은 손상의 도형을 끌면 그 도형을
     // 옮긴다(2026-09-30 사용자 요청: 복제한 뒤 원본도 바로 옮길 수 있게). 다른 손상의 도형은 그대로
@@ -847,12 +854,13 @@ async function start() {
     }
   }
 
-  createInkInput({
+  const ink = createInkInput({
     svg: $('ink'),
     container: $('viewer'),
-    // 이동 모드이고 어떤 창도 열려 있지 않을 때만 펜 획을 받는다. 선택한 손상을 끌 때는 crackTool이 먼저 삼킨다.
-    isActive: () => activeKind === null && !isPropsOpen() && !isPhotoViewOpen() && $('statusPanel').hidden,
-    isFingerDrawEnabled: () => false,
+    // 이동·손글씨 모드이고 어떤 창도 열려 있지 않을 때만 펜 획을 받는다. 선택한 손상을 끌 때는 crackTool이 먼저 삼킨다.
+    isActive: () => !isDrawKind() && !isPropsOpen() && !isPhotoViewOpen() && $('statusPanel').hidden,
+    // 마우스(PC 브라우저)는 손글씨 모드에서만. 손가락은 뷰어 도구(crackTool)가 받는다.
+    isFingerDrawEnabled: () => activeKind === 'ink',
     onStroke: attachInkStroke,
     onTap: handleTap,
   });

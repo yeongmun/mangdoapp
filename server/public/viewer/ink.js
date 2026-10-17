@@ -101,7 +101,8 @@ export function createInkInput({ svg, container, isActive, isFingerDrawEnabled, 
 
   function wantsInk(event) {
     if (event.pointerType === 'pen') return true;
-    return (event.pointerType === 'mouse' || event.pointerType === 'touch') && isFingerDrawEnabled();
+    // 손가락(touch)은 뷰어 도구(crackTool.handleGesture)가 받는다 — 두 손가락 핀치·팬을 뷰어가 가져갈 수 있게.
+    return event.pointerType === 'mouse' && event.button === 0 && isFingerDrawEnabled();
   }
 
   function swallow(event) {
@@ -163,6 +164,12 @@ export function createInkInput({ svg, container, isActive, isFingerDrawEnabled, 
     cancel() {
       current = null;
       activePointerId = null;
+      render();
+    },
+    /** 손가락 획(뷰어 도구가 모으는 것)을 그리는 동안 보여 준다. null이면 지운다 */
+    draft(points) {
+      if (activePointerId !== null) return;
+      current = points;
       render();
     },
   };

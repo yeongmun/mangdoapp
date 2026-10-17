@@ -207,6 +207,11 @@ export function createCrackInput({
   // 그리기 모드(선/네모 버튼이 켜짐)인가. 꺼져 있으면 이동 모드 — 손가락은 뷰어 팬·줌, 펜은 선택한 손상을
   // 옮기거나 크기를 바꾸는 것만 되고 새 손상은 생기지 않는다(2026-10-17, 손가락 그리기 토글 대체).
   isDrawEnabled,
+  // 손글씨 모드(도구막대 「손글씨」 켜짐, 2026-10-17)인가. 켜져 있으면 한 손가락 드래그를 손글씨 획으로 보낸다
+  // (두 손가락 핀치·팬은 뷰어가 그대로). 펜 글씨는 ink.js가 window 포인터 이벤트로 따로 받는다.
+  isInkEnabled = () => false,
+  onInkDraft = () => undefined,
+  onInkStroke = () => undefined,
   // 속성 패널이 열려 있는 동안은 그리기 제스처를 아예 시작하지 않는다(R3). 패널은 #viewer 밖의
   // 240px 모서리 오버레이라 inViewer() 검사로는 막히지 않으므로, 패널이 열려 있으면 펜이 도면에
   // 닿아도 새 손상이 생기거나 선택한 사각형이 움직이지 않아야 한다. 줌·팬은 뷰어 자신의 제스처이므로
@@ -435,10 +440,42 @@ export function createCrackInput({
   const tool = new Autodesk.Viewing.ToolInterface();
   tool.names = [TOOL_NAME];
   tool.getPriority = () => 100;
+  let inkPoints = null;
   tool.handleGesture = (event) => {
     if (activePointerId !== null) return false;
-    if (!isDrawEnabled()) return false;
     const point = [event.canvasX, event.canvasY];
+    if (!isDrawEnabled()) {
+      if (!isInkEnabled() || isPropsOpen()) return false;
+      // 손글씨 모드의 손가락 드래그 → 획. 아주 짧으면 탭(선택).
+      switch (event.type) {
+        case 'dragstart':
+          inkPoints = [point];
+          onInkDraft(inkPoints);
+          return true;
+        case 'dragmove':
+          if (!inkPoints) return false;
+          inkPoints.push(point);
+          onInkDraft(inkPoints);
+          return true;
+        case 'dragend': {
+          if (!inkPoints) return false;
+          const stroke = inkPoints;
+          inkPoints = null;
+          onInkDraft(null);
+          const xs = stroke.map((p) => p[0]);
+          const ys = stroke.map((p) => p[1]);
+          if (Math.max(...xs) - Math.min(...xs) < 6 && Math.max(...ys) - Math.min(...ys) < 6) onTap(point);
+          else onInkStroke(stroke);
+          return true;
+        }
+        default:
+          if (inkPoints) {
+            inkPoints = null;
+            onInkDraft(null);
+          }
+          return false;
+      }
+    }
     // 속성 패널이 열려 있으면 손가락 제스처를 받지 않는다. false를 돌려주면 툴 컨트롤러가 다음
     // 우선순위 도구(뷰어의 기본 줌·팬)에 넘기므로 핀치·회전 같은 뷰어 제스처는 그대로 동작한다.
     // 패널이 열리기 전부터 진행 중이던 제스처가 있으면(예: 한 손가락으로 크기 조절 중 다른 손가락이
