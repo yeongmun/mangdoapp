@@ -1,4 +1,5 @@
-import { extname } from 'node:path';
+import { extname, join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import archiver from 'archiver';
 import express, { type ErrorRequestHandler, type Request, type RequestHandler, type Response } from 'express';
 import multer from 'multer';
@@ -1119,7 +1120,17 @@ export function createApp(deps: AppDeps) {
     sendXlsx(res, `${project.name}_손상현황표.xlsx`, await ledgerToXlsx(project.name, drawings));
   });
 
-  // 손글씨 인식(2026-10-09): 뷰어가 펜 획을 PNG(base64)로 보내면 AI가 글자로 옮기고 여기서 숫자로 푼다.
+  async function saveHandwritingDebug(deps: AppDeps, drawingId: string, png: Buffer): Promise<void> {
+  try {
+    const dir = join(deps.publicDir, '..', 'data', 'handwriting-debug');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${drawingId}-${Date.now()}.png`), png);
+  } catch (err) {
+    console.error('[handwriting] 디버그 그림 저장 실패', messageOf(err));
+  }
+}
+
+// 손글씨 인식(2026-10-09): 뷰어가 펜 획을 PNG(base64)로 보내면 AI가 글자로 옮기고 여기서 숫자로 푼다.
   // 도면 id는 권한·로그용이다(저장은 뷰어가 속성창에서 사용자 확인 뒤에 한다).
   api.post('/drawings/:id/handwriting', async (req, res) => {
     const drawing = await findDrawing(deps, req.params.id);
@@ -1137,8 +1148,11 @@ export function createApp(deps: AppDeps) {
       return;
     }
     try {
-      const text = await deps.transcriber.transcribe(Buffer.from(image, 'base64'));
+      const png = Buffer.from(image, 'base64');
+      const text = await deps.transcriber.transcribe(png);
       const parsed = parseHandwriting(text);
+      // 빈 답이면 그림을 남겨 둔다(data/handwriting-debug/) — 모델이 뭘 봤는지 사람이 열어 본다.
+      if (text.trim() === '') void saveHandwritingDebug(deps, drawing.id, png);
       // 읽은 글과 푼 값을 남긴다 — 현장에서 "글씨는 읽었는데 값이 안 들어간다"를 가릴 때 본다.
       console.log('[handwriting]', drawing.id, JSON.stringify(text), '→', parsed.width, parsed.length, parsed.count);
       res.json(parsed);

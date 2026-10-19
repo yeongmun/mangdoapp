@@ -65,7 +65,8 @@ export function rasterizeStrokes(strokes, canvas) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, plan.width, plan.height);
   ctx.strokeStyle = '#000';
-  ctx.lineWidth = Math.max(3, INK_WIDTH_PX * plan.scale);
+  // 선이 너무 가늘면 모델이 글자로 안 본다 — 그림 높이의 3% 정도(최소 4px)로 굵게.
+  ctx.lineWidth = Math.max(4, INK_WIDTH_PX * plan.scale, plan.height * 0.03);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (const stroke of strokes) {

@@ -62,10 +62,12 @@ export function parseHandwriting(text: string): HandwritingValues {
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 export const DEFAULT_HANDWRITING_MODEL = 'claude-sonnet-5-5';
 
+// 2026-10-19: "읽을 수 없으면 빈 줄"이라고 하니 모델이 조금만 애매해도 빈 답을 냈다. 가장 그럴듯한 전사를 반드시 내게 한다.
 const PROMPT =
-  '이 그림은 교량 점검자가 태블릿 펜으로 쓴 짧은 손글씨입니다. 보이는 글자를 **있는 그대로** 한 줄로 옮겨 적으세요. ' +
-  '숫자, 소수점, 슬래시(/), 곱하기(x), "EA"·"개" 같은 단위만 나옵니다. 해석하거나 단위를 바꾸거나 설명을 붙이지 말고, ' +
-  '글자가 없거나 읽을 수 없으면 빈 줄만 출력하세요.';
+  '이 그림은 교량 점검자가 태블릿 펜으로 쓴 짧은 손글씨 치수입니다. 획이 각지거나 삐뚤어도 숫자입니다. ' +
+  '형식은 보통 "폭/길이"(예: 0.2/0.3), "가로x세로"(예: 1.2x0.5), 뒤에 개소 "3EA"가 붙기도 합니다. ' +
+  '보이는 대로 **한 줄로만** 옮겨 적으세요: 숫자·소수점·슬래시(/)·곱하기(x)·EA만 씁니다. ' +
+  '애매해도 가장 그럴듯한 글자로 반드시 적고, 설명·따옴표·단위(mm, m)는 붙이지 마세요. 획이 전혀 없을 때만 빈 줄을 내세요.';
 
 /** Claude 비전으로 옮겨 적는다. 키가 없으면 만들지 않는다(앱에 "서버에 키가 없다"고 알린다). */
 export class ClaudeTranscriber implements Transcriber {
