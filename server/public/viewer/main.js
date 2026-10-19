@@ -909,6 +909,7 @@ async function start() {
     let read = 0;
     let deferred = 0;
     let failed = [];
+    let unparsed = [];
     for (const target of targets) {
       const latest = editor.doc.damages.find((d) => d.id === target.id);
       const strokes = latest?.attrs?.handwriting?.strokes;
@@ -920,11 +921,12 @@ async function start() {
       if (!again || again.attrs?.handwriting?.strokes !== strokes) continue; // 읽는 동안 바뀜
       if (result.ok) {
         const measured = {};
-        if (result.width !== null) measured.width = result.width;
-        if (result.length !== null) measured.length = result.length;
-        if (result.count !== null) measured.count = result.count;
+        if (result.width != null) measured.width = result.width;
+        if (result.length != null) measured.length = result.length;
+        if (result.count != null) measured.count = result.count;
         apply(updateDamage(editor, target.id, { measured, attrs: { handwriting: { strokes, text: result.text } } }, nowIso()));
-        read += 1;
+        if (Object.keys(measured).length > 0) read += 1;
+        else unparsed.push(result.text || '(빈 글)');
       } else if (/연결|오프라인/.test(String(result.reason))) {
         // 인터넷 없음: 그림을 붙여 두면 전송될 때 서버가 읽는다
         apply(updateDamage(editor, target.id, { attrs: { handwriting: { strokes, image } } }, nowIso()));
@@ -938,8 +940,9 @@ async function start() {
     const parts = [];
     if (read > 0) parts.push(`${read}개 읽어 넣음`);
     if (deferred > 0) parts.push(`${deferred}개는 인터넷 되면 서버가 읽음`);
+    if (unparsed.length > 0) parts.push(`${unparsed.length}개는 숫자를 못 찾음(읽은 글: ${unparsed.map((u) => `"${u}"`).join(', ')})`);
     if (failed.length > 0) parts.push(`${failed.length}개 실패: ${failed[0]}`);
-    showNotice(parts.join(' · ') || '읽을 손글씨가 없습니다', 6000);
+    showNotice(parts.join(' · ') || '읽을 손글씨가 없습니다', unparsed.length > 0 ? 15000 : 6000);
     if (isPropsOpen()) openProps();
   });
 

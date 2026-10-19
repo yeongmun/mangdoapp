@@ -48,3 +48,18 @@ describe('ClaudeTranscriber', () => {
     await expect(t.transcribe(Buffer.from('x'))).rejects.toThrow('401');
   });
 });
+
+describe('parseHandwriting — 모델이 글을 덧붙이거나 단위를 섞어도(2026-10-19)', () => {
+  it('설명·따옴표·줄바꿈이 섞여도 숫자를 찾는다', () => {
+    expect(parseHandwriting('"0.2/0.3"')).toMatchObject({ width: 0.2, length: 0.3 });
+    expect(parseHandwriting('손글씨: 0.2 / 0.3\n')).toMatchObject({ width: 0.2, length: 0.3 });
+    expect(parseHandwriting('0.2/0.3 (폭/길이)')).toMatchObject({ width: 0.2, length: 0.3, count: null });
+  });
+  it('단위가 붙어도', () => {
+    expect(parseHandwriting('0.2mm/0.3m')).toMatchObject({ width: 0.2, length: 0.3 });
+    expect(parseHandwriting('1.2m x 0.5m 2EA')).toMatchObject({ width: 1.2, length: 0.5, count: 2 });
+  });
+  it('개소가 앞에 와도', () => {
+    expect(parseHandwriting('3EA 0.3/2.0')).toMatchObject({ width: 0.3, length: 2, count: 3 });
+  });
+});

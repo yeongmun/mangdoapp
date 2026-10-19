@@ -1138,7 +1138,10 @@ export function createApp(deps: AppDeps) {
     }
     try {
       const text = await deps.transcriber.transcribe(Buffer.from(image, 'base64'));
-      res.json(parseHandwriting(text));
+      const parsed = parseHandwriting(text);
+      // 읽은 글과 푼 값을 남긴다 — 현장에서 "글씨는 읽었는데 값이 안 들어간다"를 가릴 때 본다.
+      console.log('[handwriting]', drawing.id, JSON.stringify(text), '→', parsed.width, parsed.length, parsed.count);
+      res.json(parsed);
     } catch (err) {
       console.error('[handwriting]', drawing.id, messageOf(err));
       res.status(502).json({ error: `손글씨를 읽지 못했습니다: ${messageOf(err)}` });

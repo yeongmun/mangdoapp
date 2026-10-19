@@ -28,27 +28,33 @@ function num(raw: string): number | null {
 }
 
 export function parseHandwriting(text: string): HandwritingValues {
-  // O/o(영문)를 0으로, l/I를 1로 — 손글씨 전사에서 흔한 혼동. 공백은 개소를 뗀 뒤에 지운다
-  // ("2.0 3EA"의 공백을 먼저 지우면 2.03EA가 된다).
-  let s = text.trim().replace(/[Oo]/g, '0').replace(/[lI|]/g, '1');
+  // 모델이 설명을 덧붙이거나 따옴표·단위를 섞어도 숫자를 찾는다(2026-10-19: 앞뒤를 고정한 정규식이라
+  // "0.2/0.3" 외의 글이 조금만 섞여도 전부 null이 됐다). O/o→0, l/I→1은 손글씨 전사의 흔한 혼동.
+  let s = text
+    .replace(/[`"'“”‘’]/g, ' ')
+    .replace(/[，]/g, ',')
+    .replace(/(?<=\d)[Oo]|[Oo](?=[.,]?\d)/g, '0')
+    .replace(/(?<=\d)[lI|]|[lI|](?=[.,]?\d)/g, '1');
   let count: number | null = null;
-  // 개소: 3EA · 3ea · 3개 · 3개소(공백 있어도 됨), 또는 맨 뒤의 x3 / ×3
-  const ea = /\s*(\d+)\s*(?:EA|ea|개소|개)\s*$/.exec(s);
+  // 개소: 3EA · 3ea · 3개 · 3개소 (어디에 있든 첫 번째)
+  const ea = /(\d+)\s*(?:EA|ea|Ea|개소|개)(?![a-zA-Z가-힣])/.exec(s);
   if (ea) {
     count = Number(ea[1]);
-    s = s.slice(0, ea.index);
+    s = s.slice(0, ea.index) + ' ' + s.slice(ea.index + ea[0].length);
   }
-  s = s.replace(/\s+/g, '');
-  if (count === null) {
-    const trailing = /[x×X*](\d+)$/.exec(s);
-    if (trailing && /[/x×X*]/.test(s.slice(0, trailing.index))) {
-      count = Number(trailing[1]);
-      s = s.slice(0, trailing.index);
+  // 숫자 뒤의 단위(mm, m, ㎡, cm)는 뗀다 — "0.2mm/0.3m"
+  s = s.replace(/(\d)\s*(mm|cm|㎡|m2|m)(?![a-zA-Z])/gi, '$1');
+  const pair = new RegExp(`${NUM}\\s*[/x×X*]\\s*${NUM}`).exec(s);
+  if (pair) {
+    // 뒤에 x3처럼 붙은 개소: "1.2x0.5x3"
+    if (count === null) {
+      const rest = s.slice(pair.index + pair[0].length);
+      const trailing = /^\s*[x×X*]\s*(\d+)(?![.,\d])/.exec(rest);
+      if (trailing) count = Number(trailing[1]);
     }
+    return { width: num(pair[1]), length: num(pair[2]), count, text };
   }
-  const pair = new RegExp(`^${NUM}[/x×X*]${NUM}$`).exec(s);
-  if (pair) return { width: num(pair[1]), length: num(pair[2]), count, text };
-  const single = new RegExp(`^${NUM}$`).exec(s);
+  const single = new RegExp(NUM).exec(s);
   if (single) return { width: num(single[1]), length: null, count, text };
   return { width: null, length: null, count, text };
 }
