@@ -15,7 +15,7 @@ import {
 import { DAMAGE_TYPES, DEFAULT_DAMAGE_TYPE_ID, getDamageType } from './damageTypes.js';
 import { createCoordinateMapper } from './coords.js';
 import { createCrackInput, finalizeRect, finalizeStroke, isFinitePoint, offsetShape, pickDamage } from './crackTool.js';
-import { computeScale, createOverlay } from './overlay.js';
+import { createOverlay } from './overlay.js';
 import { chooseInitialDoc, createSyncer } from './sync.js';
 import {
   formatQuantity,
@@ -31,7 +31,7 @@ import { createOfflineApi, isOfflineMode, OFFLINE_STATUS_LABELS } from './offlin
 import { clampPage, frameWorldBox, pageCount, pageLabel } from './pageView.js';
 import { statusTableRows, statusTableTotals } from './statusTable.js';
 import { createInkInput, strokesToPngBase64 } from './ink.js';
-import { chooseTarget, pendingInkDamages, pointsBounds, unionBounds } from './inkAttach.js';
+import { pendingInkDamages } from './inkAttach.js';
 import { simplifyPolyline } from './geometry.js';
 
 const $ = (id) => document.getElementById(id);
@@ -463,22 +463,13 @@ async function start() {
     }, ms);
   }
 
-  // 글씨를 쓰는 중의 짧은 터치는 소수점·마침표다(2026-10-19: "0.2"의 점이 탭으로 먹혀 "02"가 됐다). 바로 전 획을
-  // 쓴 지 얼마 안 됐고(INK_GROUP_GAP_MS) 그 옆이면(INK_GROUP_GAP_PX) 획으로 붙이고, 아니면 평소처럼 선택 탭이다.
+  // 글씨를 쓰는 중의 짧은 터치는 소수점·마침표다(2026-10-19: "0.2"의 점이 탭으로 먹혀 "02"가 됐다). 선택한 손상에
+  // 바로 전 획을 쓴 지 얼마 안 됐으면(INK_DOT_GAP_MS) 점으로 붙이고, 아니면 평소처럼 선택 탭이다.
   function handleInkTap(point, stroke) {
-    if (previousInk && stroke && Date.now() - previousInk.at <= INK_GROUP_GAP_MS) {
-      const dwg = toDwgPoints([point]);
-      if (dwg) {
-        const pxPerMm = computeScale(mapper).pxPerMm;
-        const unit = pxPerMm && Number.isFinite(pxPerMm) && pxPerMm > 0 ? 1 / pxPerMm : 1;
-        const b = previousInk.bounds;
-        const [x, y] = dwg[0];
-        const gap = Math.hypot(Math.max(0, x - b.maxX, b.minX - x), Math.max(0, y - b.maxY, b.minY - y));
-        if (gap <= INK_GROUP_GAP_PX * unit) {
-          attachInkStroke(stroke);
-          return true;
-        }
-      }
+    const selected = selectedDamage();
+    if (selected && stroke && previousInk && previousInk.damageId === selected.id && Date.now() - previousInk.at <= INK_DOT_GAP_MS) {
+      attachInkStroke(stroke);
+      return true;
     }
     return handleTap(point);
   }
@@ -815,15 +806,12 @@ async function start() {
   });
 
   // ── 손글씨(2026-10-17 방식 C) ──────────────────────────────────────────────────────────
-  // 이동 모드(선·네모 꺼짐)에서 펜으로 쓴 획은 전부 손글씨다. 획이 끝나면 도면 좌표로 바꿔 가장 가까운
-  // 손상(바로 전 획 옆이면 그 손상)에 붙여 **문서에 저장**하고(attrs.handwriting.strokes), 그 손상을 선택해
-  // 어디에 붙었는지 보여 준다. 읽기는 도구막대 「손글씨 인식」으로 한 번에: 손상마다 획을 PNG로 그려
+  // 이동 모드(선·네모 꺼짐)에서 펜으로 쓴 획은 전부 손글씨다. 획이 끝나면 도면 좌표로 바꿔 **선택한 손상**에
+  // 붙여 문서에 저장한다(attrs.handwriting.strokes). 읽기는 도구막대 「손글씨 인식」으로 한 번에: 손상마다 획을 PNG로 그려
   // 앱(→서버→AI)에 보내고 결과를 폭/길이/개소에 넣는다. 인터넷이 없으면 그림을 손상에 붙여 두고
   // 전송될 때 서버가 읽는다. 다 읽은 획은 회색으로 남는다.
-  const INK_MAX_DISTANCE_PX = 250;
-  const INK_GROUP_GAP_PX = 80;
-  const INK_GROUP_GAP_MS = 2500;
-  let previousInk = null; // { damageId, at, bounds(dwg) }
+  const INK_DOT_GAP_MS = 2500;
+  let previousInk = null; // { damageId, at } — 바로 전 획(점 판정용)
 
   function toDwgPoints(clientPoints) {
     if (!mapper.dwgStatus?.matrix) return null;
@@ -837,42 +825,26 @@ async function start() {
     return out;
   }
 
+  // 글씨는 **선택한 손상**에만 붙는다(2026-10-19 사용자 결정: 거리로 맞추면 빽빽한 틀에서 틀린다). 손상을 그리면
+  // 자동으로 선택되니 "그리고 → 옆에 쓰고"는 그대로고, 나중에 쓸 때는 그 손상을 탭한 뒤 쓴다. 선택이 없으면 막는다.
   function attachInkStroke(clientPoints) {
+    const target = selectedDamage();
+    if (!target) {
+      showNotice('손상을 먼저 탭해서 선택한 뒤에 쓰세요 — 글씨는 선택한(빨간) 손상에 붙습니다');
+      previousInk = null;
+      return;
+    }
     const simplified = simplifyPolyline(clientPoints, 1.5);
     const dwg = toDwgPoints(simplified);
     if (!dwg) {
       showNotice('이 도면은 좌표 변환이 없어 손글씨를 붙일 수 없습니다');
       return;
     }
-    const pxPerMm = computeScale(mapper).pxPerMm;
-    const unit = pxPerMm && Number.isFinite(pxPerMm) && pxPerMm > 0 ? 1 / pxPerMm : 1;
-    const now = Date.now();
-    const target = chooseTarget({
-      strokeDwg: dwg,
-      damages: editor.doc.damages,
-      shapesOf,
-      previous: previousInk,
-      now,
-      maxDistance: INK_MAX_DISTANCE_PX * unit,
-      groupGapMs: INK_GROUP_GAP_MS,
-      groupGapDwg: INK_GROUP_GAP_PX * unit,
-    });
-    if (!target) {
-      showNotice('가까운 손상이 없어 글씨를 붙이지 못했습니다 — 손상 바로 옆에 써 주세요');
-      previousInk = null;
-      return;
-    }
-    const damage = editor.doc.damages.find((d) => d.id === target.damageId);
-    const current = damage?.attrs?.handwriting;
-    // 이미 읽은 손상 옆에 다시 쓰면 새 글씨로 시작한다(옛 획·읽은 글은 버린다). 안 읽은 글씨면 이어 쓴다.
+    const current = target.attrs?.handwriting;
+    // 이미 읽은 손상에 다시 쓰면 새 글씨로 시작한다(옛 획·읽은 글은 버린다). 안 읽은 글씨면 이어 쓴다.
     const strokes = current && !('text' in current) && Array.isArray(current.strokes) ? [...current.strokes, dwg] : [dwg];
-    apply(updateDamage(editor, target.damageId, { attrs: { handwriting: { strokes } } }, nowIso()));
-    const bounds = pointsBounds(dwg);
-    previousInk = { damageId: target.damageId, at: now, bounds: previousInk && previousInk.damageId === target.damageId && target.reason === 'group' ? unionBounds(previousInk.bounds, bounds) : bounds };
-    if (selectedId !== target.damageId) {
-      setSelection(target.damageId, 0);
-      refresh();
-    }
+    apply(updateDamage(editor, target.id, { attrs: { handwriting: { strokes } } }, nowIso()));
+    previousInk = { damageId: target.id, at: Date.now() };
   }
 
   const ink = createInkInput({
