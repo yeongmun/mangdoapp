@@ -212,6 +212,7 @@ export function createCrackInput({
   isInkEnabled = () => false,
   onInkDraft = () => undefined,
   onInkStroke = () => undefined,
+  onInkTap = null,
   // 속성 패널이 열려 있는 동안은 그리기 제스처를 아예 시작하지 않는다(R3). 패널은 #viewer 밖의
   // 240px 모서리 오버레이라 inViewer() 검사로는 막히지 않으므로, 패널이 열려 있으면 펜이 도면에
   // 닿아도 새 손상이 생기거나 선택한 사각형이 움직이지 않아야 한다. 줌·팬은 뷰어 자신의 제스처이므로
@@ -464,7 +465,7 @@ export function createCrackInput({
           onInkDraft(null);
           const xs = stroke.map((p) => p[0]);
           const ys = stroke.map((p) => p[1]);
-          if (Math.max(...xs) - Math.min(...xs) < 6 && Math.max(...ys) - Math.min(...ys) < 6) onTap(point);
+          if (Math.max(...xs) - Math.min(...xs) < 6 && Math.max(...ys) - Math.min(...ys) < 6) (onInkTap ?? onTap)(point, stroke);
           else onInkStroke(stroke);
           return true;
         }

@@ -150,7 +150,8 @@ export function createInkInput({ svg, container, isActive, isFingerDrawEnabled, 
     render();
     if (!stroke || stroke.length === 0) return;
     const b = strokesBounds([stroke]);
-    if (b && b.maxX - b.minX < TAP_PX && b.maxY - b.minY < TAP_PX) onTap?.(stroke[stroke.length - 1]);
+    // 아주 짧은 획은 탭(선택)일 수도, 소수점·마침표일 수도 있다 — 판단은 main.js가 한다(바로 전 글씨 옆이면 점).
+    if (b && b.maxX - b.minX < TAP_PX && b.maxY - b.minY < TAP_PX) onTap?.(stroke[stroke.length - 1], stroke);
     else onStroke?.(stroke);
   }
 

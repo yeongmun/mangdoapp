@@ -463,6 +463,26 @@ async function start() {
     }, ms);
   }
 
+  // 글씨를 쓰는 중의 짧은 터치는 소수점·마침표다(2026-10-19: "0.2"의 점이 탭으로 먹혀 "02"가 됐다). 바로 전 획을
+  // 쓴 지 얼마 안 됐고(INK_GROUP_GAP_MS) 그 옆이면(INK_GROUP_GAP_PX) 획으로 붙이고, 아니면 평소처럼 선택 탭이다.
+  function handleInkTap(point, stroke) {
+    if (previousInk && stroke && Date.now() - previousInk.at <= INK_GROUP_GAP_MS) {
+      const dwg = toDwgPoints([point]);
+      if (dwg) {
+        const pxPerMm = computeScale(mapper).pxPerMm;
+        const unit = pxPerMm && Number.isFinite(pxPerMm) && pxPerMm > 0 ? 1 / pxPerMm : 1;
+        const b = previousInk.bounds;
+        const [x, y] = dwg[0];
+        const gap = Math.hypot(Math.max(0, x - b.maxX, b.minX - x), Math.max(0, y - b.maxY, b.minY - y));
+        if (gap <= INK_GROUP_GAP_PX * unit) {
+          attachInkStroke(stroke);
+          return true;
+        }
+      }
+    }
+    return handleTap(point);
+  }
+
   function handleTap(point) {
     const picked = pickDamage(editor.doc.damages, point, mapper);
     setSelection(picked ? picked.id : null, picked ? picked.shapeIndex : 0);
@@ -486,6 +506,7 @@ async function start() {
     isInkEnabled: () => activeKind === 'ink',
     onInkDraft: (points) => ink.draft(points),
     onInkStroke: (points) => attachInkStroke(points),
+    onInkTap: handleInkTap,
     // 사진 오버레이가 열린 동안도 그리기·탭을 막는다(설계 5장). 판정은 순수 함수가 갖는다.
     isPropsOpen: () => blocksDrawing(isPropsOpen(), isPhotoViewOpen()),
     getActiveTypeKind: () => (isDrawKind() ? activeKind : null),
@@ -862,7 +883,7 @@ async function start() {
     // 마우스(PC 브라우저)는 손글씨 모드에서만. 손가락은 뷰어 도구(crackTool)가 받는다.
     isFingerDrawEnabled: () => activeKind === 'ink',
     onStroke: attachInkStroke,
-    onTap: handleTap,
+    onTap: handleInkTap,
   });
 
   $('inkErase').addEventListener('click', () => {
