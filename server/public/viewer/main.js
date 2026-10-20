@@ -834,7 +834,8 @@ async function start() {
       previousInk = null;
       return;
     }
-    const simplified = simplifyPolyline(clientPoints, 1.5);
+    // 글씨는 작게 쓰므로(높이 20px쯤) 1.5px로 단순화하면 '0'이 팔각형이 된다(2026-10-20 디버그 PNG) — 거의 그대로 둔다.
+    const simplified = simplifyPolyline(clientPoints, 0.25);
     const dwg = toDwgPoints(simplified);
     if (!dwg) {
       showNotice('이 도면은 좌표 변환이 없어 손글씨를 붙일 수 없습니다');

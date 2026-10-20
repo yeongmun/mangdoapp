@@ -72,12 +72,15 @@ export function rasterizeStrokes(strokes, canvas) {
   for (const stroke of strokes) {
     if (stroke.length === 0) continue;
     ctx.beginPath();
-    stroke.forEach(([x, y], i) => {
-      const px = (x - plan.offsetX) * plan.scale;
-      const py = (y - plan.offsetY) * plan.scale;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    });
+    // 점 사이를 곡선으로 잇는다(중점을 지나는 2차 곡선) — 각진 다각형이 아니라 펜 글씨처럼 보이게.
+    const pts = stroke.map(([x, y]) => [(x - plan.offsetX) * plan.scale, (y - plan.offsetY) * plan.scale]);
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length - 1; i++) {
+      const mx = (pts[i][0] + pts[i + 1][0]) / 2;
+      const my = (pts[i][1] + pts[i + 1][1]) / 2;
+      ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
+    }
+    if (pts.length > 1) ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
     // 점 하나짜리 획(마침표)도 보이게
     if (stroke.length === 1) ctx.lineTo((stroke[0][0] - plan.offsetX) * plan.scale + 0.1, (stroke[0][1] - plan.offsetY) * plan.scale);
     ctx.stroke();
