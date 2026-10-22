@@ -535,8 +535,15 @@ export function createOverlay(svg, mapper) {
           if (!world) continue;
           screen.push(mapper.worldToClient(world));
         }
-        if (screen.length === 1) screen.push([screen[0][0] + 0.5, screen[0][1]]);
-        if (screen.length >= 2) elements.push(polylineElement(screen, color, 2, 0.9));
+        // 점 하나짜리 획(소수점)은 작은 원으로 — 선으로 그리면 안 보인다
+        if (screen.length === 1) {
+          const dot = document.createElementNS(SVG_NS, 'circle');
+          dot.setAttribute('cx', screen[0][0].toFixed(1));
+          dot.setAttribute('cy', screen[0][1].toFixed(1));
+          dot.setAttribute('r', '2');
+          dot.setAttribute('fill', color);
+          elements.push(dot);
+        } else if (screen.length >= 2) elements.push(polylineElement(screen, color, 2, 0.9));
       }
     }
   }

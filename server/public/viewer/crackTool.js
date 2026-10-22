@@ -513,15 +513,20 @@ export function createCrackInput({
   // 속성 패널이 열려 있으면 탭도 받지 않는다(R6). 탭이 선택을 바꾸면 setSelection이 패널을 닫아
   // 입력하던 값을 지우므로, 그리기 제스처와 똑같이 막아야 한다. false는 이 두 핸들러가 "처리 안 함"을
   // 나타낼 때 이미 쓰는 값이라 그대로 돌려주면 뷰어 자신의 탭 처리(선택 해제 등)로 넘어간다.
+  // 손글씨 모드의 손가락 '찍기'는 드래그가 아니라 탭으로 들어온다 — 점 하나짜리 획으로 넘겨 소수점이 되게 한다(2026-10-22).
+  function tapStroke(point) {
+    return isInkEnabled() && !isDrawEnabled() ? [point] : undefined;
+  }
   tool.handleSingleTap = (event) => {
     if (isPropsOpen()) return false;
-    return onTap([event.canvasX, event.canvasY]);
+    const point = [event.canvasX, event.canvasY];
+    return (onInkTap ?? onTap)(point, tapStroke(point));
   };
   tool.handleSingleClick = (event, button) => {
     if (button !== 0) return false;
     if (isPropsOpen()) return false;
     const point = typeof event.canvasX === 'number' ? [event.canvasX, event.canvasY] : toCanvas(event);
-    return onTap(point);
+    return (onInkTap ?? onTap)(point, tapStroke(point));
   };
   viewer.toolController.registerTool(tool);
   viewer.toolController.activateTool(TOOL_NAME);
