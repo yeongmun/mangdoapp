@@ -465,9 +465,39 @@ async function start() {
 
   // 글씨를 쓰는 중의 짧은 터치는 소수점·마침표다(2026-10-19: "0.2"의 점이 탭으로 먹혀 "02"가 됐다). 선택한 손상에
   // 바로 전 획을 쓴 지 얼마 안 됐으면(INK_DOT_GAP_MS) 점으로 붙이고, 아니면 평소처럼 선택 탭이다.
+  // 선택한 손상의 아직 안 읽은 글씨가 화면에서 point 가까이(INK_DOT_NEAR_PX) 있는가 — 그 옆의 찍기는 소수점이다.
+  function nearPendingInk(selected, point) {
+    const h = selected?.attrs?.handwriting;
+    if (!h || typeof h.text === 'string' || !Array.isArray(h.strokes) || !mapper.dwgStatus?.matrix) return false;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const s of h.strokes) {
+      for (const p of s) {
+        const world = mapper.dwgToWorld(p);
+        if (!world) continue;
+        const [x, y] = mapper.worldToClient(world);
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+    if (minX === Infinity) return false;
+    const gap = Math.hypot(Math.max(0, point[0] - maxX, minX - point[0]), Math.max(0, point[1] - maxY, minY - point[1]));
+    return gap <= INK_DOT_NEAR_PX;
+  }
+
+  // 찍기(아주 짧은 터치)가 소수점인지 선택 탭인지(2026-10-22: 시간만으로 가르니 조금만 뜸 들여도 선택이 풀렸다).
+  //   ① 다른 손상 위를 찍었으면 → 그 손상 선택
+  //   ② 「손글씨」 모드(손가락)이고 손상이 선택돼 있으면 → 무조건 점
+  //   ③ 선택한 손상의 안 읽은 글씨 바로 옆(INK_DOT_NEAR_PX)이거나 방금(INK_DOT_GAP_MS) 쓴 뒤면 → 점
+  //   ④ 그 밖에는 선택 탭(빈 곳이면 선택 해제)
   function handleInkTap(point, stroke) {
     const selected = selectedDamage();
-    if (selected && stroke && previousInk && previousInk.damageId === selected.id && Date.now() - previousInk.at <= INK_DOT_GAP_MS) {
+    if (!selected || !stroke) return handleTap(point);
+    const picked = pickDamage(editor.doc.damages, point, mapper);
+    if (picked && picked.id !== selected.id) return handleTap(point);
+    const recent = previousInk && previousInk.damageId === selected.id && Date.now() - previousInk.at <= INK_DOT_GAP_MS;
+    if (activeKind === 'ink' || recent || nearPendingInk(selected, point)) {
       attachInkStroke(stroke);
       return true;
     }
@@ -811,6 +841,7 @@ async function start() {
   // 앱(→서버→AI)에 보내고 결과를 폭/길이/개소에 넣는다. 인터넷이 없으면 그림을 손상에 붙여 두고
   // 전송될 때 서버가 읽는다. 다 읽은 획은 회색으로 남는다.
   const INK_DOT_GAP_MS = 2500;
+  const INK_DOT_NEAR_PX = 80;
   let previousInk = null; // { damageId, at } — 바로 전 획(점 판정용)
 
   function toDwgPoints(clientPoints) {
