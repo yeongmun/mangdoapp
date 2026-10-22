@@ -449,10 +449,15 @@ export function createCrackInput({
       if (!isInkEnabled() || isPropsOpen()) return false;
       // 손글씨 모드의 손가락 드래그 → 획. 아주 짧으면 탭(선택).
       switch (event.type) {
-        case 'dragstart':
-          inkPoints = [point];
+        case 'dragstart': {
+          // 뷰어의 드래그 제스처는 손가락이 몇 px 움직인 뒤에야 시작된다(Hammer 임계값) — 처음 닿은 자리가 빠져
+          // 글씨 첫 획이 잘린다(2026-10-22). Hammer 이벤트의 delta(시작점부터의 이동량)로 처음 닿은 점을 되살린다.
+          const dx = Number(event.deltaX);
+          const dy = Number(event.deltaY);
+          inkPoints = Number.isFinite(dx) && Number.isFinite(dy) && (dx !== 0 || dy !== 0) ? [[point[0] - dx, point[1] - dy], point] : [point];
           onInkDraft(inkPoints);
           return true;
+        }
         case 'dragmove':
           if (!inkPoints) return false;
           inkPoints.push(point);
