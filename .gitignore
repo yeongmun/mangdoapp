@@ -42,3 +42,6 @@ server/data/
 
 # graphify 지식 그래프 산출물(로컬 생성)
 graphify-out/
+
+# executing-plans 진행 장부(로컬)
+.plans/

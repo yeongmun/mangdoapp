@@ -5,15 +5,24 @@
 import { randomUUID } from 'node:crypto';
 import { readJsonFile, writeJsonFileAtomic } from './jsonFile.js';
 
+// 점검 종류는 최상위(과업)에, 시설물 종류는 하위(구조물)에만 둔다. 둘 다 선택 필드 — 옛 레코드에는
+// 없다. 값 목록은 앱(src/api.ts)과 같아야 한다. 설계: docs/design/2026-10-24-field-photo-checklist.md 결정 5
+export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
+export const FACILITY_TYPES = ['교량', '터널', '옹벽', '절토사면', '건축물', '기타'] as const;
+export type InspectionType = (typeof INSPECTION_TYPES)[number];
+export type FacilityType = (typeof FACILITY_TYPES)[number];
+
 export interface ProjectRecord {
   id: string;
   name: string;
   memo: string;
   parentId: string | null;
   createdAt: string;
+  inspectionType?: InspectionType;
+  facilityType?: FacilityType;
 }
 
-export type ProjectRuleCode = 'name' | 'memo' | 'parent' | 'depth' | 'duplicate' | 'notEmpty';
+export type ProjectRuleCode = 'name' | 'memo' | 'parent' | 'depth' | 'duplicate' | 'notEmpty' | 'type';
 
 export class ProjectRuleError extends Error {
   constructor(
@@ -68,6 +77,27 @@ function resolveParentId(value: unknown, records: ProjectRecord[]): string | nul
   return value;
 }
 
+const PLACE_MESSAGE = '점검 종류는 상위 프로젝트에, 시설물 종류는 구조물에만 둘 수 있습니다.';
+
+// undefined면 "안 줌"(undefined 그대로). 값이 있으면 허용 목록에 있어야 하고 자리(parentId)가 맞아야 한다.
+function validateInspectionType(value: unknown, parentId: string | null): InspectionType | undefined {
+  if (value === undefined) return undefined;
+  if (!INSPECTION_TYPES.includes(value as InspectionType)) {
+    throw new ProjectRuleError('type', '점검 종류 값이 올바르지 않습니다.');
+  }
+  if (parentId !== null) throw new ProjectRuleError('type', PLACE_MESSAGE);
+  return value as InspectionType;
+}
+
+function validateFacilityType(value: unknown, parentId: string | null): FacilityType | undefined {
+  if (value === undefined) return undefined;
+  if (!FACILITY_TYPES.includes(value as FacilityType)) {
+    throw new ProjectRuleError('type', '시설물 종류 값이 올바르지 않습니다.');
+  }
+  if (parentId === null) throw new ProjectRuleError('type', PLACE_MESSAGE);
+  return value as FacilityType;
+}
+
 function assertNoDuplicate(records: ProjectRecord[], parentId: string | null, name: string, excludeId?: string) {
   const clash = records.some((r) => r.id !== excludeId && r.parentId === parentId && r.name === name);
   if (clash) throw new ProjectRuleError('duplicate', '같은 자리에 같은 이름의 프로젝트가 있습니다.');
@@ -87,7 +117,10 @@ export class ProjectsStore {
     return (await this.readAll()).find((r) => r.id === id) ?? null;
   }
 
-  create(input: { name: unknown; memo?: unknown; parentId?: unknown }, createdAt: string): Promise<ProjectRecord> {
+  create(
+    input: { name: unknown; memo?: unknown; parentId?: unknown; inspectionType?: unknown; facilityType?: unknown },
+    createdAt: string,
+  ): Promise<ProjectRecord> {
     return this.serialize(async () => {
       const records = await this.readAll();
       const name = validateName(input.name);
@@ -95,13 +128,21 @@ export class ProjectsStore {
       const parentId = resolveParentId(input.parentId, records);
       assertNoDuplicate(records, parentId, name);
       const record: ProjectRecord = { id: newProjectId(), name, memo, parentId, createdAt };
+      const inspectionType = validateInspectionType(input.inspectionType, parentId);
+      if (inspectionType !== undefined) record.inspectionType = inspectionType;
+      const facilityType = validateFacilityType(input.facilityType, parentId);
+      if (facilityType !== undefined) record.facilityType = facilityType;
       await writeJsonFileAtomic(this.filePath, [...records, record]);
       return record;
     });
   }
 
   // 준 키만 바꾼다. parentId는 여기서 바꿀 수 없다(프로젝트 옮기기는 범위 밖).
-  update(id: string, patch: { name?: unknown; memo?: unknown }): Promise<ProjectRecord | null> {
+  // inspectionType/facilityType은 null이면 지운다.
+  update(
+    id: string,
+    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown },
+  ): Promise<ProjectRecord | null> {
     return this.serialize(async () => {
       const records = await this.readAll();
       const index = records.findIndex((r) => r.id === id);
@@ -115,6 +156,14 @@ export class ProjectsStore {
       }
       if ('memo' in patch) {
         next.memo = validateMemo(patch.memo);
+      }
+      if ('inspectionType' in patch) {
+        if (patch.inspectionType === null) delete next.inspectionType;
+        else next.inspectionType = validateInspectionType(patch.inspectionType, current.parentId);
+      }
+      if ('facilityType' in patch) {
+        if (patch.facilityType === null) delete next.facilityType;
+        else next.facilityType = validateFacilityType(patch.facilityType, current.parentId);
       }
       records[index] = next;
       await writeJsonFileAtomic(this.filePath, records);

@@ -195,3 +195,39 @@ describe('ProjectsStore.remove', () => {
     expect(await store.get(created.id)).not.toBeNull();
   });
 });
+
+// 점검 종류(최상위)·시설물 종류(하위). 설계: docs/design/2026-10-24-field-photo-checklist.md 결정 5
+describe('점검 종류·시설물 종류', () => {
+  const T = '2026-10-24T00:00:00.000Z';
+
+  it('최상위에 점검 종류를 저장한다', async () => {
+    const p = await store.create({ name: '오봉대교', inspectionType: '정밀안전점검' }, T);
+    expect(p.inspectionType).toBe('정밀안전점검');
+    expect('facilityType' in p).toBe(false);
+  });
+
+  it('하위에 시설물 종류를 저장한다', async () => {
+    const top = await store.create({ name: '오봉대교' }, T);
+    const child = await store.create({ name: 'A교', parentId: top.id, facilityType: '교량' }, T);
+    expect(child.facilityType).toBe('교량');
+  });
+
+  it('최상위에 시설물 종류, 하위에 점검 종류는 거부(type)', async () => {
+    await expect(store.create({ name: 'X', facilityType: '교량' }, T)).rejects.toMatchObject({ code: 'type' });
+    const top = await store.create({ name: 'Y' }, T);
+    await expect(store.create({ name: 'Z', parentId: top.id, inspectionType: '정기안전점검' }, T)).rejects.toMatchObject({
+      code: 'type',
+    });
+  });
+
+  it('허용값 밖이면 거부(type)', async () => {
+    await expect(store.create({ name: 'X', inspectionType: '정밀점검' }, T)).rejects.toMatchObject({ code: 'type' });
+  });
+
+  it('update로 바꾸고 null이면 지운다', async () => {
+    const p = await store.create({ name: '오봉대교', inspectionType: '정기안전점검' }, T);
+    expect((await store.update(p.id, { inspectionType: '정밀안전진단' }))?.inspectionType).toBe('정밀안전진단');
+    const cleared = await store.update(p.id, { inspectionType: null });
+    expect(cleared && 'inspectionType' in cleared).toBe(false);
+  });
+});
