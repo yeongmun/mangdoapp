@@ -34,6 +34,7 @@ import {
 import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFolder } from './projectZip.js';
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
+import { mergeRequired, shotFileName, type Shot, type ShotsStore, type ShotTemplateItem } from './shotsStore.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -57,6 +58,9 @@ export interface AppDeps {
   photos: PhotosStore;
   trash: DrawingTrash;
   projects: ProjectsStore;
+  // 촬영 항목(필수 사진·전차 사진). requiredTemplate = 시설물 종류 → 필수 목록(config/requiredShots.json)
+  shots: ShotsStore;
+  requiredTemplate: Record<string, ShotTemplateItem[]>;
   // 오프라인 모드(설계 3.1): 도면 파생 파일(f2d 등) 캐시와 뷰어 꾸러미 캐시.
   offline: OfflineFilesStore;
   viewerBundle: ViewerBundle;
@@ -699,7 +703,16 @@ export function createApp(deps: AppDeps) {
         items.push({ name: `${folder}${base}/${name}`, drawingId: drawing.id, entry });
       }
     }
-    if (items.length === 0) {
+    // 촬영 항목(필수·전차 사진): 이 프로젝트와 하위 구조물마다 `<구조물이름>/<구조물_부재_번호>.jpg`
+    const shotFiles: { name: string; path: string }[] = [];
+    for (const record of [project, ...projectRecords.filter((p) => p.parentId === id)]) {
+      const folder = record.id === id ? '' : `${safeSegment(record.name)}/`;
+      for (const shot of await deps.shots.list(record.id)) {
+        if (!shot.photo || !(await deps.shots.hasPhotoFile(record.id, shot))) continue;
+        shotFiles.push({ name: `${folder}${shotFileName(record.name, shot)}`, path: deps.shots.pathOf(record.id, shot) });
+      }
+    }
+    if (items.length === 0 && shotFiles.length === 0) {
       res.status(400).json({ error: '저장된 사진이 없습니다' });
       return;
     }
@@ -725,7 +738,119 @@ export function createApp(deps: AppDeps) {
     for (const { name, drawingId, entry } of items) {
       archive.file(deps.photos.pathOf(drawingId, entry), { name });
     }
+    for (const { name, path } of shotFiles) archive.file(path, { name });
     await archive.finalize();
+  });
+
+  // 촬영 항목(2026-10-24 설계 서버(앱)). 시설물 종류가 있는 구조물은 부를 때마다 필수 목록을 맞춘다
+  // (mergeRequired) — 종류를 바꿔도 찍은 항목은 남는다. 사진 파일 흐름은 손상 사진 라우트와 같다.
+  async function findShotProject(req: Request, res: Response) {
+    const id = req.params.id as string;
+    const project = isProjectId(id) ? await deps.projects.get(id) : null;
+    if (!project) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return null;
+    }
+    return project;
+  }
+  function shotPhotoUrl(projectId: string, shotId: string): string {
+    return `/api/projects/${projectId}/shots/${shotId}/photo`;
+  }
+
+  api.get('/projects/:id/shots', async (req, res) => {
+    const project = await findShotProject(req, res);
+    if (!project) return;
+    let shots = await deps.shots.list(project.id);
+    const facilityType = project.facilityType ?? null;
+    if (facilityType !== null) {
+      const merged = mergeRequired(shots, deps.requiredTemplate[facilityType] ?? []);
+      if (JSON.stringify(merged) !== JSON.stringify(shots)) {
+        await deps.shots.replace(project.id, merged);
+        shots = merged;
+      }
+    }
+    res.json({
+      projectId: project.id,
+      projectName: project.name,
+      facilityType,
+      shots: shots.map((shot) => ({
+        ...shot,
+        url: shot.photo ? shotPhotoUrl(project.id, shot.id) : null,
+        thumbUrl: shot.photo ? `${shotPhotoUrl(project.id, shot.id)}/thumb` : null,
+      })),
+    });
+  });
+
+  api.post('/projects/:id/shots/:shotId/photo', photoUploadField, async (req, res) => {
+    const project = await findShotProject(req, res);
+    if (!project) return;
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: '사진 파일이 없습니다.' });
+      return;
+    }
+    const extension = PHOTO_EXTENSIONS[file.mimetype];
+    if (extension === undefined) {
+      res.status(400).json({ error: 'JPEG·PNG·HEIC 사진만 올릴 수 있습니다.' });
+      return;
+    }
+    const shot = await deps.shots.savePhoto(project.id, req.params.shotId as string, extension, file.buffer, new Date(now()).toISOString());
+    if (!shot) {
+      res.status(404).json({ error: '촬영 항목을 찾을 수 없습니다.' });
+      return;
+    }
+    try {
+      await deps.shots.saveThumb(project.id, shot, await makeThumbnail(file.buffer));
+    } catch (err) {
+      console.error('[shots] 썸네일을 만들지 못했습니다', project.id, shot.id, messageOf(err));
+    }
+    res.status(201).json({ shot, number: shot.number, url: shotPhotoUrl(project.id, shot.id), thumbUrl: `${shotPhotoUrl(project.id, shot.id)}/thumb` });
+  });
+
+  async function findShot(req: Request, res: Response): Promise<{ project: { id: string }; shot: Shot } | null> {
+    const project = await findShotProject(req, res);
+    if (!project) return null;
+    const shot = (await deps.shots.list(project.id)).find((s) => s.id === req.params.shotId);
+    if (!shot || !shot.photo) {
+      res.status(404).json({ error: '사진을 찾을 수 없습니다.' });
+      return null;
+    }
+    return { project, shot };
+  }
+
+  api.get('/projects/:id/shots/:shotId/photo', async (req, res) => {
+    const found = await findShot(req, res);
+    if (!found) return;
+    const data = await deps.shots.readPhoto(found.project.id, found.shot);
+    if (!data) {
+      res.status(404).json({ error: '사진 파일이 없습니다.' });
+      return;
+    }
+    res.setHeader('Content-Type', PHOTO_MIME_TYPES[extname(found.shot.photo!.file)] ?? 'image/jpeg');
+    res.send(data);
+  });
+
+  api.get('/projects/:id/shots/:shotId/photo/thumb', async (req, res) => {
+    const found = await findShot(req, res);
+    if (!found) return;
+    let thumb = await deps.shots.readThumb(found.project.id, found.shot);
+    if (!thumb) {
+      const data = await deps.shots.readPhoto(found.project.id, found.shot);
+      if (!data) {
+        res.status(404).json({ error: '사진 파일이 없습니다.' });
+        return;
+      }
+      try {
+        thumb = await makeThumbnail(data);
+        await deps.shots.saveThumb(found.project.id, found.shot, thumb);
+      } catch {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.send(data);
+        return;
+      }
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(thumb);
   });
 
   // 프로젝트(와 하위 프로젝트)의 모든 도면 산출 DXF를 zip 하나로 묶는다(설계 4장). 산출은

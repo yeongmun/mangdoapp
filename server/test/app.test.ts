@@ -17,6 +17,7 @@ import { OriginalsStore } from '../src/originalsStore.js';
 import { PhotosStore } from '../src/photosStore.js';
 import { FILE_URL_SHIM } from '../src/viewerBundle.js';
 import { newProjectId, ProjectsStore } from '../src/projectsStore.js';
+import { ShotsStore } from '../src/shotsStore.js';
 import { AUTODESK_VIEWER_FILES, AUTODESK_VIEWER_VERSION, ViewerBundle } from '../src/viewerBundle.js';
 
 // 오프라인 모드(설계 2장): offlineReady는 저장하지 않고 응답에만 붙는다 — 저장 타입(DrawingRecord)에는
@@ -109,6 +110,8 @@ function setup(
   const originals = new OriginalsStore(join(dir, 'data', 'drawings'));
   const photos = new PhotosStore(join(dir, 'data', 'photos'));
   const projects = new ProjectsStore(join(dir, 'data', 'projects.json'));
+  const shots = new ShotsStore(join(dir, 'data', 'shots'));
+  const requiredTemplate = { 교량: [{ member: '전경', label: '상류측' }, { member: '교대', label: 'A1 전면' }] };
   const trash = new DrawingTrash(
     {
       trashDir: join(dir, 'data', 'trash'),
@@ -135,6 +138,8 @@ function setup(
     photos,
     trash,
     projects,
+    shots,
+    requiredTemplate,
     offline,
     viewerBundle,
     publicDir: join(dir, 'public'),
@@ -142,7 +147,7 @@ function setup(
     maxUploadBytes,
     maxPhotoBytes,
   });
-  return { app, aps, drawings, damages, originals, photos, trash, projects, offlineAps, offline, fetchCdn, viewerBundle };
+  return { app, aps, drawings, damages, originals, photos, trash, projects, shots, offlineAps, offline, fetchCdn, viewerBundle };
 }
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
@@ -1701,6 +1706,82 @@ describe('프로젝트 점검 종류·시설물 종류', () => {
       .send({ name: '오봉대교', inspectionType: '정밀점검' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('점검 종류');
+  });
+});
+
+// 촬영 항목(필수 사진). 설계: docs/design/2026-10-24-field-photo-checklist.md 서버(앱)
+describe('촬영 항목 API (/api/projects/:id/shots)', () => {
+  async function bridge(app: ReturnType<typeof setup>['app']) {
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교' })).body;
+    const child = (
+      await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id, facilityType: '교량' })
+    ).body;
+    return { top, child };
+  }
+
+  it('시설물 종류를 고르면 GET …/shots에 필수 목록이 생긴다', async () => {
+    const { app } = setup();
+    const { child } = await bridge(app);
+    const res = await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body.facilityType).toBe('교량');
+    expect(res.body.projectName).toBe('A교');
+    expect(res.body.shots.map((s: { member: string; number: string; kind: string }) => [s.kind, s.member, s.number])).toEqual([
+      ['required', '전경', '001'],
+      ['required', '교대', '002'],
+    ]);
+    // 두 번 불러도 같은 id
+    const again = await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY);
+    expect(again.body.shots[0].id).toBe(res.body.shots[0].id);
+  });
+
+  it('시설물 종류가 없으면 빈 목록, 없는 프로젝트는 404', async () => {
+    const { app } = setup();
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교' })).body;
+    const res = await request(app).get(`/api/projects/${top.id}/shots`).set('x-access-key', KEY);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ facilityType: null, shots: [] });
+    expect((await request(app).get(`/api/projects/${newProjectId()}/shots`).set('x-access-key', KEY)).status).toBe(404);
+  });
+
+  it('POST …/shots/:shotId/photo 두 번 → photo 하나, 두 번째 내용', async () => {
+    const { app, shots } = setup();
+    const { child } = await bridge(app);
+    const list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    const shotId = list.shots[0].id;
+    const first = await request(app)
+      .post(`/api/projects/${child.id}/shots/${shotId}/photo`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('one'), { filename: 'x.jpg', contentType: 'image/jpeg' });
+    expect(first.status).toBe(201);
+    expect(first.body.shot.photo.file).toBe('001.jpg');
+    expect(first.body.url).toBe(`/api/projects/${child.id}/shots/${shotId}/photo`);
+    const second = await request(app)
+      .post(`/api/projects/${child.id}/shots/${shotId}/photo`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('two'), { filename: 'x.jpg', contentType: 'image/jpeg' });
+    expect(second.status).toBe(201);
+    const stored = (await shots.list(child.id)).filter((s) => s.photo);
+    expect(stored).toHaveLength(1);
+    const got = await request(app).get(`/api/projects/${child.id}/shots/${shotId}/photo`).set('x-access-key', KEY).responseType('blob');
+    expect(got.status).toBe(200);
+    expect(Buffer.from(got.body).toString()).toBe('two');
+    expect((await request(app).post(`/api/projects/${child.id}/shots/nope/photo`).set('x-access-key', KEY).attach('file', Buffer.from('x'), { filename: 'x.jpg', contentType: 'image/jpeg' })).status).toBe(404);
+  });
+
+  it('photos.zip에 구조물이름/구조물_부재_번호.jpg 가 들어간다', async () => {
+    const { app } = setup();
+    const { top, child } = await bridge(app);
+    const list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    await request(app)
+      .post(`/api/projects/${child.id}/shots/${list.shots[1].id}/photo`)
+      .set('x-access-key', KEY)
+      .attach('file', Buffer.from('shot-bytes'), { filename: 'x.jpg', contentType: 'image/jpeg' });
+    const res = await request(app).get(`/api/projects/${top.id}/photos.zip`).set('x-access-key', KEY).responseType('blob');
+    expect(res.status).toBe(200);
+    const body = Buffer.from(res.body);
+    expect(body.includes(Buffer.from('A교/A교_교대_002.jpg', 'utf8'))).toBe(true);
+    expect(body.includes(Buffer.from('shot-bytes', 'utf8'))).toBe(true);
   });
 });
 
