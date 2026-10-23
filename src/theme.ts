@@ -2,6 +2,8 @@
 // 기존 화면 색(#1e66f5 파랑, #f4f5f7 배경)에 맞춰 조정했다. 새 화면·컴포넌트는 raw hex 대신 이걸 쓴다.
 // 기존 DrawingListScreen의 스타일은 건드리지 않았다 — 손볼 때 여기로 옮긴다.
 export const colors = {
+  /** 스플래시·아이콘 바탕. 화면 안에서는 제목·강조 글자에만 */
+  navy: '#1e3a5f',
   primary: '#1e66f5',
   onPrimary: '#ffffff',
   primaryPressed: '#1a56d0',

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LoadingView } from '../components/LoadingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
 import { recognizeHandwriting, type DamageDoc, type Drawing } from '../api';
@@ -431,11 +432,7 @@ export function ViewerScreen({ drawing, onBack }: Props) {
             onError={(event) => setError(`페이지를 열 수 없습니다: ${event.nativeEvent.description}`)}
           />
         )}
-        {sourceProps !== null && loading && !error && (
-          <View style={styles.overlay}>
-            <ActivityIndicator size="large" />
-          </View>
-        )}
+        {sourceProps !== null && loading && !error && <LoadingView overlay message="도면을 여는 중" />}
         {sourceProps !== null && error && (
           <View style={styles.overlay}>
             <Text style={styles.errorText}>{error}</Text>

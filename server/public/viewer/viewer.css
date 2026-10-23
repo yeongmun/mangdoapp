@@ -64,7 +64,7 @@ body {
   padding: 10px 14px;
   white-space: nowrap;
   border-radius: 8px;
-  border: 1px solid #c7c9cf;
+  border: 1px solid #d5d9e0;
   background: #fff;
   color: #1a1a1a;
   touch-action: manipulation;
@@ -102,7 +102,7 @@ body {
   font-size: 15px;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #c7c9cf;
+  border: 1px solid #d5d9e0;
   background: #fff;
   color: #1a1a1a;
   touch-action: manipulation;
@@ -136,7 +136,7 @@ body {
   font-size: 15px;
   padding: 9px 8px;
   border-radius: 8px;
-  border: 1px solid #c7c9cf;
+  border: 1px solid #d5d9e0;
   background: #fff;
   max-width: 130px;
 }
@@ -158,7 +158,7 @@ body {
 #propsPanel label { display: block; margin-bottom: 8px; }
 #propsPanel input, #propsPanel select { width: 100%; font-size: 15px; padding: 6px 8px; box-sizing: border-box; }
 #propsPanel .row { display: flex; gap: 8px; }
-#propsPanel button { flex: 1; font-size: 15px; padding: 9px 0; border-radius: 8px; border: 1px solid #c7c9cf; background: #fff; }
+#propsPanel button { flex: 1; font-size: 15px; padding: 9px 0; border-radius: 8px; border: 1px solid #d5d9e0; background: #fff; }
 #propsPanel #propsSave { background: #1e66f5; border-color: #1e66f5; color: #fff; }
 #propsSummary { margin: 0 0 10px; color: #3c4149; font-size: 13px; line-height: 1.4; }
 #computedHint { margin: 0 0 8px; color: #8a8f98; font-size: 12px; }
@@ -389,7 +389,7 @@ body {
 #statusPanel[hidden] { display: none; }
 #statusPanel .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 #statusPanel h2 { font-size: 15px; margin: 0; }
-#statusPanel #statusClose { font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px solid #c7c9cf; background: #fff; }
+#statusPanel #statusClose { font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px solid #d5d9e0; background: #fff; }
 #statusBody { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; }
 #statusBody table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 #statusBody th, #statusBody td { border: 1px solid #d9dbe0; padding: 4px 6px; text-align: center; white-space: nowrap; }

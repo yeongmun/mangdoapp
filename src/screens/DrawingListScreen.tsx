@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
@@ -22,7 +21,9 @@ import {
   type Drawing,
   type Project,
 } from '../api';
+import { LoadingView } from '../components/LoadingView';
 import { TypeChips } from '../components/TypeChips';
+import { colors, radius, space } from '../theme';
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
 import { downloadDrawings } from '../offlineDownload';
@@ -423,11 +424,7 @@ export function DrawingListScreen({ onOpen }: Props) {
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <LoadingView message="도면 목록을 불러오는 중" />;
   }
 
   const flat = projects.length === 0;
@@ -520,7 +517,10 @@ export function DrawingListScreen({ onOpen }: Props) {
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                 onPress={() => goTo(project.id)}
               >
-                <Text style={styles.folderGlyph}>📁</Text>
+                <View style={styles.folderTile}>
+                  <View style={styles.folderTab} />
+                  <View style={styles.folderBody} />
+                </View>
                 <View style={styles.rowText}>
                   <Text style={styles.name}>{project.name}</Text>
                   <Text style={styles.meta}>도면 {project.totalDrawingCount}</Text>
@@ -540,7 +540,10 @@ export function DrawingListScreen({ onOpen }: Props) {
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                 onPress={() => goTo('unfiled')}
               >
-                <Text style={styles.folderGlyph}>📁</Text>
+                <View style={[styles.folderTile, styles.folderTileMuted]}>
+                  <View style={styles.folderTab} />
+                  <View style={styles.folderBody} />
+                </View>
                 <View style={styles.rowText}>
                   <Text style={styles.name}>미분류</Text>
                   <Text style={styles.meta}>도면 {item.count}</Text>
@@ -586,46 +589,68 @@ export function DrawingListScreen({ onOpen }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f5f7' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#f4f5f7' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: '700', color: '#1a1a1a' },
-  backButton: { fontSize: 16, fontWeight: '600', color: '#1e66f5', marginRight: 12 },
-  problem: { fontSize: 16, color: '#d32f2f', textAlign: 'center', lineHeight: 24 },
-  errorBanner: { color: '#fff', backgroundColor: '#d32f2f', padding: 12, borderRadius: 8, marginBottom: 12 },
-  pendingBanner: { color: '#fff', backgroundColor: '#ef6c00', padding: 12, borderRadius: 8, marginBottom: 12 },
-  progressBanner: { color: '#fff', backgroundColor: '#1e66f5', padding: 12, borderRadius: 8, marginBottom: 12 },
-  resultBanner: { color: '#1a1a1a', backgroundColor: '#e2e6ec', padding: 12, borderRadius: 8, marginBottom: 12 },
-  listDownload: { backgroundColor: '#1e66f5', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
-  listDownloadPressed: { backgroundColor: '#1a56d0' },
-  listDownloadDone: { backgroundColor: '#e2e6ec' },
-  listDownloadText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  listDownloadDoneText: { color: '#8a8f98', fontSize: 16, fontWeight: '600' },
-  hint: { fontSize: 12, color: '#8a8f98', marginBottom: 8 },
-  empty: { textAlign: 'center', color: '#8a8f98', marginTop: 48, lineHeight: 22 },
+  container: { flex: 1, backgroundColor: colors.background },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl, backgroundColor: colors.background },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: space.lg },
+  title: { fontSize: 26, fontWeight: '700', color: colors.navy, letterSpacing: -0.3 },
+  backButton: { fontSize: 16, fontWeight: '600', color: colors.primary, marginRight: space.md, paddingVertical: space.sm },
+  problem: { fontSize: 16, color: colors.destructive, textAlign: 'center', lineHeight: 24 },
+  errorBanner: { color: '#fff', backgroundColor: colors.destructive, padding: space.md, borderRadius: radius.md, marginBottom: space.md },
+  pendingBanner: { color: '#fff', backgroundColor: '#ef6c00', padding: space.md, borderRadius: radius.md, marginBottom: space.md },
+  progressBanner: { color: colors.onPrimary, backgroundColor: colors.primary, padding: space.md, borderRadius: radius.md, marginBottom: space.md },
+  resultBanner: {
+    color: colors.foreground,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: space.md,
+    borderRadius: radius.md,
+    marginBottom: space.md,
+  },
+  listDownload: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    marginBottom: space.md,
+  },
+  listDownloadPressed: { backgroundColor: colors.primaryPressed },
+  listDownloadDone: { backgroundColor: colors.muted },
+  listDownloadText: { color: colors.onPrimary, fontSize: 16, fontWeight: '600' },
+  listDownloadDoneText: { color: colors.mutedForeground, fontSize: 16, fontWeight: '600' },
+  hint: { fontSize: 12, color: colors.mutedForeground, marginBottom: space.sm },
+  empty: { textAlign: 'center', color: colors.mutedForeground, marginTop: 48, lineHeight: 22 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 10,
-    marginBottom: 10,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 14,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.lg,
+    marginBottom: space.sm,
   },
   rowDisabled: { opacity: 0.6 },
-  rowPressed: { backgroundColor: '#e8eefc' },
-  rowText: { flex: 1, marginRight: 12 },
-  name: { fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
-  meta: { fontSize: 13, color: '#8a8f98', marginTop: 4 },
-  memo: { fontSize: 13, color: '#8a8f98', marginTop: 2 },
-  rowError: { fontSize: 13, color: '#d32f2f', marginTop: 4 },
-  folderGlyph: { fontSize: 22, marginRight: 12 },
+  rowPressed: { backgroundColor: '#e8eefc', borderColor: colors.primary },
+  rowText: { flex: 1, marginRight: space.md },
+  name: { fontSize: 17, fontWeight: '600', color: colors.foreground },
+  meta: { fontSize: 13, color: colors.mutedForeground, marginTop: 4 },
+  memo: { fontSize: 13, color: colors.mutedForeground, marginTop: 2 },
+  rowError: { fontSize: 13, color: colors.destructive, marginTop: 4 },
+  // 폴더 아이콘: 탭이 달린 작은 남색 타일
+  folderTile: { width: 36, height: 30, marginRight: space.md, justifyContent: 'flex-end' },
+  folderTileMuted: { opacity: 0.45 },
+  folderTab: { position: 'absolute', top: 0, left: 0, width: 16, height: 8, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: colors.navy },
+  folderBody: { height: 24, borderRadius: 4, borderTopLeftRadius: 0, backgroundColor: colors.navy },
   chevron: { fontSize: 22, color: '#c4c8ce', marginLeft: 4 },
   badge: {
     color: '#fff',
     fontSize: 13,
+    fontWeight: '600',
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
     overflow: 'hidden',
   },
 });
