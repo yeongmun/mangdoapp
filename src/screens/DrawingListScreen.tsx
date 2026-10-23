@@ -12,7 +12,17 @@ import {
   type AlertButton,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { deleteDrawing, fetchDrawings, fetchProjects, type Drawing, type Project } from '../api';
+import {
+  deleteDrawing,
+  FACILITY_TYPES,
+  fetchDrawings,
+  fetchProjects,
+  INSPECTION_TYPES,
+  updateProject,
+  type Drawing,
+  type Project,
+} from '../api';
+import { TypeChips } from '../components/TypeChips';
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
 import { downloadDrawings } from '../offlineDownload';
@@ -140,6 +150,23 @@ export function DrawingListScreen({ onOpen }: Props) {
   const [downloadResult, setDownloadResult] = useState<string | null>(null);
   // 기기에 없는 도면을 눌러 받는 중이면 그 이름(배너 `여는 중 — <이름>`, 2026-09-28 설계 1.2).
   const [opening, setOpening] = useState<string | null>(null);
+  // 점검 종류·시설물 종류 저장 중이면 칩을 잠근다. 실패하면 이전 값 그대로 두고 오류 배너만.
+  const [savingType, setSavingType] = useState(false);
+  const changeProjectType = useCallback(
+    async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null }) => {
+      setSavingType(true);
+      setError(null);
+      try {
+        const updated = await updateProject(project.id, patch);
+        setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      } catch (e) {
+        setError(errMessage(e));
+      } finally {
+        setSavingType(false);
+      }
+    },
+    [],
+  );
   // 내려받는 동안에는 동기화를 돌리지 않는다 — 둘 다 index.json을 고치므로 겹치면 한쪽 갱신이
   // 사라질 수 있다(offlineDownload·offlineSync는 서로의 잠금을 모른다).
   const downloadingRef = useRef(false);
@@ -425,6 +452,24 @@ export function DrawingListScreen({ onOpen }: Props) {
         )}
         <Text style={styles.title}>{title}</Text>
       </View>
+      {currentProject && currentProject.depth === 0 && (
+        <TypeChips
+          label="점검 종류"
+          options={INSPECTION_TYPES}
+          value={currentProject.inspectionType}
+          disabled={savingType}
+          onChange={(v) => void changeProjectType(currentProject, { inspectionType: v })}
+        />
+      )}
+      {currentProject && currentProject.depth === 1 && (
+        <TypeChips
+          label="시설물 종류"
+          options={FACILITY_TYPES}
+          value={currentProject.facilityType}
+          disabled={savingType}
+          onChange={(v) => void changeProjectType(currentProject, { facilityType: v })}
+        />
+      )}
       {pendingBadge !== null && (
         <Pressable onPress={() => void sendNow()}>
           <Text style={styles.pendingBanner}>{pendingBadge}</Text>

@@ -65,6 +65,36 @@ export interface Project {
   drawingCount: number;
   totalDrawingCount: number;
   childCount: number;
+  /** 점검 종류 — 최상위(과업)에만. 서버 projectsStore.ts의 INSPECTION_TYPES와 같은 값 */
+  inspectionType?: string;
+  /** 시설물 종류 — 하위(구조물)에만. 서버 FACILITY_TYPES와 같은 값 */
+  facilityType?: string;
+}
+
+export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
+export const FACILITY_TYPES = ['교량', '터널', '옹벽', '절토사면', '건축물', '기타'] as const;
+
+// 점검 종류·시설물 종류만 고친다. null은 지우기. 응답은 서버가 트리 계산을 거친 Project 하나.
+export async function updateProject(
+  projectId: string,
+  patch: { inspectionType?: string | null; facilityType?: string | null },
+): Promise<Project> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      headers: { 'x-access-key': ACCESS_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+  } catch {
+    throw new Error('서버에 연결할 수 없습니다. 인터넷이 되는 곳에서 다시 골라 주세요.');
+  }
+  if (res.status === 401) throw new Error('접근키를 확인하세요.');
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `프로젝트를 저장하지 못했습니다 (${res.status}).`);
+  }
+  return (await res.json()) as Project;
 }
 
 export async function fetchDrawings(): Promise<Drawing[]> {
