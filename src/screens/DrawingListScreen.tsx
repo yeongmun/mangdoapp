@@ -7,11 +7,13 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type AlertButton,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  createProject,
   deleteDrawing,
   FACILITY_TYPES,
   fetchDrawings,
@@ -23,6 +25,7 @@ import {
 } from '../api';
 import { LoadingView } from '../components/LoadingView';
 import { TypeChips } from '../components/TypeChips';
+import { RequiredShotsView } from './RequiredShotsView';
 import { colors, radius, space } from '../theme';
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
@@ -153,6 +156,11 @@ export function DrawingListScreen({ onOpen }: Props) {
   const [opening, setOpening] = useState<string | null>(null);
   // 점검 종류·시설물 종류 저장 중이면 칩을 잠근다. 실패하면 이전 값 그대로 두고 오류 배너만.
   const [savingType, setSavingType] = useState(false);
+  // 구조물 화면의 탭. 열 때마다 [도면]부터(설계: 선택 기억 안 함). location이 바뀌면 되돌린다.
+  const [tab, setTab] = useState<'drawings' | 'shots'>('drawings');
+  useEffect(() => {
+    setTab('drawings');
+  }, [location]);
   const changeProjectType = useCallback(
     async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null }) => {
       setSavingType(true);
@@ -222,6 +230,28 @@ export function DrawingListScreen({ onOpen }: Props) {
       return next;
     });
   }, []);
+
+  // 과업 화면의 「+ 구조물 추가」
+  const [newChildName, setNewChildName] = useState('');
+  const [addingChild, setAddingChild] = useState(false);
+  const addChild = useCallback(
+    async (parent: Project) => {
+      const name = newChildName.trim();
+      if (!name) return;
+      setAddingChild(true);
+      setError(null);
+      try {
+        await createProject(name, parent.id);
+        setNewChildName('');
+        await load();
+      } catch (e) {
+        setError(errMessage(e));
+      } finally {
+        setAddingChild(false);
+      }
+    },
+    [newChildName, load],
+  );
 
   // `서버에 아직 안 올라감` 배지를 눌렀을 때(2026-09-28 설계 1.2): 10번 실패해 멈춘 사진까지
   // 되돌린 뒤 사진과 손상 기록을 바로 한 번 보내고 목록을 새로 고친다. 내려받는 중에는 손상
@@ -501,7 +531,51 @@ export function DrawingListScreen({ onOpen }: Props) {
           </Text>
         </Pressable>
       )}
-      {hasDrawingRow && <Text style={styles.hint}>도면을 길게 누르면 휴지통으로 보내거나 기기에서 지울 수 있습니다.</Text>}
+      {currentProject && currentProject.depth === 1 && (
+        <View style={styles.tabs} accessibilityRole="tablist">
+          {(
+            [
+              ['drawings', '도면'],
+              ['shots', '필수 사진'],
+            ] as const
+          ).map(([key, label]) => (
+            <Pressable
+              key={key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === key }}
+              onPress={() => setTab(key)}
+              style={[styles.tab, tab === key && styles.tabActive]}
+            >
+              <Text style={[styles.tabText, tab === key && styles.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {currentProject && currentProject.depth === 0 && (
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.addInput}
+            placeholder="구조물 이름 (예: A교)"
+            placeholderTextColor={colors.mutedForeground}
+            value={newChildName}
+            onChangeText={setNewChildName}
+            editable={!addingChild}
+            returnKeyType="done"
+            onSubmitEditing={() => void addChild(currentProject)}
+          />
+          <Pressable
+            style={({ pressed }) => [styles.addButton, (!newChildName.trim() || addingChild) && styles.addButtonOff, pressed && styles.addButtonPressed]}
+            disabled={!newChildName.trim() || addingChild}
+            onPress={() => void addChild(currentProject)}
+          >
+            <Text style={styles.addButtonText}>+ 구조물 추가</Text>
+          </Pressable>
+        </View>
+      )}
+      {tab === 'drawings' && hasDrawingRow && (
+        <Text style={styles.hint}>도면을 길게 누르면 휴지통으로 보내거나 기기에서 지울 수 있습니다.</Text>
+      )}
+      {tab === 'drawings' && (
       <FlatList
         data={items}
         keyExtractor={(item) =>
@@ -584,6 +658,10 @@ export function DrawingListScreen({ onOpen }: Props) {
           );
         }}
       />
+      )}
+      {tab === 'shots' && currentProject && (
+        <RequiredShotsView project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
+      )}
     </View>
   );
 }
@@ -644,6 +722,29 @@ const styles = StyleSheet.create({
   folderTab: { position: 'absolute', top: 0, left: 0, width: 16, height: 8, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: colors.navy },
   folderBody: { height: 24, borderRadius: 4, borderTopLeftRadius: 0, backgroundColor: colors.navy },
   chevron: { fontSize: 22, color: '#c4c8ce', marginLeft: 4 },
+  // 구조물 화면 탭(도면 / 필수 사진)
+  tabs: { flexDirection: 'row', backgroundColor: colors.muted, borderRadius: radius.lg, padding: 3, marginBottom: space.md },
+  tab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+  tabActive: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  tabText: { fontSize: 15, fontWeight: '600', color: colors.mutedForeground },
+  tabTextActive: { color: colors.navy },
+  // 과업 화면 「+ 구조물 추가」
+  addRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.md },
+  addInput: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: space.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    fontSize: 15,
+    color: colors.foreground,
+  },
+  addButton: { minHeight: 44, paddingHorizontal: space.lg, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  addButtonOff: { backgroundColor: colors.muted },
+  addButtonPressed: { backgroundColor: colors.primaryPressed },
+  addButtonText: { color: colors.onPrimary, fontSize: 15, fontWeight: '600' },
   badge: {
     color: '#fff',
     fontSize: 13,
