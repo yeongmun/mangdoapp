@@ -8,7 +8,7 @@
 원래 요구사항은 `docs/기능명세서.md`. 현재 결정·진행 기록·확인 항목은 Claude 프로젝트 "대농"의
 `claude/프로젝트-허브-설계.md`(§8 결정, §9 진행, §10 앱 Pro 방향)와 `claude/확인-체크리스트.md`에 있다.
 
-## 현재 상태 (2026-10-23)
+## 현재 상태 (2026-10-24)
 - **앱** (`src/`): Expo(React Native, TypeScript). 도면 목록 화면 + 뷰어 화면(WebView). 오프라인 저장·동기화(`offlineSync.ts`, 규칙 `offlineRules.ts`), 사진 촬영·업로드 큐.
 - **서버** (`server/`): Express 5 + vitest. 파일 저장(`server/data/`, DB 없음). 손상 JSON(schemaVersion 5)이 원본.
   업로드 → APS 변환(뷰어용 SVF2만) → 손상 저장/병합(`mergeDamages.ts`, 손상 id 단위·삭제 기록 보존) →
@@ -18,7 +18,8 @@
   뷰어 번들은 도면을 내려받을 때 태블릿에 저장되므로, 뷰어를 고치면 "기기에서 지우기 → 다시 받기"를 해야 반영된다.
 - **PC 페이지** (`server/public/`): 업로드, 프로젝트, 내려받기, 휴지통.
 - **프로젝트**: 최상위(과업)에 `inspectionType`(점검 종류), 하위(구조물)에 `facilityType`(시설물 종류) — 앱 목록 화면 칩으로 고른다(2026-10-24). 웹(daenong)이 정기·정밀 과업을 저장하면 같은 이름의 최상위 프로젝트를 자동 생성한다. 현장 사진 체크리스트 설계: `docs/design/2026-10-24-field-photo-checklist.md`(2~4단계 진행 중).
-- **앱 공통 토큰** `src/theme.ts`(색·간격), 공용 컴포넌트 `src/components/`. 새 화면은 여기 토큰을 쓰고 디자인은 `ui-ux-pro-max` 스킬(`.agents/skills/`) 기준.
+- **촬영 항목(shots)** (2026-10-24, 2단계): 구조물마다 필수 사진·전차 사진 목록(`server/src/shotsStore.ts`, `data/shots/`). 필수 목록은 `server/config/requiredShots.json`(시설물 종류별, 바꾸면 재시작). 앱 [필수 사진] 탭(`src/screens/RequiredShotsView.tsx`)이 손상 사진과 **같은 대기열**(`photoQueue.target`)로 올린다. 사진 zip엔 `<구조물>/<구조물_부재_번호>.jpg`. 3단계(전차 사진)·4단계(웹 표시)는 설계 문서 참고.
+- **앱 공통 토큰** `src/theme.ts`(색·간격), 공용 컴포넌트 `src/components/`(TypeChips·ShotCard·LoadingView). 새 화면은 여기 토큰을 쓰고 디자인은 `ui-ux-pro-max` 스킬(`.agents/skills/`) 기준. 아이콘·스플래시 원본은 `assets/symbol.svg`.
 - **사내 환경**: 서버 PC는 Windows(ODA File Converter 있음 → DWG 업로드·산출 가능), 캐드는 지스타캐드. cloudflared 터널로 태블릿 접속.
 - **비파괴(반발경도·탄산화)는 이 앱 범위 밖**(사용자 결정).
 
@@ -27,7 +28,7 @@
 - 한 번에 다 만들지 말고 단계별로, 각 단계마다 사용자가 실기기에서 테스트할 수 있는 상태로 끝낸다.
 - 실기기 확인이 필요한 항목은 작업을 멈추지 말고 `claude/확인-체크리스트.md`에 적고 계속 진행한다.
 - 메뉴·기능은 꼭 필요한 것만, 복잡하지 않게.
-- 테스트: `cd server && npx vitest run`. `offlineRules/photoQueue/photoShrink/projectList` 4개 파일은 expo tsconfig 문제로 환경에 따라 실패한다(알려진 문제). 그 외 실패만 내 문제다.
+- 테스트: `cd server && npx vitest run`(앱 순수 모듈 테스트도 여기서 돈다 — 루트 `npm install`이 되어 있어야 expo tsconfig를 찾는다). 앱 타입 검사 `npx tsc --noEmit`(루트).
 
 ## 주의사항
 - APS·Anthropic 키는 `server/.env`로 관리하고 절대 커밋하지 않는다(`server/.env.example` 참고).
