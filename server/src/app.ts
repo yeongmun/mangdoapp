@@ -81,7 +81,7 @@ async function findDrawing(deps: AppDeps, id: string): Promise<DrawingRecord | n
 }
 
 // ProjectRuleError → 상태 코드(설계 3장): parent(상위를 못 찾음)는 404, notEmpty(삭제 규칙)는
-// 409, 나머지(name·memo·duplicate·depth, 모두 입력값 문제)는 400.
+// 409, 나머지(name·memo·duplicate·depth·type, 모두 입력값 문제)는 400.
 function projectRuleStatus(code: ProjectRuleCode): number {
   if (code === 'parent') return 404;
   if (code === 'notEmpty') return 409;
@@ -595,7 +595,13 @@ export function createApp(deps: AppDeps) {
     const body = (req.body ?? {}) as Record<string, unknown>;
     try {
       const created = await deps.projects.create(
-        { name: body.name, memo: body.memo, parentId: body.parentId },
+        {
+          name: body.name,
+          memo: body.memo,
+          parentId: body.parentId,
+          inspectionType: body.inspectionType,
+          facilityType: body.facilityType,
+        },
         new Date(now()).toISOString(),
       );
       res.status(201).json(await projectViewFor(deps, created.id));
@@ -617,9 +623,11 @@ export function createApp(deps: AppDeps) {
     const body = (req.body ?? {}) as Record<string, unknown>;
     // ProjectsStore.update는 준 키만 바꾼다 — req.body에 실제로 있던 키만 넘긴다(항상 undefined를
     // 넣으면 "그 키를 지워라"로 오해할 수 있다).
-    const patch: { name?: unknown; memo?: unknown } = {};
+    const patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown } = {};
     if ('name' in body) patch.name = body.name;
     if ('memo' in body) patch.memo = body.memo;
+    if ('inspectionType' in body) patch.inspectionType = body.inspectionType;
+    if ('facilityType' in body) patch.facilityType = body.facilityType;
     try {
       const updated = await deps.projects.update(id, patch);
       if (!updated) {

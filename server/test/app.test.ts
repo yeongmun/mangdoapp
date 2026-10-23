@@ -1659,6 +1659,51 @@ function readZipEntryData(buf: Buffer, entry: ZipCdEntry): Buffer {
   return entry.method === 0 ? Buffer.from(raw) : inflateRawSync(raw);
 }
 
+// 점검 종류(최상위)·시설물 종류(하위). 설계: docs/design/2026-10-24-field-photo-checklist.md 결정 5
+describe('프로젝트 점검 종류·시설물 종류', () => {
+  it('POST /projects가 점검 종류를 받고 GET 목록에 실린다', async () => {
+    const { app } = setup();
+    const res = await request(app)
+      .post('/api/projects')
+      .set('x-access-key', KEY)
+      .send({ name: '오봉대교', inspectionType: '정밀안전점검' });
+    expect(res.status).toBe(201);
+    expect(res.body.inspectionType).toBe('정밀안전점검');
+    const list = await request(app).get('/api/projects').set('x-access-key', KEY);
+    expect(list.body[0].inspectionType).toBe('정밀안전점검');
+  });
+
+  it('PATCH /projects/:id로 시설물 종류를 넣고 null로 지운다', async () => {
+    const { app } = setup();
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교' })).body;
+    const child = (
+      await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id })
+    ).body;
+    const set = await request(app)
+      .patch(`/api/projects/${child.id}`)
+      .set('x-access-key', KEY)
+      .send({ facilityType: '교량' });
+    expect(set.status).toBe(200);
+    expect(set.body.facilityType).toBe('교량');
+    const cleared = await request(app)
+      .patch(`/api/projects/${child.id}`)
+      .set('x-access-key', KEY)
+      .send({ facilityType: null });
+    expect(cleared.status).toBe(200);
+    expect('facilityType' in cleared.body).toBe(false);
+  });
+
+  it('허용값 밖이면 400', async () => {
+    const { app } = setup();
+    const res = await request(app)
+      .post('/api/projects')
+      .set('x-access-key', KEY)
+      .send({ name: '오봉대교', inspectionType: '정밀점검' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('점검 종류');
+  });
+});
+
 describe('GET /api/projects/:id/photos.zip', () => {
   it('고른 프로젝트는 최상위, 하위 프로젝트는 <하위>/ 폴더에 담고 썸네일은 넣지 않는다', async () => {
     const { app, projects, drawings, photos } = setup();
