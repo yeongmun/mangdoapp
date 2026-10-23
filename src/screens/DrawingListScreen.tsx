@@ -660,7 +660,7 @@ export function DrawingListScreen({ onOpen }: Props) {
       />
       )}
       {tab === 'shots' && currentProject && (
-        <RequiredShotsView project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
+        <RequiredShotsView key={currentProject.id} project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
       )}
     </View>
   );

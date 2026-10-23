@@ -6,7 +6,8 @@ import { Alert, SectionList, StyleSheet, Text, View } from 'react-native';
 import { fetchShots, shotThumbSource, type Project, type Shot, type ShotList } from '../api';
 import { ShotCard } from '../components/ShotCard';
 import { takePhotoAndSave } from '../photo';
-import { enqueuePhoto, flushPhotoQueue } from '../photoUpload';
+import { enqueuePhoto, flushPhotoQueue, queuedShotIds } from '../photoUpload';
+import { reconcileLocal } from '../shotsRules';
 import { readShotsLocal, writeShotsLocal, type LocalShotState } from '../shotsLocal';
 import { colors, space } from '../theme';
 
@@ -30,8 +31,10 @@ export function RequiredShotsView({ project, onPhotoQueued }: Props) {
   const refresh = useCallback(async () => {
     try {
       const list: ShotList = await fetchShots(project.id);
+      // 서버에 올라간 사진은 서버 썸네일로, 버려진 전송은 ✓를 내린다(shotsRules.reconcileLocal)
+      const queued = queuedShotIds();
       setState((prev) => {
-        const next = { ...prev, list, fetchedAt: Date.now() };
+        const next = { list, fetchedAt: Date.now(), local: reconcileLocal(prev.local, list.shots, queued) };
         writeShotsLocal(project.id, next);
         return next;
       });
@@ -127,8 +130,9 @@ export function RequiredShotsView({ project, onPhotoQueued }: Props) {
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
         renderItem={({ item: shot }) => {
+          // 서버에 사진이 있으면 서버 썸네일(기기 사본은 업로드 뒤 지워진다), 아니면 기기 사본
           const local = state.local[shot.id];
-          const thumb = local ? { uri: local.uri } : shotThumbSource(shot);
+          const thumb = shot.photo ? shotThumbSource(shot) : local ? { uri: local.uri } : null;
           return (
             <ShotCard
               label={shot.label}

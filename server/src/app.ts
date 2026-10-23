@@ -34,7 +34,7 @@ import {
 import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFolder } from './projectZip.js';
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
-import { mergeRequired, shotFileName, type Shot, type ShotsStore, type ShotTemplateItem } from './shotsStore.js';
+import { shotFileName, type Shot, type ShotsStore, type ShotTemplateItem } from './shotsStore.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -760,15 +760,11 @@ export function createApp(deps: AppDeps) {
   api.get('/projects/:id/shots', async (req, res) => {
     const project = await findShotProject(req, res);
     if (!project) return;
-    let shots = await deps.shots.list(project.id);
     const facilityType = project.facilityType ?? null;
-    if (facilityType !== null) {
-      const merged = mergeRequired(shots, deps.requiredTemplate[facilityType] ?? []);
-      if (JSON.stringify(merged) !== JSON.stringify(shots)) {
-        await deps.shots.replace(project.id, merged);
-        shots = merged;
-      }
-    }
+    const shots =
+      facilityType !== null
+        ? await deps.shots.ensureRequired(project.id, deps.requiredTemplate[facilityType] ?? [])
+        : await deps.shots.list(project.id);
     res.json({
       projectId: project.id,
       projectName: project.name,

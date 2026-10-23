@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mergeRequired, shotFileName, ShotsStore, type Shot } from '../src/shotsStore.js';
+import { writeFile } from 'node:fs/promises';
+import { loadRequiredTemplate, mergeRequired, shotFileName, ShotsStore, type Shot } from '../src/shotsStore.js';
 
 const T = '2026-10-24T00:00:00.000Z';
 const base: Shot = { id: 's0', kind: 'required', member: '전경', label: '상류측', number: '001' };
@@ -43,6 +44,14 @@ describe('mergeRequired', () => {
     const taken: Shot = { ...base, id: 's1', number: '004', photo: { file: '004.jpg', savedAt: T } };
     const out = mergeRequired([taken], [{ member: '교각', label: 'P1' }]);
     expect(out.map((s) => s.number)).toEqual(['004', '005']);
+  });
+
+  it('재사용되는 안 찍은 항목의 번호를 새 항목이 가로채지 않는다 (리뷰 2)', () => {
+    const a: Shot = { ...base, id: 'a', number: '001', photo: { file: '001.jpg', savedAt: T } };
+    const b: Shot = { id: 'b', kind: 'required', member: '교대', label: 'A1', number: '002' };
+    const out = mergeRequired([a, b], [{ member: '전경', label: '상류측' }, { member: '교각', label: 'X' }, { member: '교대', label: 'A1' }]);
+    expect(out.map((s) => [s.member, s.number])).toEqual([['전경', '001'], ['교각', '003'], ['교대', '002']]);
+    expect(new Set(out.map((s) => s.number)).size).toBe(3);
   });
 
   it('previous 항목은 건드리지 않는다', () => {
@@ -87,5 +96,36 @@ describe('ShotsStore', () => {
 
   it('없는 shot이면 null', async () => {
     expect(await store.savePhoto('p_1', 'nope', '.jpg', Buffer.from('x'), T)).toBeNull();
+  });
+});
+
+describe('loadRequiredTemplate', () => {
+  it('JSON이 깨졌거나 없으면 빈 목록으로 기동한다 (리뷰 3)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mangdo-tpl-'));
+    try {
+      expect(await loadRequiredTemplate(join(dir, 'none.json'))).toEqual({});
+      await writeFile(join(dir, 'bad.json'), '{ "교량": [ { member: 전경 } ]');
+      expect(await loadRequiredTemplate(join(dir, 'bad.json'))).toEqual({});
+      await writeFile(join(dir, 'ok.json'), JSON.stringify({ _설명: 'x', 교량: [{ member: '전경', label: '상류측' }, { bad: 1 }] }));
+      expect(await loadRequiredTemplate(join(dir, 'ok.json'))).toEqual({ _설명: [], 교량: [{ member: '전경', label: '상류측' }] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('ShotsStore.ensureRequired', () => {
+  it('동시에 두 번 불러도 같은 id를 만든다 (리뷰 4)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mangdo-shots-'));
+    try {
+      const store = new ShotsStore(dir);
+      const tpl = [{ member: '전경', label: '상류측' }];
+      const [a, b] = await Promise.all([store.ensureRequired('p_1', tpl), store.ensureRequired('p_1', tpl)]);
+      expect(a).toHaveLength(1);
+      expect(b[0].id).toBe(a[0].id);
+      expect((await store.list('p_1'))[0].id).toBe(a[0].id);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

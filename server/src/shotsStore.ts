@@ -59,14 +59,16 @@ export function mergeRequired(existing: Shot[], template: ShotTemplateItem[]): S
   const keyOf = (s: { member: string; label: string }) => `${s.member}\u0000${s.label}`;
   const keptKeys = new Set(kept.filter((s) => s.kind === 'required').map(keyOf));
   const reusable = new Map(untakenRequired.map((s) => [keyOf(s), s]));
-  let next = kept.reduce((max, s) => Math.max(max, Number(s.number) || 0), 0);
+  // 새 번호는 남는 항목(찍은 것 + 재사용되는 것) 전부의 최대 다음부터 — 재사용 번호를 새 항목이
+  // 가로채면 같은 디스크 파일을 둘이 쓰게 된다(리뷰 2).
+  const reused = template.filter((item) => !keptKeys.has(keyOf(item))).map((item) => reusable.get(keyOf(item))).filter((s): s is Shot => s !== undefined);
+  let next = [...kept, ...reused].reduce((max, s) => Math.max(max, Number(s.number) || 0), 0);
   const out = [...kept];
   for (const item of template) {
     if (keptKeys.has(keyOf(item))) continue;
     const reuse = reusable.get(keyOf(item));
     if (reuse) {
       out.push(reuse);
-      next = Math.max(next, Number(reuse.number) || 0);
       continue;
     }
     next += 1;
@@ -75,17 +77,22 @@ export function mergeRequired(existing: Shot[], template: ShotTemplateItem[]): S
   return out;
 }
 
-export function loadRequiredTemplate(configPath: string): Promise<Record<string, ShotTemplateItem[]>> {
-  return readFile(configPath, 'utf8').then((text) => {
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    const out: Record<string, ShotTemplateItem[]> = {};
-    for (const [type, items] of Object.entries(parsed)) {
-      out[type] = (Array.isArray(items) ? items : [])
-        .filter((i): i is ShotTemplateItem => typeof i?.member === 'string' && typeof i?.label === 'string')
-        .map((i) => ({ member: i.member, label: i.label }));
-    }
-    return out;
-  });
+/** 설정 파일이 없거나 JSON이 깨져도 서버는 떠야 한다(리뷰 3) — 로그만 남기고 빈 목록으로 간다. 고치면 재시작. */
+export async function loadRequiredTemplate(configPath: string): Promise<Record<string, ShotTemplateItem[]>> {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
+  } catch (err) {
+    console.error('[shots] 필수 사진 목록을 읽지 못했습니다 — 빈 목록으로 시작합니다:', configPath, err instanceof Error ? err.message : String(err));
+    return {};
+  }
+  const out: Record<string, ShotTemplateItem[]> = {};
+  for (const [type, items] of Object.entries(parsed)) {
+    out[type] = (Array.isArray(items) ? items : [])
+      .filter((i): i is ShotTemplateItem => typeof i?.member === 'string' && typeof i?.label === 'string')
+      .map((i) => ({ member: i.member, label: i.label }));
+  }
+  return out;
 }
 
 export class ShotsStore {
@@ -104,6 +111,19 @@ export class ShotsStore {
   async list(projectId: string): Promise<Shot[]> {
     const data = await readJsonFile<{ shots?: Shot[] }>(this.jsonPath(projectId));
     return Array.isArray(data?.shots) ? data.shots : [];
+  }
+
+  /** 필수 목록을 맞춰 넣고 결과를 돌려준다. 읽기-합치기-쓰기를 한 줄로 세워(serialize) 동시 요청이 다른 id를 만들지 않게 한다(리뷰 4). */
+  ensureRequired(projectId: string, template: ShotTemplateItem[]): Promise<Shot[]> {
+    return this.serialize(async () => {
+      const current = await this.list(projectId);
+      const merged = mergeRequired(current, template);
+      if (JSON.stringify(merged) !== JSON.stringify(current)) {
+        await mkdir(this.rootDir, { recursive: true });
+        await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots: merged });
+      }
+      return merged;
+    });
   }
 
   replace(projectId: string, shots: Shot[]): Promise<void> {

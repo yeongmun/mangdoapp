@@ -107,6 +107,15 @@ export async function keepCopy(sourceUri: string): Promise<string | null> {
 // 대기열에 넣는다. 저장까지 실패하면(디스크 꽉 참 등) 방금 만든 보관 사본을 지우고 null을
 // 돌려준다 — 사진은 앨범에 남아 있으니 호출부(ViewerScreen)는 willRetry:false로 알린다
 // (통제관 규칙 R3).
+/** 대기열에 남아 있는 촬영 항목(shot) id들 — 목록 화면이 ✓·썸네일 표시를 정리할 때 쓴다 */
+export function queuedShotIds(): Set<string> {
+  return new Set(
+    readQueue()
+      .map((item) => item.target?.shotId)
+      .filter((id): id is string => typeof id === 'string'),
+  );
+}
+
 export function enqueuePhoto(input: {
   drawingId: string;
   damageId: string;
