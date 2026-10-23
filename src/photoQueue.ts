@@ -4,11 +4,19 @@
 // 서버 테스트가 깨진다. 실제 저장·전송은 src/photoUpload.ts가 한다.
 // 근거: docs/superpowers/specs/2026-09-18-photo-upload-design.md 4장
 
+/** 손상이 아니라 촬영 항목(필수 사진·전차 사진)에 붙는 사진. 있으면 drawingId·damageId는 빈 문자열이다 */
+export interface ShotTarget {
+  kind: 'shot';
+  projectId: string;
+  shotId: string;
+}
+
 export interface PhotoQueueItem {
   /** 항목 식별자. 대기열 안에서만 쓰며 서버로 보내지 않는다. */
   id: string;
   drawingId: string;
   damageId: string;
+  target?: ShotTarget;
   /** 앱 문서 폴더에 둔 보관 사본의 uri. 앨범 파일은 권한 때문에 다시 읽기 어렵다(설계 4장). */
   uri: string;
   /** 서버가 사진번호를 뽑는 이름. 뷰어가 칸에 붙인 번호와 같은 이름이어야 한다. */
@@ -80,24 +88,36 @@ function numberOr(value: unknown, fallback: number): number {
 
 // 저장 파일(photo-queue.json)을 읽을 때 쓴다. 파일이 깨졌거나 옛 모양이어도 앱이 뜨는 것이
 // 사진 몇 장보다 중요하다 — 모양이 다른 항목은 조용히 버린다.
+function parseTarget(value: unknown): ShotTarget | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const t = value as Record<string, unknown>;
+  if (t.kind !== 'shot' || !isText(t.projectId) || !isText(t.shotId)) return undefined;
+  return { kind: 'shot', projectId: t.projectId, shotId: t.shotId };
+}
+
 export function parseQueue(value: unknown): PhotoQueueItem[] {
   if (!Array.isArray(value)) return [];
   const result: PhotoQueueItem[] = [];
   for (const raw of value) {
     if (typeof raw !== 'object' || raw === null) continue;
     const entry = raw as Record<string, unknown>;
-    if (!isText(entry.id) || !isText(entry.drawingId) || !isText(entry.damageId)) continue;
+    const target = parseTarget(entry.target);
+    if (!isText(entry.id)) continue;
+    // 손상 사진은 drawingId·damageId가 있어야 하고, 촬영 항목 사진은 target이 있어야 한다
+    if (target === undefined && (!isText(entry.drawingId) || !isText(entry.damageId))) continue;
     if (!isText(entry.uri) || !isText(entry.filename)) continue;
-    result.push({
+    const parsed: PhotoQueueItem = {
       id: entry.id,
-      drawingId: entry.drawingId,
-      damageId: entry.damageId,
+      drawingId: typeof entry.drawingId === 'string' ? entry.drawingId : '',
+      damageId: typeof entry.damageId === 'string' ? entry.damageId : '',
       uri: entry.uri,
       filename: entry.filename,
       addedAt: numberOr(entry.addedAt, 0),
       tries: numberOr(entry.tries, 0),
       lastTriedAt: numberOr(entry.lastTriedAt, 0),
-    });
+    };
+    if (target !== undefined) parsed.target = target;
+    result.push(parsed);
   }
   return result;
 }

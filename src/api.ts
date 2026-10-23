@@ -250,3 +250,60 @@ export function offlineFileUrl(drawingId: string, path: string): string {
 export function bundleFileUrl(path: string): string {
   return `${API_URL}/api/viewer-bundle/files/${encodeFilePath(path)}`;
 }
+
+// 촬영 항목(필수 사진·전차 사진). 서버 shotsStore.ts와 같은 모양 + 사진 주소.
+export interface Shot {
+  id: string;
+  kind: 'required' | 'previous';
+  member: string;
+  label: string;
+  number: string;
+  photo?: { file: string; savedAt: string };
+  url: string | null;
+  thumbUrl: string | null;
+}
+
+export interface ShotList {
+  projectId: string;
+  projectName: string;
+  facilityType: string | null;
+  shots: Shot[];
+}
+
+export async function fetchShots(projectId: string): Promise<ShotList> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectId)}/shots`, { headers: { 'x-access-key': ACCESS_KEY } });
+  } catch {
+    throw new Error('서버에 연결할 수 없습니다.');
+  }
+  if (res.status === 401) throw new Error('접근키를 확인하세요.');
+  if (!res.ok) throw new Error(`사진 목록을 불러오지 못했습니다 (${res.status}).`);
+  return (await res.json()) as ShotList;
+}
+
+/** 썸네일 전체 주소(Image source용). 서버는 x-access-key가 있어야 준다 */
+export function shotThumbSource(shot: Shot): { uri: string; headers: Record<string, string> } | null {
+  if (!shot.thumbUrl) return null;
+  return { uri: `${API_URL}${shot.thumbUrl}`, headers: { 'x-access-key': ACCESS_KEY } };
+}
+
+// 구조물(하위 프로젝트) 추가. 응답은 트리 계산을 거친 Project 하나.
+export async function createProject(name: string, parentId: string | null): Promise<Project> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/projects`, {
+      method: 'POST',
+      headers: { 'x-access-key': ACCESS_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify({ name, parentId }),
+    });
+  } catch {
+    throw new Error('서버에 연결할 수 없습니다. 인터넷이 되는 곳에서 다시 해 주세요.');
+  }
+  if (res.status === 401) throw new Error('접근키를 확인하세요.');
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `프로젝트를 만들지 못했습니다 (${res.status}).`);
+  }
+  return (await res.json()) as Project;
+}

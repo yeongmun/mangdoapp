@@ -3,7 +3,7 @@
 // 파일·네트워크만 다룬다. 근거: docs/superpowers/specs/2026-09-18-photo-upload-design.md 4장
 import { Directory, File, Paths, UploadType, type UploadResult } from 'expo-file-system';
 import { ACCESS_KEY, API_URL } from './config';
-import { applyResult, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQueueItem } from './photoQueue';
+import { applyResult, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQueueItem, type ShotTarget } from './photoQueue';
 import { extensionOf, mimeOf } from './photoShrink';
 
 /** 뷰어 화면에 머무는 동안 이 간격으로 다시 시도한다(설계 4.4). */
@@ -112,6 +112,8 @@ export function enqueuePhoto(input: {
   damageId: string;
   filename: string;
   uploadUri: string;
+  /** 촬영 항목(필수 사진) 대상이면 지정. 이때 drawingId·damageId는 '' */
+  target?: ShotTarget;
 }): PhotoQueueItem | null {
   const item: PhotoQueueItem = {
     id: newItemId(),
@@ -123,6 +125,7 @@ export function enqueuePhoto(input: {
     tries: 0,
     lastTriedAt: 0,
   };
+  if (input.target) item.target = input.target;
   if (!writeQueue([...readQueue(), item])) {
     removeFile(input.uploadUri);
     return null;
@@ -143,7 +146,10 @@ async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
   // 쓰므로 서버(multer)의 req.body.filename에 앨범 파일 이름이 담긴다 — 서버가 뽑는 사진번호가
   // 뷰어가 칸에 붙인 번호와 같아진다. 파트의 filename은 대기열 사본 이름(<id>.jpg)이라 서버는
   // 반드시 filename 필드를 먼저 본다(app.ts).
-  const url = `${API_URL}/api/drawings/${item.drawingId}/damages/${item.damageId}/photos`;
+  // 촬영 항목(필수·전차 사진)은 프로젝트 라우트로, 손상 사진은 기존 라우트로(2026-10-24).
+  const url = item.target
+    ? `${API_URL}/api/projects/${item.target.projectId}/shots/${item.target.shotId}/photo`
+    : `${API_URL}/api/drawings/${item.drawingId}/damages/${item.damageId}/photos`;
 
   // 죽은 연결(응답이 영영 안 옴)에서 업로드가 멈추지 않도록 스스로 끊는다 — 타임아웃도 네트워크
   // 오류와 같이 일시적 실패(retry)로 다룬다(서버가 늦게라도 살아나면 다음 시도는 성공할 수 있다).

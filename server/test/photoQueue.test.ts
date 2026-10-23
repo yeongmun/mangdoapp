@@ -138,4 +138,13 @@ describe('parseQueue', () => {
     const { tries, lastTriedAt, ...rest } = item('a');
     expect(parseQueue([rest])[0]).toMatchObject({ id: 'a', tries: 0, lastTriedAt: 0 });
   });
+
+  // 촬영 항목(필수 사진) 대상. 2026-10-24 설계 결정 4 — 손상 사진과 같은 대기열을 쓴다
+  it('target(shot)을 보존하고, 없으면 키가 없다', () => {
+    const shot = item('s', { drawingId: '', damageId: '', target: { kind: 'shot', projectId: 'p_1', shotId: 's_1' } });
+    expect(parseQueue([shot])[0].target).toEqual({ kind: 'shot', projectId: 'p_1', shotId: 's_1' });
+    expect('target' in parseQueue([item('a')])[0]).toBe(false);
+    // 모양이 깨진 target은 버린다(항목 자체는 남김)
+    expect('target' in parseQueue([item('b', { target: { kind: 'shot' } as never })])[0]).toBe(false);
+  });
 });
