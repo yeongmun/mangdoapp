@@ -17,6 +17,8 @@
   순수 규칙 모듈(`quantities.js`, `tableValues.js`, `statusTable.js`, `inkAttach.js`, `damageDoc.js`)은 서버 산출과 **같은 함수**를 쓰고 vitest가 검사한다.
   뷰어 번들은 도면을 내려받을 때 태블릿에 저장되므로, 뷰어를 고치면 "기기에서 지우기 → 다시 받기"를 해야 반영된다.
 - **PC 페이지** (`server/public/`): 업로드, 프로젝트, 내려받기, 휴지통.
+- **프로젝트**: 최상위(과업)에 `inspectionType`(점검 종류), 하위(구조물)에 `facilityType`(시설물 종류) — 앱 목록 화면 칩으로 고른다(2026-10-24). 웹(daenong)이 정기·정밀 과업을 저장하면 같은 이름의 최상위 프로젝트를 자동 생성한다. 현장 사진 체크리스트 설계: `docs/design/2026-10-24-field-photo-checklist.md`(2~4단계 진행 중).
+- **앱 공통 토큰** `src/theme.ts`(색·간격), 공용 컴포넌트 `src/components/`. 새 화면은 여기 토큰을 쓰고 디자인은 `ui-ux-pro-max` 스킬(`.agents/skills/`) 기준.
 - **사내 환경**: 서버 PC는 Windows(ODA File Converter 있음 → DWG 업로드·산출 가능), 캐드는 지스타캐드. cloudflared 터널로 태블릿 접속.
 - **비파괴(반발경도·탄산화)는 이 앱 범위 밖**(사용자 결정).
 
