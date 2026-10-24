@@ -1,0 +1,156 @@
+// [전차 사진] 탭(2026-10-24, 3단계). 웹에서 올린 전차보고서에서 뽑은 사진을 보고서 페이지(group)별로 보여 준다.
+// 카드를 누르면 카메라(참조 사진과 같은 자리를 다시 찍는다). 필요 없는 페이지는 「휴지통으로」 — 서버에
+// trashed 표시만 하므로 「휴지통 보기」에서 「복구」할 수 있다. 참조 이미지는 온라인일 때 기기에 내려받아 둔다.
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { File } from 'expo-file-system';
+import { setGroupTrashed, shotRefThumbRequest, type Project, type Shot } from '../api';
+import { ShotCard } from '../components/ShotCard';
+import { refFileFor, writeShotsLocal } from '../shotsLocal';
+import { useShots } from '../useShots';
+import { colors, radius, space, TOUCH_MIN } from '../theme';
+
+interface Props {
+  project: Project;
+  onPhotoQueued?: () => void;
+}
+
+export function PreviousShotsView({ project, onPhotoQueued }: Props) {
+  const { state, setState, error, busyId, refresh, isTaken, takenThumb, shoot } = useShots(project, onPhotoQueued);
+  const [showTrash, setShowTrash] = useState(false);
+  const [changingGroup, setChangingGroup] = useState<string | null>(null);
+
+  const previous = useMemo(() => (state.list?.shots ?? []).filter((s) => s.kind === 'previous'), [state.list]);
+  const visible = useMemo(() => previous.filter((s) => (s.trashed === true) === showTrash), [previous, showTrash]);
+  const trashedCount = previous.filter((s) => s.trashed === true).length;
+  const activeShots = previous.filter((s) => s.trashed !== true);
+  const takenCount = activeShots.filter(isTaken).length;
+
+  // 참조 이미지 내려받기(없는 것만, 온라인일 때). 실패는 조용히 — 서버 주소로 바로 보여 주면 된다
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const missing = previous.filter((s) => s.refThumbUrl && !state.refs[s.id]);
+      for (const shot of missing) {
+        const req = shotRefThumbRequest(shot);
+        if (!req) continue;
+        try {
+          const file = await File.downloadFileAsync(req.uri, refFileFor(shot.id), { headers: req.headers, idempotent: true });
+          if (cancelled) return;
+          setState((prev) => {
+            const next = { ...prev, refs: { ...prev.refs, [shot.id]: file.uri } };
+            writeShotsLocal(project.id, next);
+            return next;
+          });
+        } catch {
+          return; // 오프라인이면 그만
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // state.refs는 일부러 뺀다 — 받을 때마다 다시 돌지 않게. previous가 바뀔 때(목록 새로 받음)만 다시 본다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previous, project.id, setState]);
+
+  const sections = useMemo(() => {
+    const byGroup = new Map<string, Shot[]>();
+    for (const shot of visible) {
+      const key = shot.group ?? '-';
+      const list = byGroup.get(key) ?? [];
+      list.push(shot);
+      byGroup.set(key, list);
+    }
+    return [...byGroup.entries()].map(([group, data], i) => ({ group, title: `페이지 ${i + 1}`, data }));
+  }, [visible]);
+
+  const changeGroup = useCallback(
+    async (group: string, trashed: boolean) => {
+      setChangingGroup(group);
+      try {
+        await setGroupTrashed(project.id, group, trashed);
+        await refresh();
+      } catch (e) {
+        Alert.alert('페이지', e instanceof Error ? e.message : String(e));
+      } finally {
+        setChangingGroup(null);
+      }
+    },
+    [project.id, refresh],
+  );
+
+  if (state.list === null && error) return <Text style={styles.error}>{error}</Text>;
+  if (state.list !== null && previous.length === 0) {
+    return <Text style={styles.notice}>웹 과업 상세에서 이 구조물에 전차보고서(한글)를 올리면 사진이 여기 뜹니다.</Text>;
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summary}>
+          <Text style={styles.summaryStrong}>{takenCount}</Text>
+          {` / ${activeShots.length} 찍음`}
+        </Text>
+        <Pressable onPress={() => setShowTrash((v) => !v)} style={[styles.trashToggle, showTrash && styles.trashToggleOn]} accessibilityRole="button">
+          <Text style={[styles.trashToggleText, showTrash && styles.trashToggleTextOn]}>{showTrash ? '← 돌아가기' : `휴지통 ${trashedCount}`}</Text>
+        </Pressable>
+      </View>
+      {showTrash && visible.length === 0 && <Text style={styles.notice}>휴지통이 비어 있습니다.</Text>}
+      <SectionList
+        sections={sections}
+        keyExtractor={(shot) => shot.id}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <Pressable
+              onPress={() => void changeGroup(section.group, !showTrash)}
+              disabled={changingGroup !== null}
+              style={({ pressed }) => [styles.pageButton, pressed && styles.pageButtonPressed]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.pageButtonText}>{showTrash ? '복구' : '휴지통으로'}</Text>
+            </Pressable>
+          </View>
+        )}
+        renderItem={({ item: shot }) => {
+          const localRef = state.refs[shot.id];
+          const refThumb = localRef ? { uri: localRef } : shotRefThumbRequest(shot);
+          return (
+            <ShotCard
+              label={shot.label}
+              number={shot.number}
+              note={shot.caption && shot.caption !== shot.label ? shot.caption : undefined}
+              taken={isTaken(shot)}
+              thumb={takenThumb(shot)}
+              refThumb={refThumb}
+              disabled={busyId !== null || showTrash}
+              onPress={() => void shoot(shot)}
+            />
+          );
+        }}
+        contentContainerStyle={styles.list}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
+  summary: { fontSize: 15, color: colors.mutedForeground },
+  summaryStrong: { fontSize: 20, fontWeight: '700', color: colors.success },
+  trashToggle: { minHeight: 36, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  trashToggleOn: { backgroundColor: colors.navy, borderColor: colors.navy },
+  trashToggleText: { fontSize: 13, fontWeight: '600', color: colors.mutedForeground },
+  trashToggleTextOn: { color: colors.onPrimary },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.md, marginBottom: space.sm },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.navy, letterSpacing: 0.2 },
+  pageButton: { minHeight: TOUCH_MIN - 8, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  pageButtonPressed: { backgroundColor: colors.muted },
+  pageButtonText: { fontSize: 13, fontWeight: '600', color: colors.mutedForeground },
+  list: { paddingBottom: space.xl },
+  notice: { color: colors.mutedForeground, lineHeight: 22, marginTop: space.lg, textAlign: 'center' },
+  error: { color: colors.destructive, lineHeight: 22, marginTop: space.lg, textAlign: 'center' },
+});

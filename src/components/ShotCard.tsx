@@ -7,13 +7,18 @@ interface Props {
   label: string;
   number: string;
   taken: boolean;
-  /** Image source. null이면 빈 자리 */
+  /** 찍은 사진 썸네일. null이면 빈 자리 */
   thumb: { uri: string; headers?: Record<string, string> } | null;
+  /** 전차 사진: 보고서에서 뽑은 참조 이미지. 찍기 전엔 큰 자리에, 찍은 뒤엔 오른쪽 작은 자리에 */
+  refThumb?: { uri: string; headers?: Record<string, string> } | null;
+  /** 캡션 아래 작은 글(예: 보고서 캡션 원문) */
+  note?: string;
   disabled?: boolean;
   onPress: () => void;
 }
 
-export function ShotCard({ label, number, taken, thumb, disabled = false, onPress }: Props) {
+export function ShotCard({ label, number, taken, thumb, refThumb = null, note, disabled = false, onPress }: Props) {
+  const main = thumb ?? refThumb;
   return (
     <Pressable
       accessibilityRole="button"
@@ -24,14 +29,20 @@ export function ShotCard({ label, number, taken, thumb, disabled = false, onPres
       style={({ pressed }) => [styles.card, taken && styles.cardTaken, pressed && styles.cardPressed, disabled && styles.cardDisabled]}
     >
       <View style={[styles.thumb, taken && styles.thumbTaken]}>
-        {thumb ? <Image source={thumb} style={styles.thumbImage} resizeMode="cover" /> : <View style={styles.cameraGlyph} />}
+        {main ? <Image source={main} style={styles.thumbImage} resizeMode="cover" /> : <View style={styles.cameraGlyph} />}
       </View>
       <View style={styles.text}>
         <Text style={styles.label} numberOfLines={2}>
           {label}
         </Text>
         <Text style={styles.number}>No. {number}</Text>
+        {note ? (
+          <Text style={styles.note} numberOfLines={1}>
+            {note}
+          </Text>
+        ) : null}
       </View>
+      {taken && refThumb && thumb ? <Image source={refThumb} style={styles.refSmall} resizeMode="cover" /> : null}
       <View style={[styles.mark, taken && styles.markTaken]}>{taken && <Text style={styles.markText}>✓</Text>}</View>
     </Pressable>
   );
@@ -69,6 +80,8 @@ const styles = StyleSheet.create({
   text: { flex: 1 },
   label: { fontSize: 16, fontWeight: '600', color: colors.foreground },
   number: { fontSize: 12, color: colors.mutedForeground, marginTop: 4 },
+  note: { fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
+  refSmall: { width: 40, height: 40, borderRadius: radius.sm, marginLeft: space.sm, opacity: 0.8 },
   mark: {
     width: 28,
     height: 28,

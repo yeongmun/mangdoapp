@@ -261,6 +261,12 @@ export interface Shot {
   photo?: { file: string; savedAt: string };
   url: string | null;
   thumbUrl: string | null;
+  /** previous(전차 사진)만: 보고서 페이지 id, 캡션, 참조 이미지 주소, 휴지통 */
+  group?: string;
+  caption?: string;
+  trashed?: true;
+  refUrl?: string | null;
+  refThumbUrl?: string | null;
 }
 
 export interface ShotList {
@@ -308,4 +314,25 @@ export async function createProject(name: string, parentId: string | null): Prom
     throw new Error(body?.error ?? `프로젝트를 만들지 못했습니다 (${res.status}).`);
   }
   return (await res.json()) as Project;
+}
+
+/** 참조 이미지 썸네일 전체 주소 + 헤더(내려받기·Image 공용) */
+export function shotRefThumbRequest(shot: Shot): { uri: string; headers: Record<string, string> } | null {
+  if (!shot.refThumbUrl) return null;
+  return { uri: `${API_URL}${shot.refThumbUrl}`, headers: { 'x-access-key': ACCESS_KEY } };
+}
+
+// 보고서 페이지(group) 휴지통 넣기/복구
+export async function setGroupTrashed(projectId: string, group: string, trashed: boolean): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectId)}/shots/groups/${encodeURIComponent(group)}`, {
+      method: 'PATCH',
+      headers: { 'x-access-key': ACCESS_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify({ trashed }),
+    });
+  } catch {
+    throw new Error('서버에 연결할 수 없습니다. 인터넷이 되는 곳에서 다시 해 주세요.');
+  }
+  if (!res.ok) throw new Error(`페이지 상태를 바꾸지 못했습니다 (${res.status}).`);
 }

@@ -10,6 +10,8 @@ export interface LocalShotState {
   fetchedAt: number;
   /** 이 기기에서 찍은 사진(서버에 올라갔든 아니든). 카드 표시에 서버 photo보다 우선 */
   local: Record<string, { uri: string; takenAt: number }>;
+  /** 내려받아 둔 전차 참조 이미지(shotId → 기기 uri). 오프라인 표시용 */
+  refs: Record<string, string>;
 }
 
 const DIR_NAME = 'shots';
@@ -21,15 +23,16 @@ function fileOf(projectId: string): File {
 export function readShotsLocal(projectId: string): LocalShotState {
   try {
     const file = fileOf(projectId);
-    if (!file.exists) return { list: null, fetchedAt: 0, local: {} };
+    if (!file.exists) return { list: null, fetchedAt: 0, local: {}, refs: {} };
     const parsed = JSON.parse(file.textSync()) as Partial<LocalShotState>;
     return {
       list: parsed.list ?? null,
       fetchedAt: typeof parsed.fetchedAt === 'number' ? parsed.fetchedAt : 0,
       local: parsed.local && typeof parsed.local === 'object' ? parsed.local : {},
+      refs: parsed.refs && typeof parsed.refs === 'object' ? parsed.refs : {},
     };
   } catch {
-    return { list: null, fetchedAt: 0, local: {} };
+    return { list: null, fetchedAt: 0, local: {}, refs: {} };
   }
 }
 
@@ -40,4 +43,11 @@ export function writeShotsLocal(projectId: string, state: LocalShotState): void 
   } catch (err) {
     console.warn('[shots] 기기 저장 실패', err instanceof Error ? err.message : String(err));
   }
+}
+
+/** 참조 이미지 기기 파일 자리. shots/ref/<shotId>.jpg */
+export function refFileFor(shotId: string): File {
+  const dir = new Directory(Paths.document, DIR_NAME, 'ref');
+  dir.create({ intermediates: true, idempotent: true });
+  return new File(dir, `${shotId}.jpg`);
 }

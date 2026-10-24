@@ -25,7 +25,9 @@ import {
 } from '../api';
 import { LoadingView } from '../components/LoadingView';
 import { TypeChips } from '../components/TypeChips';
+import { PreviousShotsView } from './PreviousShotsView';
 import { RequiredShotsView } from './RequiredShotsView';
+import { readShotsLocal } from '../shotsLocal';
 import { colors, radius, space } from '../theme';
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
@@ -156,10 +158,13 @@ export function DrawingListScreen({ onOpen }: Props) {
   const [opening, setOpening] = useState<string | null>(null);
   // 점검 종류·시설물 종류 저장 중이면 칩을 잠근다. 실패하면 이전 값 그대로 두고 오류 배너만.
   const [savingType, setSavingType] = useState(false);
-  // 구조물 화면의 탭. 열 때마다 [도면]부터(설계: 선택 기억 안 함). location이 바뀌면 되돌린다.
-  const [tab, setTab] = useState<'drawings' | 'shots'>('drawings');
+  // 구조물 화면의 탭. location이 바뀌면 되돌린다. 전차 사진이 (기기 저장 기준으로) 하나라도 있으면
+  // [전차 사진]부터 — 전차 사진이 있을 때는 그것만 보고 찍어도 된다(설계: 사용자 결정).
+  const [tab, setTab] = useState<'drawings' | 'shots' | 'previous'>('drawings');
   useEffect(() => {
-    setTab('drawings');
+    const id = typeof location === 'string' && location !== 'unfiled' ? location : null;
+    const hasPrevious = id !== null && (readShotsLocal(id).list?.shots ?? []).some((s) => s.kind === 'previous' && s.trashed !== true);
+    setTab(hasPrevious ? 'previous' : 'drawings');
   }, [location]);
   const changeProjectType = useCallback(
     async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null }) => {
@@ -537,6 +542,7 @@ export function DrawingListScreen({ onOpen }: Props) {
             [
               ['drawings', '도면'],
               ['shots', '필수 사진'],
+              ['previous', '전차 사진'],
             ] as const
           ).map(([key, label]) => (
             <Pressable
@@ -661,6 +667,9 @@ export function DrawingListScreen({ onOpen }: Props) {
       )}
       {tab === 'shots' && currentProject && (
         <RequiredShotsView key={currentProject.id} project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
+      )}
+      {tab === 'previous' && currentProject && (
+        <PreviousShotsView key={currentProject.id} project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
       )}
     </View>
   );
