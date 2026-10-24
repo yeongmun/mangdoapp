@@ -18,6 +18,7 @@ import { PhotosStore } from '../src/photosStore.js';
 import { FILE_URL_SHIM } from '../src/viewerBundle.js';
 import { newProjectId, ProjectsStore } from '../src/projectsStore.js';
 import { ShotsStore } from '../src/shotsStore.js';
+import { makeZip } from './hwpxPhotos.test.js';
 import { AUTODESK_VIEWER_FILES, AUTODESK_VIEWER_VERSION, ViewerBundle } from '../src/viewerBundle.js';
 
 // 오프라인 모드(설계 2장): offlineReady는 저장하지 않고 응답에만 붙는다 — 저장 타입(DrawingRecord)에는
@@ -1782,6 +1783,86 @@ describe('촬영 항목 API (/api/projects/:id/shots)', () => {
     const body = Buffer.from(res.body);
     expect(body.includes(Buffer.from('A교/A교_교대_002.jpg', 'utf8'))).toBe(true);
     expect(body.includes(Buffer.from('shot-bytes', 'utf8'))).toBe(true);
+  });
+});
+
+// 전차보고서(hwpx) 업로드 → previous shot. 3단계
+describe('전차보고서 API (/api/projects/:id/previous-report)', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+  function sampleHwpx(): Buffer {
+    const img = (id: string) => `<hp:pic><hc:img binaryItemIDRef="${id}"/></hp:pic>`;
+    const t = (x: string) => `<hp:p><hp:run><hp:t>${x}</hp:t></hp:run></hp:p>`;
+    const tc = (x: string) => `<hp:tc><hp:subList>${x}</hp:subList></hp:tc>`;
+    return makeZip({
+      'Contents/content.hpf': '<opf:package><opf:manifest><opf:item id="image1" href="BinData/image1.png" media-type="image/png"/><opf:item id="image2" href="BinData/image2.png" media-type="image/png"/></opf:manifest></opf:package>',
+      'Contents/section0.xml': `<hs:sec><hp:tbl><hp:tr>${tc(img('image1'))}${tc(t('사진 1. 교각 P1 균열'))}${tc(img('image2'))}${tc(t('사진 2. 전경'))}</hp:tr></hp:tbl></hs:sec>`,
+      'BinData/image1.png': PNG,
+      'BinData/image2.png': PNG,
+    });
+  }
+  async function structure(app: ReturnType<typeof setup>['app']) {
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교' })).body;
+    return (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id })).body;
+  }
+
+  it('hwpx를 올리면 페이지·사진 수를 돌려주고 shots에 previous가 생긴다', async () => {
+    const { app } = setup();
+    const child = await structure(app);
+    const res = await request(app)
+      .post(`/api/projects/${child.id}/previous-report`)
+      .set('x-access-key', KEY)
+      .attach('file', sampleHwpx(), { filename: '전차.hwpx', contentType: 'application/octet-stream' });
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ pages: 1, photos: 2, skipped: 0 });
+    const list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(list.shots.map((s: { kind: string; group: string; label: string; refThumbUrl: string | null }) => [s.kind, s.group, s.label, typeof s.refThumbUrl])).toEqual([
+      ['previous', 'pg_001', '사진 1. 교각 P1 균열', 'string'],
+      ['previous', 'pg_001', '사진 2. 전경', 'string'],
+    ]);
+    const ref = await request(app).get(`/api/projects/${child.id}/shots/${list.shots[0].id}/ref`).set('x-access-key', KEY).responseType('blob');
+    expect(ref.status).toBe(200);
+    expect(ref.headers['content-type']).toContain('image/png');
+    expect(Buffer.from(ref.body).equals(PNG)).toBe(true);
+  });
+
+  it('.hwp는 400, 그림 없는 hwpx는 400, 없는 프로젝트 404', async () => {
+    const { app } = setup();
+    const child = await structure(app);
+    const hwp = await request(app).post(`/api/projects/${child.id}/previous-report`).set('x-access-key', KEY).attach('file', Buffer.from('x'), { filename: 'a.hwp' });
+    expect(hwp.status).toBe(400);
+    expect(hwp.body.error).toContain('hwpx');
+    const empty = makeZip({ 'Contents/content.hpf': '<opf:package/>', 'Contents/section0.xml': '<hs:sec><hp:p><hp:run><hp:t>글만</hp:t></hp:run></hp:p></hs:sec>' });
+    const none = await request(app).post(`/api/projects/${child.id}/previous-report`).set('x-access-key', KEY).attach('file', empty, { filename: 'b.hwpx' });
+    expect(none.status).toBe(400);
+    expect((await request(app).post(`/api/projects/${newProjectId()}/previous-report`).set('x-access-key', KEY).attach('file', sampleHwpx(), { filename: 'c.hwpx' })).status).toBe(404);
+  });
+
+  it('PATCH …/shots/groups/:group 으로 페이지를 휴지통에 넣고 복구한다', async () => {
+    const { app } = setup();
+    const child = await structure(app);
+    await request(app).post(`/api/projects/${child.id}/previous-report`).set('x-access-key', KEY).attach('file', sampleHwpx(), { filename: '전차.hwpx' });
+    const on = await request(app).patch(`/api/projects/${child.id}/shots/groups/pg_001`).set('x-access-key', KEY).send({ trashed: true });
+    expect(on.status).toBe(200);
+    expect(on.body).toEqual({ changed: 2 });
+    let list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(list.shots.every((s: { trashed?: boolean }) => s.trashed === true)).toBe(true);
+    await request(app).patch(`/api/projects/${child.id}/shots/groups/pg_001`).set('x-access-key', KEY).send({ trashed: false });
+    list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(list.shots.every((s: { trashed?: boolean }) => s.trashed === undefined)).toBe(true);
+    expect((await request(app).patch(`/api/projects/${child.id}/shots/groups/pg_001`).set('x-access-key', KEY).send({ trashed: 'yes' })).status).toBe(400);
+  });
+
+  it('photos.zip에 찍은 전차 사진도 구조물/구조물_부재_번호.jpg 로 들어간다', async () => {
+    const { app } = setup();
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교' })).body;
+    const child = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id })).body;
+    await request(app).post(`/api/projects/${child.id}/previous-report`).set('x-access-key', KEY).attach('file', sampleHwpx(), { filename: '전차.hwpx' });
+    const list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    await request(app).post(`/api/projects/${child.id}/shots/${list.shots[0].id}/photo`).set('x-access-key', KEY).attach('file', Buffer.from('prev-bytes'), { filename: 'x.jpg', contentType: 'image/jpeg' });
+    const res = await request(app).get(`/api/projects/${top.id}/photos.zip`).set('x-access-key', KEY).responseType('blob');
+    const body = Buffer.from(res.body);
+    expect(body.includes(Buffer.from('A교/A교_교각_001.jpg', 'utf8'))).toBe(true);
+    expect(body.includes(Buffer.from('prev-bytes', 'utf8'))).toBe(true);
   });
 });
 

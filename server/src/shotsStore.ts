@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { memberOfCaption, type PhotoBlock } from './hwpxPhotos.js';
 import { readJsonFile, writeFileAtomic, writeJsonFileAtomic } from './jsonFile.js';
 
 export type ShotKind = 'required' | 'previous';
@@ -20,6 +21,14 @@ export interface Shot {
   /** 구조물 안의 일련번호, 3자리. 파일명의 끝 토막 */
   number: string;
   photo?: { file: string; savedAt: string };
+  /** previous만: 보고서 페이지 id(pg_001…). 휴지통은 이 단위로 */
+  group?: string;
+  /** previous만: 보고서 캡션 원문 */
+  caption?: string;
+  /** previous만: 참조 이미지(보고서에서 뽑은 그림), ref/ 아래 파일명 */
+  ref?: { file: string };
+  /** 페이지 휴지통. 복구하면 키를 지운다 */
+  trashed?: true;
 }
 
 export interface ShotTemplateItem {
@@ -130,6 +139,94 @@ export class ShotsStore {
     return this.serialize(async () => {
       await mkdir(this.rootDir, { recursive: true });
       await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots });
+    });
+  }
+
+  refPathOf(projectId: string, shot: Shot): string {
+    return join(this.dirOf(projectId), 'ref', shot.ref?.file ?? `${shot.id}.png`);
+  }
+
+  refThumbPathOf(projectId: string, shot: Shot): string {
+    return join(this.dirOf(projectId), 'ref', `${shot.id}${THUMB_SUFFIX}`);
+  }
+
+  async readRef(projectId: string, shot: Shot): Promise<Buffer | null> {
+    if (!shot.ref) return null;
+    try {
+      return await readFile(this.refPathOf(projectId, shot));
+    } catch {
+      return null;
+    }
+  }
+
+  async readRefThumb(projectId: string, shot: Shot): Promise<Buffer | null> {
+    try {
+      return await readFile(this.refThumbPathOf(projectId, shot));
+    } catch {
+      return null;
+    }
+  }
+
+  async saveRefThumb(projectId: string, shot: Shot, thumb: Buffer): Promise<void> {
+    await mkdir(join(this.dirOf(projectId), 'ref'), { recursive: true });
+    await writeFileAtomic(this.refThumbPathOf(projectId, shot), thumb);
+  }
+
+  /**
+   * 전차보고서 블록을 previous shot으로 넣는다. 안 찍은 previous는 전부 교체하고, 찍은 previous와 required는
+   * 남긴다. 번호는 남은 항목 최대 다음부터. 참조 이미지는 ref/<shotId><ext>로 저장(썸네일은 라우트가 만든다).
+   */
+  importPrevious(projectId: string, blocks: PhotoBlock[], savedAt: string): Promise<{ shots: Shot[]; added: number }> {
+    return this.serialize(async () => {
+      const current = await this.list(projectId);
+      const kept = current.filter((s) => s.kind !== 'previous' || s.photo !== undefined);
+      let next = kept.reduce((max, s) => Math.max(max, Number(s.number) || 0), 0);
+      const refDir = join(this.dirOf(projectId), 'ref');
+      await mkdir(refDir, { recursive: true });
+      const added: Shot[] = [];
+      let photoNo = 0;
+      for (const block of blocks) {
+        for (const image of block.images) {
+          photoNo += 1;
+          next += 1;
+          const id = newShotId();
+          const file = `${id}${image.ext}`;
+          await writeFileAtomic(join(refDir, file), image.data);
+          const shot: Shot = {
+            id,
+            kind: 'previous',
+            member: memberOfCaption(image.caption),
+            label: image.caption ?? `사진 ${photoNo}`,
+            number: pad3(next),
+            group: block.page,
+            ref: { file },
+          };
+          if (image.caption) shot.caption = image.caption;
+          added.push(shot);
+        }
+      }
+      const shots = [...kept, ...added];
+      await mkdir(this.rootDir, { recursive: true });
+      await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots });
+      void savedAt;
+      return { shots, added: added.length };
+    });
+  }
+
+  /** 페이지(group) 단위 휴지통. 파일은 건드리지 않는다. 바뀐 항목 수를 돌려준다 */
+  setGroupTrashed(projectId: string, group: string, trashed: boolean): Promise<number> {
+    return this.serialize(async () => {
+      const shots = await this.list(projectId);
+      let changed = 0;
+      const next = shots.map((s) => {
+        if (s.group !== group) return s;
+        changed += 1;
+        const { trashed: _old, ...rest } = s;
+        void _old;
+        return trashed ? ({ ...rest, trashed: true } as Shot) : (rest as Shot);
+      });
+      if (changed > 0) await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots: next });
+      return changed;
     });
   }
 

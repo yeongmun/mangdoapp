@@ -34,6 +34,7 @@ import {
 import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFolder } from './projectZip.js';
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
+import { extractPhotoBlocks } from './hwpxPhotos.js';
 import { shotFileName, type Shot, type ShotsStore, type ShotTemplateItem } from './shotsStore.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
@@ -773,8 +774,109 @@ export function createApp(deps: AppDeps) {
         ...shot,
         url: shot.photo ? shotPhotoUrl(project.id, shot.id) : null,
         thumbUrl: shot.photo ? `${shotPhotoUrl(project.id, shot.id)}/thumb` : null,
+        refUrl: shot.ref ? `/api/projects/${project.id}/shots/${shot.id}/ref` : null,
+        refThumbUrl: shot.ref ? `/api/projects/${project.id}/shots/${shot.id}/ref/thumb` : null,
       })),
     });
+  });
+
+  // 전차보고서(hwpx) 업로드 → 사진·캡션 추출 → previous shot(페이지 = 표). .hwp는 웹(daenong)이 한컴으로
+  // hwpx로 바꿔 보낸다 — 이 서버는 hwpx만 읽는다(hwpxPhotos.ts). 참조 이미지 썸네일은 여기서 만든다.
+  api.post('/projects/:id/previous-report', upload.single('file'), async (req, res) => {
+    const project = await findShotProject(req, res);
+    if (!project) return;
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: '파일이 없습니다.' });
+      return;
+    }
+    if (!/\.hwpx$/i.test(file.originalname)) {
+      res.status(400).json({ error: 'hwpx 파일만 읽을 수 있습니다. .hwp는 한글에서 hwpx로 저장하거나 웹 과업 상세에서 올리면 자동 변환됩니다.' });
+      return;
+    }
+    let extracted: ReturnType<typeof extractPhotoBlocks>;
+    try {
+      extracted = extractPhotoBlocks(file.buffer);
+    } catch (err) {
+      res.status(400).json({ error: `한글 파일을 읽지 못했습니다: ${messageOf(err)}` });
+      return;
+    }
+    if (extracted.blocks.length === 0) {
+      res.status(400).json({ error: `보고서에서 사진을 찾지 못했습니다.${extracted.skipped > 0 ? ` (지원하지 않는 그림 형식 ${extracted.skipped}개)` : ''}` });
+      return;
+    }
+    const { shots } = await deps.shots.importPrevious(project.id, extracted.blocks, new Date(now()).toISOString());
+    for (const shot of shots) {
+      if (shot.kind !== 'previous' || !shot.ref) continue;
+      if (await deps.shots.readRefThumb(project.id, shot)) continue;
+      const data = await deps.shots.readRef(project.id, shot);
+      if (!data) continue;
+      try {
+        await deps.shots.saveRefThumb(project.id, shot, await makeThumbnail(data));
+      } catch (err) {
+        console.error('[shots] 참조 썸네일을 만들지 못했습니다', project.id, shot.id, messageOf(err));
+      }
+    }
+    res.status(201).json({ pages: extracted.blocks.length, photos: extracted.blocks.reduce((n, b) => n + b.images.length, 0), skipped: extracted.skipped });
+  });
+
+  api.patch('/projects/:id/shots/groups/:group', async (req, res) => {
+    const project = await findShotProject(req, res);
+    if (!project) return;
+    const trashed = (req.body as { trashed?: unknown } | undefined)?.trashed;
+    if (typeof trashed !== 'boolean') {
+      res.status(400).json({ error: 'trashed는 true/false여야 합니다.' });
+      return;
+    }
+    const changed = await deps.shots.setGroupTrashed(project.id, req.params.group as string, trashed);
+    res.json({ changed });
+  });
+
+  const REF_MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif', '.bmp': 'image/bmp' };
+  async function findRefShot(req: Request, res: Response): Promise<{ project: { id: string }; shot: Shot } | null> {
+    const project = await findShotProject(req, res);
+    if (!project) return null;
+    const shot = (await deps.shots.list(project.id)).find((s) => s.id === req.params.shotId);
+    if (!shot || !shot.ref) {
+      res.status(404).json({ error: '참조 이미지를 찾을 수 없습니다.' });
+      return null;
+    }
+    return { project, shot };
+  }
+
+  api.get('/projects/:id/shots/:shotId/ref', async (req, res) => {
+    const found = await findRefShot(req, res);
+    if (!found) return;
+    const data = await deps.shots.readRef(found.project.id, found.shot);
+    if (!data) {
+      res.status(404).json({ error: '참조 이미지 파일이 없습니다.' });
+      return;
+    }
+    res.setHeader('Content-Type', REF_MIME[extname(found.shot.ref!.file).toLowerCase()] ?? 'application/octet-stream');
+    res.send(data);
+  });
+
+  api.get('/projects/:id/shots/:shotId/ref/thumb', async (req, res) => {
+    const found = await findRefShot(req, res);
+    if (!found) return;
+    let thumb = await deps.shots.readRefThumb(found.project.id, found.shot);
+    if (!thumb) {
+      const data = await deps.shots.readRef(found.project.id, found.shot);
+      if (!data) {
+        res.status(404).json({ error: '참조 이미지 파일이 없습니다.' });
+        return;
+      }
+      try {
+        thumb = await makeThumbnail(data);
+        await deps.shots.saveRefThumb(found.project.id, found.shot, thumb);
+      } catch {
+        res.setHeader('Content-Type', REF_MIME[extname(found.shot.ref!.file).toLowerCase()] ?? 'application/octet-stream');
+        res.send(data);
+        return;
+      }
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(thumb);
   });
 
   api.post('/projects/:id/shots/:shotId/photo', photoUploadField, async (req, res) => {

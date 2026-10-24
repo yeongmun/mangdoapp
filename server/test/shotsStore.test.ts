@@ -129,3 +129,65 @@ describe('ShotsStore.ensureRequired', () => {
     }
   });
 });
+
+// 전차보고서 사진(previous) — 3단계. 설계 결정 2·3
+describe('ShotsStore.importPrevious / setGroupTrashed', () => {
+  let dir: string;
+  let store: ShotsStore;
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+  const blocks = [
+    { page: 'pg_001', texts: ['사진 1. 교각 P1 균열', '사진 2. 전경'], images: [
+      { ref: 'image1', ext: '.png' as const, data: PNG, caption: '사진 1. 교각 P1 균열' },
+      { ref: 'image2', ext: '.png' as const, data: PNG, caption: null },
+    ] },
+    { page: 'pg_002', texts: [], images: [{ ref: 'image3', ext: '.jpg' as const, data: Buffer.from('jpg'), caption: '교대 A1 백태' }] },
+  ];
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'mangdo-prev-'));
+    store = new ShotsStore(dir);
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('블록을 previous shot으로 넣고 참조 이미지를 저장한다', async () => {
+    const { shots, added } = await store.importPrevious('p_1', blocks, T);
+    expect(added).toBe(3);
+    expect(shots.map((s) => [s.kind, s.group, s.member, s.label, s.number])).toEqual([
+      ['previous', 'pg_001', '교각', '사진 1. 교각 P1 균열', '001'],
+      ['previous', 'pg_001', '전차', '사진 2', '002'],
+      ['previous', 'pg_002', '교대', '교대 A1 백태', '003'],
+    ]);
+    expect(shots[0].caption).toBe('사진 1. 교각 P1 균열');
+    expect(shots[0].ref?.file).toBe(`${shots[0].id}.png`);
+    expect((await readFile(store.refPathOf('p_1', shots[0]))).equals(PNG)).toBe(true);
+  });
+
+  it('다시 올리면 안 찍은 previous는 교체, 찍은 것과 required는 남고 번호가 안 겹친다', async () => {
+    await store.replace('p_1', [{ id: 'r1', kind: 'required', member: '전경', label: '상류측', number: '001' }]);
+    const first = await store.importPrevious('p_1', blocks, T);
+    const taken = first.shots.find((s) => s.kind === 'previous')!;
+    await store.savePhoto('p_1', taken.id, '.jpg', Buffer.from('shot'), T);
+    const second = await store.importPrevious('p_1', [blocks[1]], T);
+    const kinds = second.shots.map((s) => [s.kind, s.id === taken.id ? 'kept' : s.id === 'r1' ? 'required' : 'new', s.number]);
+    expect(kinds).toEqual([
+      ['required', 'required', '001'],
+      ['previous', 'kept', '002'],
+      ['previous', 'new', '003'],
+    ]);
+    expect(new Set(second.shots.map((s) => s.number)).size).toBe(3);
+  });
+
+  it('페이지 휴지통: trashed만 바뀌고 찍은 사진·파일은 그대로, 복구하면 사라진다', async () => {
+    const { shots } = await store.importPrevious('p_1', blocks, T);
+    await store.savePhoto('p_1', shots[0].id, '.jpg', Buffer.from('shot'), T);
+    expect(await store.setGroupTrashed('p_1', 'pg_001', true)).toBe(2);
+    const trashed = await store.list('p_1');
+    expect(trashed.map((s) => s.trashed ?? false)).toEqual([true, true, false]);
+    expect(trashed[0].photo?.file).toBe('001.jpg');
+    expect(await readFile(store.pathOf('p_1', trashed[0]), 'utf8')).toBe('shot');
+    expect(await store.setGroupTrashed('p_1', 'pg_001', false)).toBe(2);
+    expect((await store.list('p_1')).every((s) => s.trashed === undefined)).toBe(true);
+    expect(await store.setGroupTrashed('p_1', 'nope', true)).toBe(0);
+  });
+});
