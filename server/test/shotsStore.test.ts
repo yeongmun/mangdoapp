@@ -196,3 +196,31 @@ describe('ShotsStore.importPrevious / setGroupTrashed', () => {
     expect(await store.setGroupTrashed('p_1', 'nope', true)).toBe(0);
   });
 });
+
+// 4단계: 부재명·설명 수정
+describe('ShotsStore.update', () => {
+  let dir: string;
+  let store: ShotsStore;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'mangdo-upd-'));
+    store = new ShotsStore(dir);
+    await store.replace('p_1', [base]);
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('member·label을 바꾸고 앞뒤 공백을 뗀다. 위험 글자도 저장된다(파일명에서만 _)', async () => {
+    const updated = await store.update('p_1', 's0', { member: ' 교각/P1 ', label: '균열' });
+    expect(updated).toMatchObject({ member: '교각/P1', label: '균열', number: '001' });
+    expect(shotFileName('A교', updated!)).toBe('A교_교각_P1_001.jpg');
+    expect((await store.list('p_1'))[0].member).toBe('교각/P1');
+  });
+
+  it('빈 값·너무 긴 값은 거부(ShotRuleError), 없는 id는 null, 안 준 키는 그대로', async () => {
+    await expect(store.update('p_1', 's0', { member: '  ' })).rejects.toMatchObject({ name: 'ShotRuleError' });
+    await expect(store.update('p_1', 's0', { label: 'x'.repeat(121) })).rejects.toMatchObject({ name: 'ShotRuleError' });
+    expect(await store.update('p_1', 'nope', { member: '교각' })).toBeNull();
+    expect((await store.update('p_1', 's0', { label: '새 설명' }))?.member).toBe('전경');
+  });
+});

@@ -1867,6 +1867,21 @@ describe('전차보고서 API (/api/projects/:id/previous-report)', () => {
   });
 });
 
+describe('PATCH /api/projects/:id/shots/:shotId (부재명·설명)', () => {
+  it('200으로 바뀐 shot을 돌려주고, 빈 값 400, 없는 id 404', async () => {
+    const { app } = setup();
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교' })).body;
+    const child = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id, facilityType: '교량' })).body;
+    const list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    const id = list.shots[0].id;
+    const ok = await request(app).patch(`/api/projects/${child.id}/shots/${id}`).set('x-access-key', KEY).send({ member: '교각', label: 'P1 전면' });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ id, member: '교각', label: 'P1 전면' });
+    expect((await request(app).patch(`/api/projects/${child.id}/shots/${id}`).set('x-access-key', KEY).send({ member: '' })).status).toBe(400);
+    expect((await request(app).patch(`/api/projects/${child.id}/shots/s_nope`).set('x-access-key', KEY).send({ member: '교각' })).status).toBe(404);
+  });
+});
+
 describe('GET /api/projects/:id/photos.zip', () => {
   it('고른 프로젝트는 최상위, 하위 프로젝트는 <하위>/ 폴더에 담고 썸네일은 넣지 않는다', async () => {
     const { app, projects, drawings, photos } = setup();

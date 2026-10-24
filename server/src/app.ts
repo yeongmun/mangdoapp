@@ -35,7 +35,7 @@ import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFo
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 import { extractPhotoBlocks } from './hwpxPhotos.js';
-import { shotFileName, type Shot, type ShotsStore, type ShotTemplateItem } from './shotsStore.js';
+import { shotFileName, ShotRuleError, type Shot, type ShotsStore, type ShotTemplateItem } from './shotsStore.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -818,6 +818,34 @@ export function createApp(deps: AppDeps) {
       }
     }
     res.status(201).json({ pages: extracted.blocks.length, photos: extracted.blocks.reduce((n, b) => n + b.images.length, 0), skipped: extracted.skipped });
+  });
+
+  // 부재명·설명 수정(4단계, 웹 과업 상세). 주의: '/shots/groups/:group' 보다 뒤에 두면 'groups'가 shotId로 잡히므로 앞에 둔다
+  api.patch('/projects/:id/shots/:shotId', async (req, res, next) => {
+    if (req.params.shotId === 'groups') {
+      next();
+      return;
+    }
+    const project = await findShotProject(req, res);
+    if (!project) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: { member?: unknown; label?: unknown } = {};
+    if ('member' in body) patch.member = body.member;
+    if ('label' in body) patch.label = body.label;
+    try {
+      const updated = await deps.shots.update(project.id, req.params.shotId as string, patch);
+      if (!updated) {
+        res.status(404).json({ error: '촬영 항목을 찾을 수 없습니다.' });
+        return;
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof ShotRuleError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
   });
 
   api.patch('/projects/:id/shots/groups/:group', async (req, res) => {

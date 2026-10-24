@@ -37,6 +37,24 @@ export interface ShotTemplateItem {
 }
 
 export const THUMB_SUFFIX = '.thumb.jpg';
+export const SHOT_MEMBER_MAX = 40;
+export const SHOT_LABEL_MAX = 120;
+
+/** 입력값 규칙 위반(부재명·설명). 라우트는 400으로 답한다 */
+export class ShotRuleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ShotRuleError';
+  }
+}
+
+function validateShotText(value: unknown, what: string, max: number): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (typeof value !== 'string' || trimmed.length < 1 || trimmed.length > max) {
+    throw new ShotRuleError(`${what}은(는) 1~${max}자로 적어 주세요.`);
+  }
+  return trimmed;
+}
 
 function newShotId(): string {
   return `s_${randomUUID().replaceAll('-', '')}`;
@@ -217,6 +235,21 @@ export class ShotsStore {
       await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots });
       void savedAt;
       return { shots, added: added.length };
+    });
+  }
+
+  /** 부재명·설명 수정(웹 과업 상세). 준 키만 바꾼다. 없는 shot이면 null, 값이 틀리면 ShotRuleError */
+  update(projectId: string, shotId: string, patch: { member?: unknown; label?: unknown }): Promise<Shot | null> {
+    return this.serialize(async () => {
+      const shots = await this.list(projectId);
+      const index = shots.findIndex((s) => s.id === shotId);
+      if (index === -1) return null;
+      const next: Shot = { ...shots[index] };
+      if ('member' in patch) next.member = validateShotText(patch.member, '부재명', SHOT_MEMBER_MAX);
+      if ('label' in patch) next.label = validateShotText(patch.label, '설명', SHOT_LABEL_MAX);
+      shots[index] = next;
+      await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots });
+      return next;
     });
   }
 
