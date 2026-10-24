@@ -1792,7 +1792,8 @@ describe('전차보고서 API (/api/projects/:id/previous-report)', () => {
   function sampleHwpx(): Buffer {
     const img = (id: string) => `<hp:pic><hc:img binaryItemIDRef="${id}"/></hp:pic>`;
     const t = (x: string) => `<hp:p><hp:run><hp:t>${x}</hp:t></hp:run></hp:p>`;
-    const tc = (x: string) => `<hp:tc><hp:subList>${x}</hp:subList></hp:tc>`;
+    let col = 0;
+    const tc = (x: string) => `<hp:tc><hp:subList>${x}</hp:subList><hp:cellAddr colAddr="${col++}" rowAddr="0"/></hp:tc>`;
     return makeZip({
       'Contents/content.hpf': '<opf:package><opf:manifest><opf:item id="image1" href="BinData/image1.png" media-type="image/png"/><opf:item id="image2" href="BinData/image2.png" media-type="image/png"/></opf:manifest></opf:package>',
       'Contents/section0.xml': `<hs:sec><hp:tbl><hp:tr>${tc(img('image1'))}${tc(t('사진 1. 교각 P1 균열'))}${tc(img('image2'))}${tc(t('사진 2. 전경'))}</hp:tr></hp:tbl></hs:sec>`,
@@ -1816,8 +1817,8 @@ describe('전차보고서 API (/api/projects/:id/previous-report)', () => {
     expect(res.body).toEqual({ pages: 1, photos: 2, skipped: 0 });
     const list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
     expect(list.shots.map((s: { kind: string; group: string; label: string; refThumbUrl: string | null }) => [s.kind, s.group, s.label, typeof s.refThumbUrl])).toEqual([
-      ['previous', 'pg_001', '사진 1. 교각 P1 균열', 'string'],
-      ['previous', 'pg_001', '사진 2. 전경', 'string'],
+      ['previous', 'r1_pg_001', '사진 1. 교각 P1 균열', 'string'],
+      ['previous', 'r1_pg_001', '사진 2. 전경', 'string'],
     ]);
     const ref = await request(app).get(`/api/projects/${child.id}/shots/${list.shots[0].id}/ref`).set('x-access-key', KEY).responseType('blob');
     expect(ref.status).toBe(200);
@@ -1841,15 +1842,15 @@ describe('전차보고서 API (/api/projects/:id/previous-report)', () => {
     const { app } = setup();
     const child = await structure(app);
     await request(app).post(`/api/projects/${child.id}/previous-report`).set('x-access-key', KEY).attach('file', sampleHwpx(), { filename: '전차.hwpx' });
-    const on = await request(app).patch(`/api/projects/${child.id}/shots/groups/pg_001`).set('x-access-key', KEY).send({ trashed: true });
+    const on = await request(app).patch(`/api/projects/${child.id}/shots/groups/r1_pg_001`).set('x-access-key', KEY).send({ trashed: true });
     expect(on.status).toBe(200);
     expect(on.body).toEqual({ changed: 2 });
     let list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
     expect(list.shots.every((s: { trashed?: boolean }) => s.trashed === true)).toBe(true);
-    await request(app).patch(`/api/projects/${child.id}/shots/groups/pg_001`).set('x-access-key', KEY).send({ trashed: false });
+    await request(app).patch(`/api/projects/${child.id}/shots/groups/r1_pg_001`).set('x-access-key', KEY).send({ trashed: false });
     list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
     expect(list.shots.every((s: { trashed?: boolean }) => s.trashed === undefined)).toBe(true);
-    expect((await request(app).patch(`/api/projects/${child.id}/shots/groups/pg_001`).set('x-access-key', KEY).send({ trashed: 'yes' })).status).toBe(400);
+    expect((await request(app).patch(`/api/projects/${child.id}/shots/groups/r1_pg_001`).set('x-access-key', KEY).send({ trashed: 'yes' })).status).toBe(400);
   });
 
   it('photos.zip에 찍은 전차 사진도 구조물/구조물_부재_번호.jpg 로 들어간다', async () => {

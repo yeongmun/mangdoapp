@@ -6,6 +6,8 @@ import { inflateRawSync } from 'node:zlib';
 const CD_SIG = 0x02014b50;
 const EOCD_SIG = 0x06054b50;
 const LOCAL_SIG = 0x04034b50;
+/** 항목 하나의 풀린 크기 상한(zip 폭탄 방지). 보고서 그림 한 장이 이보다 클 일은 없다 */
+const MAX_ENTRY_BYTES = 200 * 1024 * 1024;
 
 export function readZipEntries(buf: Buffer): Map<string, Buffer> {
   const out = new Map<string, Buffer>();
@@ -37,7 +39,7 @@ export function readZipEntries(buf: Buffer): Map<string, Buffer> {
     const dataStart = localOffset + 30 + localNameLen + localExtraLen;
     const raw = buf.subarray(dataStart, dataStart + compressedSize);
     if (method === 0) out.set(name, Buffer.from(raw));
-    else if (method === 8) out.set(name, inflateRawSync(raw));
+    else if (method === 8) out.set(name, inflateRawSync(raw, { maxOutputLength: MAX_ENTRY_BYTES }));
     else throw new Error(`지원하지 않는 압축 방식(${method}): ${name}`);
   }
   return out;

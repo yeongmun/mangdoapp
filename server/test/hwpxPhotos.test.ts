@@ -57,7 +57,8 @@ function hpf(items: Record<string, string>): string {
 }
 const img = (id: string) => `<hp:pic id="1"><hc:img binaryItemIDRef="${id}" bright="0"/></hp:pic>`;
 const t = (s: string) => `<hp:p id="2" paraPrIDRef="0"><hp:run><hp:t>${s}</hp:t></hp:run></hp:p>`;
-const tc = (inner: string) => `<hp:tc name="" header="0"><hp:subList>${inner}</hp:subList></hp:tc>`;
+const tc = (inner: string, row = 0, col = 0) => `<hp:tc name="" header="0"><hp:subList>${inner}</hp:subList><hp:cellAddr colAddr="${col}" rowAddr="${row}"/></hp:tc>`;
+const rows = (...trs: string[]) => `<hp:tbl id="9" pageBreak="CELL">${trs.map((r) => `<hp:tr>${r}</hp:tr>`).join('')}</hp:tbl>`;
 const tbl = (inner: string) => `<hp:tbl id="9" pageBreak="CELL"><hp:tr>${inner}</hp:tr></hp:tbl>`;
 const section = (body: string) => `<?xml version="1.0"?><hs:sec xmlns:hs="x" xmlns:hp="y" xmlns:hc="z">${body}</hs:sec>`;
 
@@ -84,7 +85,7 @@ describe('readZipEntries', () => {
 
 describe('extractPhotoBlocks', () => {
   it('표 안 그림 2장과 뒤따르는 캡션을 페이지 하나로', () => {
-    const doc = hwpx(tbl(tc(t('') + img('image1')) + tc(t('사진 1. 교각 P1 균열')) + tc(img('image2')) + tc(t('사진 2. 교대 A1 백태'))));
+    const doc = hwpx(tbl(tc(t('') + img('image1'), 0, 0) + tc(t('사진 1. 교각 P1 균열'), 0, 1) + tc(img('image2'), 0, 2) + tc(t('사진 2. 교대 A1 백태'), 0, 3)));
     const { blocks, skipped } = extractPhotoBlocks(doc);
     expect(skipped).toBe(0);
     expect(blocks).toHaveLength(1);
@@ -97,8 +98,8 @@ describe('extractPhotoBlocks', () => {
   });
 
   it('중첩 표의 그림은 한 번만, 표 두 개면 페이지 두 개', () => {
-    const inner = tbl(tc(img('image1')) + tc(t('안쪽')));
-    const doc = hwpx(tbl(tc(inner)) + tbl(tc(img('image2')) + tc(t('둘째'))));
+    const inner = tbl(tc(img('image1'), 0, 0) + tc(t('안쪽'), 0, 1));
+    const doc = hwpx(tbl(tc(inner)) + tbl(tc(img('image2'), 0, 0) + tc(t('둘째'), 0, 1)));
     const { blocks } = extractPhotoBlocks(doc);
     expect(blocks.map((b) => [b.page, b.images.length])).toEqual([
       ['pg_001', 1],
@@ -108,14 +109,14 @@ describe('extractPhotoBlocks', () => {
   });
 
   it('캡션 없는 그림은 null, 줄바꿈·탭·엔티티는 정리', () => {
-    const doc = hwpx(tbl(tc(img('image1'))) + tbl(tc(img('image2')) + tc(t('사진 2.\n\t교대 &lt;A1&gt;'))));
+    const doc = hwpx(tbl(tc(img('image1'))) + tbl(tc(img('image2'), 0, 0) + tc(t('사진 2.\n\t교대 &lt;A1&gt;'), 0, 1)));
     const { blocks } = extractPhotoBlocks(doc);
     expect(blocks[0].images[0].caption).toBeNull();
     expect(blocks[1].images[0].caption).toBe('사진 2. 교대 <A1>');
   });
 
   it('그림 뒤에 글이 없으면 앞 글을 캡션으로', () => {
-    const doc = hwpx(tbl(tc(t('전경 사진')) + tc(img('image1'))), { image1: PNG });
+    const doc = hwpx(tbl(tc(t('전경 사진'), 0, 0) + tc(img('image1'), 0, 1)), { image1: PNG });
     expect(extractPhotoBlocks(doc).blocks[0].images[0].caption).toBe('전경 사진');
   });
 
@@ -126,6 +127,31 @@ describe('extractPhotoBlocks', () => {
       ['pg_001', '본문 그림'],
       ['pg_002', null],
     ]);
+  });
+
+  it('격자 배치([그림|그림] / [캡션|캡션])는 아래 칸이 캡션 (리뷰 1)', () => {
+    const doc = hwpx(rows(tc(t('사진대지'), 0, 0), tc(img('image1'), 1, 0) + tc(img('image2'), 1, 1), tc(t('사진 1. 교각 P1 균열'), 2, 0) + tc(t('사진 2. 교대 A1 백태'), 2, 1)));
+    const { blocks } = extractPhotoBlocks(doc);
+    expect(blocks[0].images.map((i) => i.caption)).toEqual(['사진 1. 교각 P1 균열', '사진 2. 교대 A1 백태']);
+  });
+
+  it('같은 칸에 그림 뒤 글이 있으면 그것이 먼저, 없으면 아래 칸·같은 칸 앞 글·위 칸 순', () => {
+    const doc = hwpx(rows(tc(img('image1') + t('같은 칸 뒤'), 0, 0) + tc(t('위 칸 글'), 0, 1), tc(t('아래 칸'), 1, 0) + tc(img('image2'), 1, 1)));
+    const { blocks } = extractPhotoBlocks(doc);
+    expect(blocks[0].images.map((i) => i.caption)).toEqual(['같은 칸 뒤', '위 칸 글']);
+  });
+
+  it('한 문단이 여러 run·lineBreak로 나뉘어도 캡션 하나로 (리뷰 4)', () => {
+    const p = '<hp:p><hp:run><hp:t>사진 1.</hp:t></hp:run><hp:run><hp:t>교각<hp:lineBreak/>P1 균열</hp:t></hp:run></hp:p>';
+    const doc = hwpx(rows(tc(img('image1') + p)), { image1: PNG });
+    expect(extractPhotoBlocks(doc).blocks[0].images[0].caption).toBe('사진 1. 교각 P1 균열');
+  });
+
+  it('그림 문단 안에 한글 캡션(hp:caption) 문단이 있어도 그림을 잃지 않는다 (리뷰 5)', () => {
+    const doc = hwpx(`<hp:p><hp:run><hp:pic><hp:caption><hp:subList><hp:p><hp:run><hp:t>캡션 안쪽</hp:t></hp:run></hp:p></hp:subList></hp:caption><hc:img binaryItemIDRef="image1"/></hp:pic></hp:run></hp:p>`, { image1: PNG });
+    const { blocks } = extractPhotoBlocks(doc);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].images[0].caption).toBe('캡션 안쪽');
   });
 
   it('그림이 없는 표는 페이지가 아니다', () => {

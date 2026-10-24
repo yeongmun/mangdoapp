@@ -173,13 +173,20 @@ export class ShotsStore {
   }
 
   /**
-   * 전차보고서 블록을 previous shot으로 넣는다. 안 찍은 previous는 전부 교체하고, 찍은 previous와 required는
-   * 남긴다. 번호는 남은 항목 최대 다음부터. 참조 이미지는 ref/<shotId><ext>로 저장(썸네일은 라우트가 만든다).
+   * 전차보고서 블록을 previous shot으로 넣는다. 전에 올린 previous 중 안 찍은 것은 **지우지 않고 휴지통**으로
+   * 보낸다 — 오프라인에서 찍어 아직 대기열에 있는 사진이 나중에 올라올 자리를 남기기 위해(리뷰 3). 찍은
+   * previous와 required는 그대로. 페이지 id는 올린 회차 접두사(r1_, r2_…)를 붙여 회차끼리 섞이지 않게 한다(리뷰 2).
+   * 번호는 남은 항목 최대 다음부터. 참조 이미지는 ref/<shotId><ext>로 저장(썸네일은 라우트가 만든다).
    */
   importPrevious(projectId: string, blocks: PhotoBlock[], savedAt: string): Promise<{ shots: Shot[]; added: number }> {
     return this.serialize(async () => {
       const current = await this.list(projectId);
-      const kept = current.filter((s) => s.kind !== 'previous' || s.photo !== undefined);
+      const kept = current.map((s) => (s.kind === 'previous' && s.photo === undefined && s.trashed !== true ? ({ ...s, trashed: true } as Shot) : s));
+      const round =
+        kept.reduce((max, s) => {
+          const m = /^r(\d+)_/.exec(s.group ?? '');
+          return m ? Math.max(max, Number(m[1])) : max;
+        }, 0) + 1;
       let next = kept.reduce((max, s) => Math.max(max, Number(s.number) || 0), 0);
       const refDir = join(this.dirOf(projectId), 'ref');
       await mkdir(refDir, { recursive: true });
@@ -198,7 +205,7 @@ export class ShotsStore {
             member: memberOfCaption(image.caption),
             label: image.caption ?? `사진 ${photoNo}`,
             number: pad3(next),
-            group: block.page,
+            group: `r${round}_${block.page}`,
             ref: { file },
           };
           if (image.caption) shot.caption = image.caption;

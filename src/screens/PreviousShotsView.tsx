@@ -26,26 +26,40 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
   const activeShots = previous.filter((s) => s.trashed !== true);
   const takenCount = activeShots.filter(isTaken).length;
 
-  // 참조 이미지 내려받기(없는 것만, 온라인일 때). 실패는 조용히 — 서버 주소로 바로 보여 주면 된다
+  // 참조 이미지 내려받기(없는 것만, 온라인일 때). 한 장이 실패해도 다음 장을 계속 받고(404·500 한 건에
+  // 전부 포기하지 않게 — 리뷰 6), 연속 실패가 쌓이면(오프라인) 그만둔다. 기기 저장은 몇 장마다 한 번.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const missing = previous.filter((s) => s.refThumbUrl && !state.refs[s.id]);
+      if (missing.length === 0) return;
+      let got: Record<string, string> = {};
+      let failures = 0;
+      const commit = () => {
+        if (Object.keys(got).length === 0) return;
+        const batch = got;
+        got = {};
+        setState((prev) => {
+          const next = { ...prev, refs: { ...prev.refs, ...batch } };
+          writeShotsLocal(project.id, next);
+          return next;
+        });
+      };
       for (const shot of missing) {
+        if (cancelled) break;
         const req = shotRefThumbRequest(shot);
         if (!req) continue;
         try {
           const file = await File.downloadFileAsync(req.uri, refFileFor(shot.id), { headers: req.headers, idempotent: true });
-          if (cancelled) return;
-          setState((prev) => {
-            const next = { ...prev, refs: { ...prev.refs, [shot.id]: file.uri } };
-            writeShotsLocal(project.id, next);
-            return next;
-          });
+          got[shot.id] = file.uri;
+          failures = 0;
+          if (Object.keys(got).length >= 8) commit();
         } catch {
-          return; // 오프라인이면 그만
+          failures += 1;
+          if (failures >= 3) break; // 서버가 안 닿는다(오프라인)
         }
       }
+      commit();
     })();
     return () => {
       cancelled = true;
