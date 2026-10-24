@@ -903,6 +903,8 @@ export function createApp(deps: AppDeps) {
         return;
       }
     }
+    // 참조 썸네일은 바뀌지 않는다(다시 올리면 shot id가 새로 생김)
+    res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('Content-Type', 'image/jpeg');
     res.send(thumb);
   });
@@ -975,6 +977,8 @@ export function createApp(deps: AppDeps) {
         return;
       }
     }
+    // 사진 썸네일 주소는 ?v=savedAt 로 구분되므로 길게 캐시해도 안전
+    res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('Content-Type', 'image/jpeg');
     res.send(thumb);
   });
