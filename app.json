@@ -19,11 +19,7 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO"
-      ],
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1e3a5f"
-      }
+      ]
     },
     "web": {
       "bundler": "metro"
@@ -66,7 +62,6 @@
         "projectId": "69773266-610c-42bd-bc5d-a67adbbddbee"
       }
     },
-    "owner": "yeongmun",
-    "icon": "./assets/icon.png"
+    "owner": "yeongmun"
   }
 }
