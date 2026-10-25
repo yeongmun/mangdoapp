@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Feather } from '@expo/vector-icons';
 import {
   Alert,
   BackHandler,
   FlatList,
+  Image,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type AlertButton,
 } from 'react-native';
@@ -19,16 +23,20 @@ import {
   fetchDrawings,
   fetchProjects,
   INSPECTION_TYPES,
+  shotThumbSource,
   updateProject,
   type Drawing,
   type Project,
 } from '../api';
+import { IconButton } from '../components/IconButton';
 import { LoadingView } from '../components/LoadingView';
 import { TypeChips } from '../components/TypeChips';
+import { Wordmark } from '../components/Wordmark';
+import { nextStructure, photoProgress, recentPhotos, type ShotCache } from '../homeSummary';
 import { PreviousShotsView } from './PreviousShotsView';
 import { RequiredShotsView } from './RequiredShotsView';
 import { readShotsLocal } from '../shotsLocal';
-import { colors, radius, space } from '../theme';
+import { colors, font, radius, space, TABLET_MIN_WIDTH, TOUCH_MIN } from '../theme';
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
 import { downloadDrawings } from '../offlineDownload';
@@ -38,11 +46,12 @@ import { syncOffline, waitForSync } from '../offlineSync';
 import { flushPhotoQueue, PHOTO_FLUSH_INTERVAL_MS, pendingPhotoCount, retryPendingPhotos } from '../photoUpload';
 import { listItemsFor, normalizeLocation, parentLocation, type ListItem, type ListLocation } from '../projectList';
 
-const STATUS: Record<Drawing['status'], { label: string; color: string }> = {
-  pending: { label: '대기', color: '#8a8f98' },
-  inprogress: { label: '변환 중', color: '#1e66f5' },
-  success: { label: '완료', color: '#2e7d32' },
-  failed: { label: '실패', color: '#d32f2f' },
+// 상태 칩: 글자색 color + 옅은 바탕 bg
+const STATUS: Record<Drawing['status'], { label: string; color: string; bg: string }> = {
+  pending: { label: '대기', color: '#62646a', bg: '#f2f2f2' },
+  inprogress: { label: '변환 중', color: '#1e40af', bg: '#e8f0fe' },
+  success: { label: '완료', color: '#15803d', bg: '#e8f6ee' },
+  failed: { label: '실패', color: '#c62828', bg: '#fdecec' },
 };
 
 // downloadDrawings는 실패한 도면 이름만 돌려주고 사유는 콘솔에만 남긴다 — 사용자에게는 흔한 원인을
@@ -118,12 +127,24 @@ function scopedDrawings(items: ListItem<Project, Drawing>[], projects: Project[]
 // 도면 줄 오른쪽의 상태 하나(2026-09-28 설계 1.2). 기기에 있으면 그것이 가장 중요하다 — 서버에서
 // 다시 변환 중이어도 기기 파일로 열린다. 그 밖에는 변환 상태(대기·변환 중·실패)를 먼저 보이고,
 // 변환이 끝났으면 받을 수 있는지(SVF)·PC에서 다시 변환해야 하는지(옛 SVF2)를 보인다.
-const GRAY = '#8a8f98';
-function rowChip(drawing: Drawing, downloaded: boolean, canFetch: boolean): { label: string; color: string } {
-  if (downloaded) return { label: '기기에 있음', color: '#2e7d32' };
+const GRAY = { color: '#62646a', bg: '#f2f2f2' };
+function rowChip(drawing: Drawing, downloaded: boolean, canFetch: boolean): { label: string; color: string; bg: string } {
+  if (downloaded) return { label: '기기에 있음', color: '#15803d', bg: '#e8f6ee' };
   if (drawing.status !== 'success') return STATUS[drawing.status];
-  if (canFetch) return { label: '받기 필요', color: GRAY };
-  return { label: 'PC에서 다시 변환 필요', color: GRAY };
+  if (canFetch) return { label: '받기 필요', ...GRAY };
+  return { label: 'PC에서 다시 변환 필요', ...GRAY };
+}
+
+/** 점검 종류 태그 색: 정기는 파랑, 정밀은 주황 */
+function inspectionTag(type: string): { color: string; backgroundColor: string } {
+  return type.startsWith('정기')
+    ? { color: colors.tagCoolFg, backgroundColor: colors.tagCoolBg }
+    : { color: colors.tagWarmFg, backgroundColor: colors.tagWarmBg };
+}
+
+function shotCacheOf(projectId: string): ShotCache {
+  const local = readShotsLocal(projectId);
+  return { list: local.list, local: local.local };
 }
 
 interface Props {
@@ -133,12 +154,9 @@ interface Props {
 export function DrawingListScreen({ onOpen }: Props) {
   // 노치·상태바·홈 표시줄·가로 모드 모서리를 피하는 여백. 고정값이면 아이폰 노치에 제목이 가린다.
   const insets = useSafeAreaInsets();
-  const safePadding = {
-    paddingTop: insets.top + 16,
-    paddingBottom: insets.bottom,
-    paddingLeft: 24 + insets.left,
-    paddingRight: 24 + insets.right,
-  };
+  const sidePadding = { paddingLeft: space.lg + insets.left, paddingRight: space.lg + insets.right };
+  const { width } = useWindowDimensions();
+  const isTablet = width >= TABLET_MIN_WIDTH;
   const problem = configProblem();
   const [projects, setProjects] = useState<Project[]>([]);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -160,12 +178,17 @@ export function DrawingListScreen({ onOpen }: Props) {
   const [savingType, setSavingType] = useState(false);
   // 구조물 화면의 탭. location이 바뀌면 되돌린다. 전차 사진이 (기기 저장 기준으로) 하나라도 있으면
   // [전차 사진]부터 — 전차 사진이 있을 때는 그것만 보고 찍어도 된다(설계: 사용자 결정).
+  // 전차 사진이 없으면 폰은 [필수 사진], 태블릿은 [도면]부터(2026-10-25: 사진은 폰, 망도 그리기는 태블릿).
   const [tab, setTab] = useState<'drawings' | 'shots' | 'previous'>('drawings');
   useEffect(() => {
     const id = typeof location === 'string' && location !== 'unfiled' ? location : null;
     const hasPrevious = id !== null && (readShotsLocal(id).list?.shots ?? []).some((s) => s.kind === 'previous' && s.trashed !== true);
-    setTab(hasPrevious ? 'previous' : 'drawings');
+    setTab(hasPrevious ? 'previous' : isTablet ? 'drawings' : 'shots');
+    // isTablet은 일부러 뺀다 — 화면을 돌릴 때마다 탭이 바뀌면 안 된다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
+  // 맨 위 과업 목록의 검색
+  const [query, setQuery] = useState('');
   const changeProjectType = useCallback(
     async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null }) => {
       setSavingType(true);
@@ -450,6 +473,30 @@ export function DrawingListScreen({ onOpen }: Props) {
   );
   const pendingBadge = pendingSummary(pendingDamages, pendingPhotos);
 
+  // 맨 위 과업 카드: 구조물들, 사진 진행(기기 저장 기준), 최근 찍은 사진. 위치가 바뀔 때(구조물에서 돌아올 때) 다시 읽는다.
+  const home = useMemo(() => {
+    const childrenOf = new Map<string, Project[]>();
+    for (const p of projects) {
+      if (p.parentId === null) continue;
+      const list = childrenOf.get(p.parentId) ?? [];
+      list.push(p);
+      childrenOf.set(p.parentId, list);
+    }
+    // 기기 파일을 동기로 읽으므로 쓰는 곳에서만: 맨 위(모든 구조물)·과업 화면(그 과업의 구조물)
+    const caches: Record<string, ShotCache> = {};
+    const here = typeof location === 'string' && location !== 'unfiled' ? projects.find((p) => p.id === location) : undefined;
+    if (location === null || here?.depth === 0) {
+      for (const p of projects) {
+        if (p.depth === 1 && (location === null || p.parentId === location)) caches[p.id] = shotCacheOf(p.id);
+      }
+    }
+    const recent = recentPhotos(
+      projects.filter((p) => caches[p.id]).map((p) => ({ projectId: p.id, projectName: p.name, cache: caches[p.id] })),
+      10,
+    );
+    return { childrenOf, caches, recent };
+  }, [projects, location]);
+
   if (problem) {
     return (
       <View style={styles.center}>
@@ -459,31 +506,91 @@ export function DrawingListScreen({ onOpen }: Props) {
   }
 
   if (loading) {
-    return <LoadingView message="도면 목록을 불러오는 중" />;
+    return <LoadingView message="목록을 불러오는 중" />;
   }
 
   const flat = projects.length === 0;
+  const atTop = !flat && location === null;
   const showBack = !flat && location !== null;
   const currentProject = !flat && location !== null && location !== 'unfiled' ? projects.find((p) => p.id === location) : undefined;
-  const title = flat ? '도면 목록' : location === null ? '프로젝트' : location === 'unfiled' ? '미분류' : (currentProject?.path ?? '프로젝트');
+  const parentProject = currentProject?.parentId ? projects.find((p) => p.id === currentProject.parentId) : undefined;
+  const title = flat ? '도면 목록' : location === 'unfiled' ? '미분류' : (currentProject?.name ?? '과업');
+  const subtitle =
+    currentProject?.depth === 1
+      ? [currentProject.facilityType, parentProject?.name].filter(Boolean).join(' · ')
+      : currentProject?.depth === 0
+        ? (currentProject.inspectionType ?? '점검 종류를 고르세요')
+        : null;
   const hasDrawingRow = items.some((item) => item.kind === 'drawing');
-  // `현장 가기 전 모두 받기` 버튼은 도면이 든 목록(프로젝트 안·미분류·프로젝트가 없는 평평한 목록)에만 둔다
-  // — 맨 위 프로젝트 목록에서는 무엇을 받는지 알기 어렵다(설계 5장 "프로젝트 안(및 미분류)").
+  // `현장 가기 전 모두 받기`는 도면이 든 목록(프로젝트 안·미분류·평평한 목록)에만 — 머리글 오른쪽 아이콘(설계 5장).
   const showListDownload = scoped.length > 0 && (flat || location !== null);
   const emptyText = flat
     ? '업로드된 도면이 없습니다.\nPC의 업로드 페이지에서 DWG를 올려주세요.'
-    : '이 프로젝트에는 도면이 없습니다.\nPC의 업로드 페이지에서 올려 주세요.';
+    : atTop
+      ? '과업이 없습니다.\n웹에서 과업을 등록하면 여기 뜹니다.'
+      : '이 프로젝트에는 도면이 없습니다.\nPC의 업로드 페이지에서 올려 주세요.';
+  const q = query.trim();
+  const visibleItems =
+    atTop && q
+      ? items.filter(
+          (item) =>
+            item.kind === 'project' &&
+            [item.project.name, ...(home.childrenOf.get(item.project.id) ?? []).map((c) => c.name)].some((n) => n.includes(q)),
+        )
+      : items;
+  const structureTabs = currentProject && currentProject.depth === 1;
 
-  return (
-    <View style={[styles.container, safePadding]}>
-      <View style={styles.titleRow}>
-        {showBack && (
-          <Pressable onPress={() => goTo(parentLocation(projects, location))} hitSlop={12}>
-            <Text style={styles.backButton}>‹ 뒤로</Text>
-          </Pressable>
+  const header = (
+    <View style={[styles.header, sidePadding, { paddingTop: insets.top + space.sm }]}>
+      <View style={styles.headerRow}>
+        {showBack ? (
+          <IconButton icon="chevron-left" label="뒤로" onPress={() => goTo(parentLocation(projects, location))} />
+        ) : (
+          <View style={styles.headerSide} />
         )}
-        <Text style={styles.title}>{title}</Text>
+        <View style={styles.headerCenter}>
+          {atTop ? (
+            <Wordmark size={24} />
+          ) : (
+            <>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+              {subtitle ? (
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </>
+          )}
+        </View>
+        <View style={styles.headerRight}>
+          {showListDownload && (
+            <IconButton
+              icon={toDownload.length === 0 ? 'check' : 'download'}
+              label={toDownload.length === 0 ? '모두 기기에 있음' : `현장 가기 전 모두 받기 (${toDownload.length}장)`}
+              badge={toDownload.length}
+              disabled={toDownload.length === 0 || downloading !== null || opening !== null}
+              onPress={() => void runDownload(toDownload)}
+            />
+          )}
+          {!showListDownload && <View style={styles.headerSide} />}
+        </View>
       </View>
+      {atTop && (
+        <View style={styles.search}>
+          <Feather name="search" size={18} color={colors.mutedForeground} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="과업·구조물 검색"
+            placeholderTextColor={colors.mutedForeground}
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+            accessibilityLabel="과업·구조물 검색"
+          />
+        </View>
+      )}
       {currentProject && currentProject.depth === 0 && (
         <TypeChips
           label="점검 종류"
@@ -493,7 +600,7 @@ export function DrawingListScreen({ onOpen }: Props) {
           onChange={(v) => void changeProjectType(currentProject, { inspectionType: v })}
         />
       )}
-      {currentProject && currentProject.depth === 1 && (
+      {structureTabs && (
         <TypeChips
           label="시설물 종류"
           options={FACILITY_TYPES}
@@ -502,9 +609,37 @@ export function DrawingListScreen({ onOpen }: Props) {
           onChange={(v) => void changeProjectType(currentProject, { facilityType: v })}
         />
       )}
+      {structureTabs && (
+        <View style={styles.tabs} accessibilityRole="tablist">
+          {(
+            [
+              ['shots', '필수 사진'],
+              ['previous', '전차 사진'],
+              ['drawings', '도면'],
+            ] as const
+          ).map(([key, label]) => (
+            <Pressable
+              key={key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === key }}
+              onPress={() => setTab(key)}
+              style={[styles.tab, tab === key && styles.tabActive]}
+            >
+              <Text style={[styles.tabText, tab === key && styles.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  const banners = (
+    <>
       {pendingBadge !== null && (
-        <Pressable onPress={() => void sendNow()}>
-          <Text style={styles.pendingBanner}>{pendingBadge}</Text>
+        <Pressable onPress={() => void sendNow()} accessibilityRole="button" style={({ pressed }) => [styles.pendingBanner, pressed && styles.cardPressed]}>
+          <Feather name="upload-cloud" size={18} color={colors.tagWarmFg} />
+          <Text style={styles.pendingText}>{pendingBadge}</Text>
+          <Text style={styles.pendingAction}>지금 보내기</Text>
         </Pressable>
       )}
       {error && <Text style={styles.errorBanner}>{error}</Text>}
@@ -521,171 +656,273 @@ export function DrawingListScreen({ onOpen }: Props) {
           <Text style={styles.resultBanner}>{downloadResult}</Text>
         </Pressable>
       )}
-      {showListDownload && (
-        <Pressable
-          style={({ pressed }) => [
-            styles.listDownload,
-            toDownload.length === 0 && styles.listDownloadDone,
-            pressed && toDownload.length > 0 && styles.listDownloadPressed,
-          ]}
-          disabled={toDownload.length === 0 || downloading !== null || opening !== null}
-          onPress={() => void runDownload(toDownload)}
-        >
-          <Text style={toDownload.length === 0 ? styles.listDownloadDoneText : styles.listDownloadText}>
-            {toDownload.length === 0 ? '모두 기기에 있음' : `현장 가기 전 모두 받기 (${toDownload.length}장)`}
+    </>
+  );
+
+  const renderTaskCard = (project: Project) => {
+    const children = home.childrenOf.get(project.id) ?? [];
+    const progress = photoProgress(children.map((c) => home.caches[c.id]).filter((c): c is ShotCache => c !== undefined));
+    const next = nextStructure(children, home.caches);
+    const pct = progress && progress.total > 0 ? Math.round((progress.taken / progress.total) * 100) : 0;
+    return (
+      // 카드 전체도 눌리지만 화면 읽기는 안쪽 두 버튼을 따로 잡는다(accessible={false})
+      <Pressable style={({ pressed }) => [styles.taskCard, pressed && styles.cardPressed]} onPress={() => goTo(project.id)} accessible={false}>
+        <View style={styles.taskTop}>
+          {project.inspectionType ? (
+            <Text style={[styles.tag, inspectionTag(project.inspectionType)]}>{project.inspectionType}</Text>
+          ) : (
+            <Text style={[styles.tag, styles.tagEmpty]}>점검 종류 미선택</Text>
+          )}
+          <Text style={styles.meta}>{children.length > 0 ? `구조물 ${children.length}개` : `도면 ${project.totalDrawingCount}`}</Text>
+        </View>
+        <Text style={styles.taskName}>{project.name}</Text>
+        {children.length > 0 && (
+          <Text style={styles.meta} numberOfLines={1}>
+            {children.map((c) => c.name).join(' · ')}
           </Text>
-        </Pressable>
-      )}
-      {currentProject && currentProject.depth === 1 && (
-        <View style={styles.tabs} accessibilityRole="tablist">
-          {(
-            [
-              ['drawings', '도면'],
-              ['shots', '필수 사진'],
-              ['previous', '전차 사진'],
-            ] as const
-          ).map(([key, label]) => (
-            <Pressable
-              key={key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === key }}
-              onPress={() => setTab(key)}
-              style={[styles.tab, tab === key && styles.tabActive]}
-            >
-              <Text style={[styles.tabText, tab === key && styles.tabTextActive]}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
-      {currentProject && currentProject.depth === 0 && (
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.addInput}
-            placeholder="구조물 이름 (예: A교)"
-            placeholderTextColor={colors.mutedForeground}
-            value={newChildName}
-            onChangeText={setNewChildName}
-            editable={!addingChild}
-            returnKeyType="done"
-            onSubmitEditing={() => void addChild(currentProject)}
-          />
+        )}
+        {project.memo ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {project.memo}
+          </Text>
+        ) : null}
+        {progress && progress.total > 0 && (
+          <View style={styles.progressRow}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${pct}%` }]} />
+            </View>
+            <Text style={styles.progressText}>
+              사진 {progress.taken}/{progress.total}
+            </Text>
+          </View>
+        )}
+        <View style={styles.taskButtons}>
           <Pressable
-            style={({ pressed }) => [styles.addButton, (!newChildName.trim() || addingChild) && styles.addButtonOff, pressed && styles.addButtonPressed]}
-            disabled={!newChildName.trim() || addingChild}
-            onPress={() => void addChild(currentProject)}
+            style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
+            onPress={() => goTo(project.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`${project.name} ${children.length > 0 ? '구조물 보기' : '열기'}`}
           >
-            <Text style={styles.addButtonText}>+ 구조물 추가</Text>
+            <Text style={styles.outlineButtonText}>{children.length > 0 ? '구조물 보기' : '열기'}</Text>
           </Pressable>
-        </View>
-      )}
-      {tab === 'drawings' && hasDrawingRow && (
-        <Text style={styles.hint}>도면을 길게 누르면 휴지통으로 보내거나 기기에서 지울 수 있습니다.</Text>
-      )}
-      {tab === 'drawings' && (
-      <FlatList
-        data={items}
-        keyExtractor={(item) =>
-          item.kind === 'project' ? `project-${item.project.id}` : item.kind === 'unfiled' ? 'unfiled' : `drawing-${item.drawing.id}`
-        }
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListEmptyComponent={<Text style={styles.empty}>{emptyText}</Text>}
-        renderItem={({ item }) => {
-          if (item.kind === 'project') {
-            const project = item.project;
-            return (
-              <Pressable
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                onPress={() => goTo(project.id)}
-              >
-                <View style={styles.folderTile}>
-                  <View style={styles.folderTab} />
-                  <View style={styles.folderBody} />
-                </View>
-                <View style={styles.rowText}>
-                  <Text style={styles.name}>{project.name}</Text>
-                  <Text style={styles.meta}>도면 {project.totalDrawingCount}</Text>
-                  {project.memo ? (
-                    <Text style={styles.memo} numberOfLines={1}>
-                      {project.memo}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
-            );
-          }
-          if (item.kind === 'unfiled') {
-            return (
-              <Pressable
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                onPress={() => goTo('unfiled')}
-              >
-                <View style={[styles.folderTile, styles.folderTileMuted]}>
-                  <View style={styles.folderTab} />
-                  <View style={styles.folderBody} />
-                </View>
-                <View style={styles.rowText}>
-                  <Text style={styles.name}>미분류</Text>
-                  <Text style={styles.meta}>도면 {item.count}</Text>
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
-            );
-          }
-          const drawing = item.drawing;
-          const downloaded = index.drawings[drawing.id] !== undefined;
-          // 누르면 열리는 도면: 기기에 있거나, 눌렀을 때 받을 수 있는(변환이 끝난 SVF) 도면
-          // (2026-09-28 설계 1.1). 옛 도면(SVF2)·변환 중·실패 도면은 누를 수 없다.
-          const canFetch = drawing.status === 'success' && drawing.offlineReady === true;
-          const openable = downloaded || canFetch;
-          const chip = rowChip(drawing, downloaded, canFetch);
-          const syncError = index.drawings[drawing.id]?.syncError ?? null;
-          return (
+          {next !== null && (
             <Pressable
-              style={({ pressed }) => [styles.row, !openable && styles.rowDisabled, pressed && openable && styles.rowPressed]}
-              // disabled로 막으면 길게 누르기도 죽는다 — 변환 실패·대기 중인 도면도 지울 수 있어야 한다.
-              onPress={() => {
-                if (openable) void openDrawing(drawing);
-              }}
-              onLongPress={() => confirmDelete(drawing)}
-              delayLongPress={600}
+              style={({ pressed }) => [styles.solidButton, pressed && styles.solidButtonPressed]}
+              onPress={() => goTo(next)}
+              accessibilityRole="button"
+              accessibilityLabel={`${project.name} 이어서 찍기`}
             >
-              <View style={styles.rowText}>
-                <Text style={styles.name}>{drawing.name}</Text>
-                <Text style={styles.meta}>
-                  {new Date(drawing.uploadedAt).toLocaleString('ko-KR')}
-                  {drawing.progress ? ` · ${drawing.progress}` : ''}
-                </Text>
-                {drawing.error && <Text style={styles.rowError}>{drawing.error}</Text>}
-                {syncError && <Text style={styles.rowError}>서버가 손상 기록을 받지 않았습니다: {syncError}</Text>}
-              </View>
-              <Text style={[styles.badge, { backgroundColor: chip.color }]}>{chip.label}</Text>
+              <Text style={styles.solidButtonText}>이어서 찍기</Text>
             </Pressable>
-          );
-        }}
-      />
-      )}
-      {tab === 'shots' && currentProject && (
-        <RequiredShotsView key={currentProject.id} project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
-      )}
-      {tab === 'previous' && currentProject && (
-        <PreviousShotsView key={currentProject.id} project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
-      )}
+          )}
+        </View>
+      </Pressable>
+    );
+  };
+
+  const recentSection =
+    atTop && !q && home.recent.length > 0 ? (
+      <View style={styles.recent}>
+        <Text style={styles.sectionTitle}>최근 찍은 사진</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentRow}>
+          {home.recent.map((r) => {
+            const source = r.localUri ? { uri: r.localUri } : shotThumbSource(r.shot);
+            return (
+              <Pressable key={`${r.projectId}-${r.shot.id}`} style={styles.recentCard} onPress={() => goTo(r.projectId)} accessibilityRole="button">
+                <View style={styles.recentThumb}>{source ? <Image source={source} style={styles.fill} resizeMode="cover" /> : null}</View>
+                <View style={styles.recentText}>
+                  <Text style={styles.recentTitle} numberOfLines={1}>
+                    {r.shot.member} · {r.shot.label}
+                  </Text>
+                  <Text style={styles.recentSub} numberOfLines={1}>
+                    {r.projectName} · {r.shot.number}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    ) : null;
+
+  return (
+    <View style={styles.container}>
+      {header}
+      <View style={[styles.body, sidePadding, { paddingBottom: insets.bottom }]}>
+        {banners}
+        {currentProject && currentProject.depth === 0 && (
+          <View style={styles.addRow}>
+            <TextInput
+              style={styles.addInput}
+              placeholder="구조물 이름 (예: A교)"
+              placeholderTextColor={colors.mutedForeground}
+              value={newChildName}
+              onChangeText={setNewChildName}
+              editable={!addingChild}
+              returnKeyType="done"
+              onSubmitEditing={() => void addChild(currentProject)}
+            />
+            <Pressable
+              style={({ pressed }) => [styles.solidButton, styles.addButton, (!newChildName.trim() || addingChild) && styles.buttonOff, pressed && styles.solidButtonPressed]}
+              disabled={!newChildName.trim() || addingChild}
+              onPress={() => void addChild(currentProject)}
+            >
+              <Text style={styles.solidButtonText}>+ 구조물 추가</Text>
+            </Pressable>
+          </View>
+        )}
+        {tab === 'drawings' || !structureTabs ? (
+          <FlatList
+            data={visibleItems}
+            keyExtractor={(item) =>
+              item.kind === 'project' ? `project-${item.project.id}` : item.kind === 'unfiled' ? 'unfiled' : `drawing-${item.drawing.id}`
+            }
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListHeaderComponent={
+              atTop ? (
+                <Text style={styles.sectionTitle}>진행 중인 과업</Text>
+              ) : hasDrawingRow ? (
+                <Text style={styles.hint}>도면을 길게 누르면 휴지통으로 보내거나 기기에서 지울 수 있습니다.</Text>
+              ) : null
+            }
+            ListFooterComponent={recentSection}
+            ListEmptyComponent={<Text style={styles.empty}>{q ? '찾는 과업이 없습니다.' : emptyText}</Text>}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => {
+              if (item.kind === 'project') {
+                const project = item.project;
+                if (atTop) return renderTaskCard(project);
+                const cache = home.caches[project.id];
+                const progress = cache ? photoProgress([cache]) : null;
+                const meta = [
+                  project.facilityType,
+                  progress && progress.total > 0 ? `사진 ${progress.taken}/${progress.total}` : null,
+                  `도면 ${project.totalDrawingCount}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
+                  <Pressable style={({ pressed }) => [styles.row, pressed && styles.cardPressed]} onPress={() => goTo(project.id)}>
+                    <View style={styles.rowText}>
+                      <Text style={styles.name}>{project.name}</Text>
+                      <Text style={styles.meta}>{meta}</Text>
+                      {project.memo ? (
+                        <Text style={styles.meta} numberOfLines={1}>
+                          {project.memo}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Feather name="chevron-right" size={22} color="#b5b6ba" />
+                  </Pressable>
+                );
+              }
+              if (item.kind === 'unfiled') {
+                return (
+                  <Pressable style={({ pressed }) => [styles.row, pressed && styles.cardPressed]} onPress={() => goTo('unfiled')}>
+                    <View style={styles.rowText}>
+                      <Text style={styles.name}>미분류</Text>
+                      <Text style={styles.meta}>도면 {item.count}</Text>
+                    </View>
+                    <Feather name="chevron-right" size={22} color="#b5b6ba" />
+                  </Pressable>
+                );
+              }
+              const drawing = item.drawing;
+              const downloaded = index.drawings[drawing.id] !== undefined;
+              // 누르면 열리는 도면: 기기에 있거나, 눌렀을 때 받을 수 있는(변환이 끝난 SVF) 도면
+              // (2026-09-28 설계 1.1). 옛 도면(SVF2)·변환 중·실패 도면은 누를 수 없다.
+              const canFetch = drawing.status === 'success' && drawing.offlineReady === true;
+              const openable = downloaded || canFetch;
+              const chip = rowChip(drawing, downloaded, canFetch);
+              const syncError = index.drawings[drawing.id]?.syncError ?? null;
+              return (
+                <Pressable
+                  style={({ pressed }) => [styles.row, !openable && styles.rowDisabled, pressed && openable && styles.cardPressed]}
+                  // disabled로 막으면 길게 누르기도 죽는다 — 변환 실패·대기 중인 도면도 지울 수 있어야 한다.
+                  onPress={() => {
+                    if (openable) void openDrawing(drawing);
+                  }}
+                  onLongPress={() => confirmDelete(drawing)}
+                  delayLongPress={600}
+                >
+                  <View style={styles.rowText}>
+                    <Text style={styles.name}>{drawing.name}</Text>
+                    <Text style={styles.meta}>
+                      {new Date(drawing.uploadedAt).toLocaleString('ko-KR')}
+                      {drawing.progress ? ` · ${drawing.progress}` : ''}
+                    </Text>
+                    {drawing.error && <Text style={styles.rowError}>{drawing.error}</Text>}
+                    {syncError && <Text style={styles.rowError}>서버가 손상 기록을 받지 않았습니다: {syncError}</Text>}
+                  </View>
+                  <Text style={[styles.badge, { color: chip.color, backgroundColor: chip.bg }]}>{chip.label}</Text>
+                </Pressable>
+              );
+            }}
+          />
+        ) : null}
+        {tab === 'shots' && structureTabs && (
+          <RequiredShotsView key={currentProject.id} project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
+        )}
+        {tab === 'previous' && structureTabs && (
+          <PreviousShotsView key={currentProject.id} project={currentProject} onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())} />
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl, backgroundColor: colors.background },
-  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: space.lg },
-  title: { fontSize: 26, fontWeight: '700', color: colors.navy, letterSpacing: -0.3 },
-  backButton: { fontSize: 16, fontWeight: '600', color: colors.primary, marginRight: space.md, paddingVertical: space.sm },
-  problem: { fontSize: 16, color: colors.destructive, textAlign: 'center', lineHeight: 24 },
-  errorBanner: { color: '#fff', backgroundColor: colors.destructive, padding: space.md, borderRadius: radius.md, marginBottom: space.md },
-  pendingBanner: { color: '#fff', backgroundColor: '#ef6c00', padding: space.md, borderRadius: radius.md, marginBottom: space.md },
-  progressBanner: { color: colors.onPrimary, backgroundColor: colors.primary, padding: space.md, borderRadius: radius.md, marginBottom: space.md },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xxl, backgroundColor: colors.background },
+  problem: { fontFamily: font.regular, fontSize: 16, color: colors.destructive, textAlign: 'center', lineHeight: 24 },
+  fill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  // 머리글(흰 바탕): [뒤로] 제목 [대기열·모두 받기] / 검색·칩·탭
+  header: { backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, gap: space.md },
+  headerRow: { flexDirection: 'row', alignItems: 'center', minHeight: TOUCH_MIN + 4, gap: space.sm },
+  headerSide: { width: TOUCH_MIN, height: TOUCH_MIN },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerRight: { flexDirection: 'row', gap: space.sm, minWidth: TOUCH_MIN, justifyContent: 'flex-end' },
+  title: { fontFamily: font.bold, fontSize: 20, color: colors.foreground },
+  subtitle: { fontFamily: font.regular, fontSize: 12, color: colors.mutedForeground, marginTop: 1 },
+  search: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: TOUCH_MIN,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.md,
+    marginBottom: space.md,
+  },
+  searchInput: { flex: 1, fontFamily: font.regular, fontSize: 15, color: colors.foreground, paddingVertical: space.sm },
+  tabs: { flexDirection: 'row', marginTop: -space.xs },
+  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: colors.primary },
+  tabText: { fontFamily: font.regular, fontSize: 15, color: colors.mutedForeground },
+  tabTextActive: { fontFamily: font.bold, color: colors.foreground },
+  body: { flex: 1, paddingTop: space.lg },
+  listContent: { paddingBottom: space.xxl },
+  sectionTitle: { fontFamily: font.bold, fontSize: 20, color: colors.foreground, marginBottom: space.md },
+  // 알림 줄
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: TOUCH_MIN,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.tagWarmBg,
+    marginBottom: space.md,
+  },
+  pendingText: { flex: 1, fontFamily: font.semibold, fontSize: 14, color: colors.tagWarmFg },
+  pendingAction: { fontFamily: font.bold, fontSize: 14, color: colors.tagWarmFg, textDecorationLine: 'underline' },
+  errorBanner: { fontFamily: font.semibold, fontSize: 14, color: colors.destructive, backgroundColor: colors.destructiveSoft, padding: space.md, borderRadius: radius.md, marginBottom: space.md, overflow: 'hidden' },
+  progressBanner: { fontFamily: font.semibold, fontSize: 14, color: colors.onPrimary, backgroundColor: colors.primary, padding: space.md, borderRadius: radius.md, marginBottom: space.md, overflow: 'hidden' },
   resultBanner: {
+    fontFamily: font.semibold,
+    fontSize: 14,
     color: colors.foreground,
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -693,23 +930,42 @@ const styles = StyleSheet.create({
     padding: space.md,
     borderRadius: radius.md,
     marginBottom: space.md,
+    overflow: 'hidden',
   },
-  listDownload: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    marginBottom: space.md,
-  },
-  listDownloadPressed: { backgroundColor: colors.primaryPressed },
-  listDownloadDone: { backgroundColor: colors.muted },
-  listDownloadText: { color: colors.onPrimary, fontSize: 16, fontWeight: '600' },
-  listDownloadDoneText: { color: colors.mutedForeground, fontSize: 16, fontWeight: '600' },
-  hint: { fontSize: 12, color: colors.mutedForeground, marginBottom: space.sm },
-  empty: { textAlign: 'center', color: colors.mutedForeground, marginTop: 48, lineHeight: 22 },
+  hint: { fontFamily: font.regular, fontSize: 12, color: colors.mutedForeground, marginBottom: space.sm },
+  empty: { fontFamily: font.regular, fontSize: 15, textAlign: 'center', color: colors.mutedForeground, marginTop: 48, lineHeight: 23 },
+  // 과업 카드(맨 위)
+  taskCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: space.lg, gap: space.sm, marginBottom: space.md },
+  cardPressed: { backgroundColor: colors.muted },
+  taskTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tag: { fontFamily: font.bold, fontSize: 12, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: 4, overflow: 'hidden' },
+  tagEmpty: { color: colors.mutedForeground, backgroundColor: colors.muted },
+  taskName: { fontFamily: font.bold, fontSize: 18, lineHeight: 24, color: colors.foreground, marginTop: 2 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: space.xs },
+  progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden' },
+  progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.primary },
+  progressText: { fontFamily: font.bold, fontSize: 13, color: colors.foreground },
+  taskButtons: { flexDirection: 'row', gap: space.sm, marginTop: space.xs },
+  outlineButton: { flex: 1, minHeight: TOUCH_MIN, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  outlineButtonPressed: { backgroundColor: colors.muted },
+  outlineButtonText: { fontFamily: font.bold, fontSize: 15, color: colors.foreground },
+  solidButton: { flex: 1, minHeight: TOUCH_MIN, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  solidButtonPressed: { backgroundColor: colors.primaryPressed },
+  solidButtonText: { fontFamily: font.bold, fontSize: 15, color: colors.onPrimary },
+  buttonOff: { opacity: 0.35 },
+  // 최근 찍은 사진
+  recent: { marginTop: space.lg },
+  recentRow: { gap: 10 },
+  recentCard: { width: 132, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden' },
+  recentThumb: { height: 96, backgroundColor: colors.muted },
+  recentText: { paddingHorizontal: 10, paddingTop: space.sm, paddingBottom: 10, gap: 2 },
+  recentTitle: { fontFamily: font.bold, fontSize: 14, color: colors.foreground },
+  recentSub: { fontFamily: font.regular, fontSize: 12, color: colors.mutedForeground },
+  // 줄(구조물·도면·미분류)
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 64,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -718,49 +974,25 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     marginBottom: space.sm,
   },
-  rowDisabled: { opacity: 0.6 },
-  rowPressed: { backgroundColor: '#e8eefc', borderColor: colors.primary },
-  rowText: { flex: 1, marginRight: space.md },
-  name: { fontSize: 17, fontWeight: '600', color: colors.foreground },
-  meta: { fontSize: 13, color: colors.mutedForeground, marginTop: 4 },
-  memo: { fontSize: 13, color: colors.mutedForeground, marginTop: 2 },
-  rowError: { fontSize: 13, color: colors.destructive, marginTop: 4 },
-  // 폴더 아이콘: 탭이 달린 작은 남색 타일
-  folderTile: { width: 36, height: 30, marginRight: space.md, justifyContent: 'flex-end' },
-  folderTileMuted: { opacity: 0.45 },
-  folderTab: { position: 'absolute', top: 0, left: 0, width: 16, height: 8, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: colors.navy },
-  folderBody: { height: 24, borderRadius: 4, borderTopLeftRadius: 0, backgroundColor: colors.navy },
-  chevron: { fontSize: 22, color: '#c4c8ce', marginLeft: 4 },
-  // 구조물 화면 탭(도면 / 필수 사진)
-  tabs: { flexDirection: 'row', backgroundColor: colors.muted, borderRadius: radius.lg, padding: 3, marginBottom: space.md },
-  tab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
-  tabActive: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-  tabText: { fontSize: 15, fontWeight: '600', color: colors.mutedForeground },
-  tabTextActive: { color: colors.navy },
+  rowDisabled: { opacity: 0.55 },
+  rowText: { flex: 1, marginRight: space.md, gap: 3 },
+  name: { fontFamily: font.bold, fontSize: 17, color: colors.foreground },
+  meta: { fontFamily: font.regular, fontSize: 13, color: colors.mutedForeground },
+  rowError: { fontFamily: font.regular, fontSize: 13, color: colors.destructive, marginTop: 2 },
+  badge: { fontFamily: font.bold, fontSize: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, overflow: 'hidden' },
   // 과업 화면 「+ 구조물 추가」
   addRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.md },
   addInput: {
     flex: 1,
-    minHeight: 44,
+    minHeight: TOUCH_MIN,
     paddingHorizontal: space.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     borderRadius: radius.md,
     backgroundColor: colors.card,
+    fontFamily: font.regular,
     fontSize: 15,
     color: colors.foreground,
   },
-  addButton: { minHeight: 44, paddingHorizontal: space.lg, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  addButtonOff: { backgroundColor: colors.muted },
-  addButtonPressed: { backgroundColor: colors.primaryPressed },
-  addButtonText: { color: colors.onPrimary, fontSize: 15, fontWeight: '600' },
-  badge: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
+  addButton: { flex: 0, paddingHorizontal: space.lg },
 });

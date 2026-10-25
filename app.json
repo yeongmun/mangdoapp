@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "망도 손상조사",
+    "name": "농농",
     "slug": "mangdo-app",
     "version": "0.1.0",
     "orientation": "default",
@@ -33,9 +33,9 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 160,
           "resizeMode": "contain",
-          "backgroundColor": "#1e3a5f"
+          "backgroundColor": "#ffffff"
         }
       ],
       "expo-status-bar",

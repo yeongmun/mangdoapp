@@ -6,7 +6,7 @@ import { SectionList, StyleSheet, Text, View } from 'react-native';
 import type { Project, Shot } from '../api';
 import { ShotCard } from '../components/ShotCard';
 import { useShots } from '../useShots';
-import { colors, space } from '../theme';
+import { colors, font, space } from '../theme';
 
 interface Props {
   project: Project;
@@ -43,11 +43,8 @@ export function RequiredShotsView({ project, onPhotoQueued }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.summaryRow}>
-        <Text style={styles.summary}>
-          <Text style={styles.summaryStrong}>{takenCount}</Text>
-          {` / ${required.length} 찍음`}
-        </Text>
-        {state.list === null && <Text style={styles.offline}>불러오는 중…</Text>}
+        <Text style={styles.summary}>{`${takenCount}/${required.length} 찍음`}</Text>
+        <Text style={styles.offline}>{state.list === null ? '불러오는 중…' : '눌러서 바로 촬영'}</Text>
       </View>
       <SectionList
         sections={sections}
@@ -56,6 +53,7 @@ export function RequiredShotsView({ project, onPhotoQueued }: Props) {
         renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
         renderItem={({ item: shot }) => (
           <ShotCard
+            member={shot.member}
             label={shot.label}
             number={shot.number}
             taken={isTaken(shot)}
@@ -72,12 +70,11 @@ export function RequiredShotsView({ project, onPhotoQueued }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  summaryRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: space.sm },
-  summary: { fontSize: 15, color: colors.mutedForeground },
-  summaryStrong: { fontSize: 20, fontWeight: '700', color: colors.success },
-  offline: { fontSize: 12, color: colors.mutedForeground },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.navy, marginTop: space.md, marginBottom: space.sm, letterSpacing: 0.2 },
-  list: { paddingBottom: space.xl },
-  notice: { color: colors.mutedForeground, lineHeight: 22, marginTop: space.lg, textAlign: 'center' },
-  error: { color: colors.destructive, lineHeight: 22, marginTop: space.lg, textAlign: 'center' },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.xs, paddingHorizontal: 2 },
+  summary: { fontFamily: font.bold, fontSize: 15, color: colors.foreground },
+  offline: { fontFamily: font.regular, fontSize: 13, color: colors.mutedForeground },
+  sectionTitle: { fontFamily: font.bold, fontSize: 15, color: colors.foreground, marginTop: space.md, marginBottom: space.sm, paddingHorizontal: 2 },
+  list: { paddingBottom: space.xxl },
+  notice: { fontFamily: font.regular, fontSize: 15, color: colors.mutedForeground, lineHeight: 23, marginTop: space.xxl, textAlign: 'center' },
+  error: { fontFamily: font.regular, fontSize: 15, color: colors.destructive, lineHeight: 23, marginTop: space.xxl, textAlign: 'center' },
 });

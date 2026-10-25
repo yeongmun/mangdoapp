@@ -289,7 +289,7 @@ export async function fetchShots(projectId: string): Promise<ShotList> {
 }
 
 /** 썸네일 전체 주소(Image source용). 서버는 x-access-key가 있어야 준다 */
-export function shotThumbSource(shot: Shot): { uri: string; headers: Record<string, string> } | null {
+export function shotThumbSource(shot: { thumbUrl: string | null; photo?: { savedAt: string } }): { uri: string; headers: Record<string, string> } | null {
   if (!shot.thumbUrl) return null;
   // 다시 찍으면 주소가 같아 Image 캐시가 옛 사진을 보여 줄 수 있다 — savedAt을 붙여 구분한다
   const v = encodeURIComponent(shot.photo?.savedAt ?? '');

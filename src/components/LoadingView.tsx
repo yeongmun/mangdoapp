@@ -1,7 +1,8 @@
-// 앱 안 로딩 화면(2026-10-24). 빙글빙글만 있던 자리에 심볼 + 무슨 일을 하는지 한 줄. 스플래시(남색)에서
-// 이어지도록 같은 심볼을 쓴다. overlay=true면 뷰어처럼 위에 겹쳐 띄운다.
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
-import { colors, space } from '../theme';
+// 불러오는 중 화면. 스플래시와 같은 모양(흰 바탕 + 로고)이라 앱이 켜질 때 이어 보인다.
+// overlay면 뷰어 위에 반투명으로 덮는다.
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { colors, font, space } from '../theme';
+import { Wordmark } from './Wordmark';
 
 interface Props {
   message: string;
@@ -11,7 +12,7 @@ interface Props {
 export function LoadingView({ message, overlay = false }: Props) {
   return (
     <View style={[styles.container, overlay && styles.overlay]} accessibilityRole="progressbar" accessibilityLabel={message}>
-      <Image source={require('../../assets/symbol-light.png')} style={styles.symbol} resizeMode="contain" />
+      <Wordmark size={40} />
       <Text style={styles.message}>{message}</Text>
       <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
     </View>
@@ -19,9 +20,8 @@ export function LoadingView({ message, overlay = false }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl, backgroundColor: colors.background },
-  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(244,245,247,0.92)' },
-  symbol: { width: 96, height: 96, marginBottom: space.lg },
-  message: { fontSize: 16, fontWeight: '600', color: colors.foreground, textAlign: 'center' },
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xxl, backgroundColor: colors.card },
+  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(255,255,255,0.94)' },
+  message: { fontFamily: font.semibold, fontSize: 15, color: colors.mutedForeground, textAlign: 'center', marginTop: space.lg },
   spinner: { marginTop: space.lg },
 });

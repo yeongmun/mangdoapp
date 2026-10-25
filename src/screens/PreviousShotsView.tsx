@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
 import { setGroupTrashed, shotRefThumbRequest, type Project, type Shot } from '../api';
-import { ShotCard } from '../components/ShotCard';
+import { CompareShotCard } from '../components/ShotCard';
 import { refFileFor, writeShotsLocal } from '../shotsLocal';
 import { useShots } from '../useShots';
-import { colors, radius, space, TOUCH_MIN } from '../theme';
+import { colors, font, radius, space, TOUCH_MIN } from '../theme';
 
 interface Props {
   project: Project;
@@ -76,7 +76,17 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
       list.push(shot);
       byGroup.set(key, list);
     }
-    return [...byGroup.entries()].map(([group, data], i) => ({ group, title: `페이지 ${i + 1}`, data }));
+    // group은 'r<회차>_pg_<순번>'(사진이 든 표 하나 = 페이지 하나) — 순번을 그대로 보여 휴지통 보기와 번호가 같게
+    const out = [...byGroup.entries()].map(([group, data], i) => {
+      const page = /pg_(\d+)/.exec(group);
+      return { group, title: `페이지 ${page ? Number(page[1]) : i + 1}`, data };
+    });
+    // 다시 올린 보고서와 옛 보고서의 같은 순번이 함께 보이면 회차를 붙여 구분한다
+    return out.map((sec) => {
+      if (out.filter((o) => o.title === sec.title).length < 2) return sec;
+      const round = /^r(\d+)_/.exec(sec.group);
+      return round ? { ...sec, title: `${sec.title} · ${round[1]}차 보고서` } : sec;
+    });
   }, [visible]);
 
   const changeGroup = useCallback(
@@ -102,10 +112,7 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.summaryRow}>
-        <Text style={styles.summary}>
-          <Text style={styles.summaryStrong}>{takenCount}</Text>
-          {` / ${activeShots.length} 찍음`}
-        </Text>
+        <Text style={styles.summary}>{showTrash ? `휴지통 ${trashedCount}` : `${takenCount}/${activeShots.length} 찍음`}</Text>
         <Pressable onPress={() => setShowTrash((v) => !v)} style={[styles.trashToggle, showTrash && styles.trashToggleOn]} accessibilityRole="button">
           <Text style={[styles.trashToggleText, showTrash && styles.trashToggleTextOn]}>{showTrash ? '← 돌아가기' : `휴지통 ${trashedCount}`}</Text>
         </Pressable>
@@ -132,10 +139,11 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
           const localRef = state.refs[shot.id];
           const refThumb = localRef ? { uri: localRef } : shotRefThumbRequest(shot);
           return (
-            <ShotCard
+            <CompareShotCard
+              member={shot.member}
               label={shot.label}
               number={shot.number}
-              note={shot.caption && shot.caption !== shot.label ? shot.caption : undefined}
+              caption={shot.caption}
               taken={isTaken(shot)}
               thumb={takenThumb(shot)}
               refThumb={refThumb}
@@ -152,19 +160,18 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
-  summary: { fontSize: 15, color: colors.mutedForeground },
-  summaryStrong: { fontSize: 20, fontWeight: '700', color: colors.success },
-  trashToggle: { minHeight: 36, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  trashToggleOn: { backgroundColor: colors.navy, borderColor: colors.navy },
-  trashToggleText: { fontSize: 13, fontWeight: '600', color: colors.mutedForeground },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.xs, paddingHorizontal: 2 },
+  summary: { fontFamily: font.bold, fontSize: 15, color: colors.foreground },
+  trashToggle: { minHeight: 36, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.card },
+  trashToggleOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  trashToggleText: { fontFamily: font.semibold, fontSize: 13, color: colors.foreground },
   trashToggleTextOn: { color: colors.onPrimary },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.md, marginBottom: space.sm },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.navy, letterSpacing: 0.2 },
-  pageButton: { minHeight: TOUCH_MIN - 8, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.md, marginBottom: space.sm, paddingHorizontal: 2 },
+  sectionTitle: { fontFamily: font.bold, fontSize: 17, color: colors.foreground },
+  pageButton: { minHeight: TOUCH_MIN - 8, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.card },
   pageButtonPressed: { backgroundColor: colors.muted },
-  pageButtonText: { fontSize: 13, fontWeight: '600', color: colors.mutedForeground },
-  list: { paddingBottom: space.xl },
-  notice: { color: colors.mutedForeground, lineHeight: 22, marginTop: space.lg, textAlign: 'center' },
-  error: { color: colors.destructive, lineHeight: 22, marginTop: space.lg, textAlign: 'center' },
+  pageButtonText: { fontFamily: font.regular, fontSize: 13, color: '#404145' },
+  list: { paddingBottom: space.xxl },
+  notice: { fontFamily: font.regular, fontSize: 15, color: colors.mutedForeground, lineHeight: 23, marginTop: space.xxl, textAlign: 'center' },
+  error: { fontFamily: font.regular, fontSize: 15, color: colors.destructive, lineHeight: 23, marginTop: space.xxl, textAlign: 'center' },
 });

@@ -1,97 +1,140 @@
-// 찍을 사진 한 장의 카드(2026-10-24). 회색 테두리 = 안 찍음, 초록 테두리 + ✓ = 찍음.
-// 썸네일은 기기 사본(찍은 직후)이 있으면 그것, 없으면 서버 썸네일. 카드 전체가 버튼이다(카메라).
+// 찍을 사진 한 장의 카드(2026-10-24, 2026-10-25 농농 시안으로 다시 그림). 카드 전체가 버튼이다(카메라).
+// - ShotCard: 필수 사진 줄 — 왼쪽 사진 자리, 가운데 부재·번호·설명, 오른쪽 체크 동그라미.
+// - CompareShotCard: 전차 사진 — 위에 [전차 | 이번] 두 장을 나란히, 아래 캡션. 같은 자리에서 찍기 쉽게.
+// 찍으면 초록 테두리 + ✓. 썸네일은 기기 사본(찍은 직후) 또는 서버 썸네일.
+import { Feather } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, space, TOUCH_MIN } from '../theme';
+import { colors, font, radius, space } from '../theme';
+
+type Source = { uri: string; headers?: Record<string, string> } | null;
 
 interface Props {
+  member: string;
   label: string;
   number: string;
   taken: boolean;
   /** 찍은 사진 썸네일. null이면 빈 자리 */
-  thumb: { uri: string; headers?: Record<string, string> } | null;
-  /** 전차 사진: 보고서에서 뽑은 참조 이미지. 찍기 전엔 큰 자리에, 찍은 뒤엔 오른쪽 작은 자리에 */
-  refThumb?: { uri: string; headers?: Record<string, string> } | null;
-  /** 캡션 아래 작은 글(예: 보고서 캡션 원문) */
-  note?: string;
+  thumb: Source;
   disabled?: boolean;
   onPress: () => void;
 }
 
-export function ShotCard({ label, number, taken, thumb, refThumb = null, note, disabled = false, onPress }: Props) {
-  const main = thumb ?? refThumb;
+export function ShotCard({ member, label, number, taken, thumb, disabled = false, onPress }: Props) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${label} ${taken ? '찍음' : '안 찍음'}`}
+      accessibilityLabel={`${member} ${label} ${taken ? '찍음' : '안 찍음'}`}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, styles.row, taken && styles.cardTaken, pressed && styles.cardPressed, disabled && styles.cardDisabled]}
+    >
+      <View style={styles.rowThumb}>
+        {thumb ? <Image source={thumb} style={styles.fill} resizeMode="cover" /> : <Feather name="camera" size={24} color={colors.mutedForeground} />}
+      </View>
+      <View style={styles.rowText}>
+        <Text style={styles.sub} numberOfLines={1}>
+          {member} · No. {number}
+        </Text>
+        <Text style={styles.title} numberOfLines={2}>
+          {label}
+        </Text>
+      </View>
+      <View style={styles.markBox}>
+        <View style={[styles.mark, taken && styles.markTaken]}>{taken && <Feather name="check" size={16} color={colors.onSuccess} />}</View>
+      </View>
+    </Pressable>
+  );
+}
+
+interface CompareProps extends Props {
+  /** 보고서에서 뽑은 참조 이미지 */
+  refThumb: Source;
+  /** 보고서 캡션 원문 */
+  caption?: string;
+}
+
+export function CompareShotCard({ member, label, number, taken, thumb, refThumb, caption, disabled = false, onPress }: CompareProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${caption ?? label} ${taken ? '찍음' : '안 찍음'}`}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.card, taken && styles.cardTaken, pressed && styles.cardPressed, disabled && styles.cardDisabled]}
     >
-      <View style={[styles.thumb, taken && styles.thumbTaken]}>
-        {main ? <Image source={main} style={styles.thumbImage} resizeMode="cover" /> : <View style={styles.cameraGlyph} />}
+      <View style={styles.pair}>
+        <View style={[styles.half, styles.refHalf]}>
+          {refThumb ? <Image source={refThumb} style={styles.fill} resizeMode="cover" /> : <Feather name="image" size={24} color={colors.mutedForeground} />}
+          <Text style={styles.tag}>전차</Text>
+        </View>
+        <View style={[styles.half, taken ? styles.takenHalf : styles.emptyHalf]}>
+          {taken && thumb ? <Image source={thumb} style={styles.fill} resizeMode="cover" /> : null}
+          {taken ? (
+            <Text style={[styles.tag, styles.tagTaken]}>이번 · 찍음</Text>
+          ) : (
+            <>
+              <Feather name="camera" size={26} color={colors.foreground} />
+              <Text style={styles.shootText}>눌러서 촬영</Text>
+            </>
+          )}
+        </View>
       </View>
-      <View style={styles.text}>
-        <Text style={styles.label} numberOfLines={2}>
-          {label}
+      <View style={styles.caption}>
+        <Text style={styles.title} numberOfLines={2}>
+          {caption ?? label}
         </Text>
-        <Text style={styles.number}>No. {number}</Text>
-        {note ? (
-          <Text style={styles.note} numberOfLines={1}>
-            {note}
-          </Text>
-        ) : null}
+        <Text style={styles.sub}>
+          {member} · No. {number}
+        </Text>
       </View>
-      {taken && refThumb && thumb ? <Image source={refThumb} style={styles.refSmall} resizeMode="cover" /> : null}
-      <View style={[styles.mark, taken && styles.markTaken]}>{taken && <Text style={styles.markText}>✓</Text>}</View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: TOUCH_MIN + 32,
     backgroundColor: colors.card,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.lg,
-    padding: space.md,
-    marginBottom: space.sm,
-  },
-  cardTaken: { borderColor: colors.success },
-  cardPressed: { backgroundColor: '#eef2f7' },
-  cardDisabled: { opacity: 0.5 },
-  thumb: {
-    width: 72,
-    height: 72,
-    borderRadius: radius.md,
-    backgroundColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
     overflow: 'hidden',
-    marginRight: space.md,
+    marginBottom: space.sm + 2,
   },
-  thumbTaken: { backgroundColor: '#e6f4ee' },
-  thumbImage: { width: '100%', height: '100%' },
-  // 카메라 자리 표시: 작은 둥근 사각형(이모지 대신)
-  cameraGlyph: { width: 28, height: 20, borderRadius: 5, borderWidth: 2, borderColor: colors.mutedForeground },
-  text: { flex: 1 },
-  label: { fontSize: 16, fontWeight: '600', color: colors.foreground },
-  number: { fontSize: 12, color: colors.mutedForeground, marginTop: 4 },
-  note: { fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
-  refSmall: { width: 40, height: 40, borderRadius: radius.sm, marginLeft: space.sm, opacity: 0.8 },
-  mark: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: space.sm,
-  },
+  cardTaken: { borderWidth: 1.5, borderColor: colors.success },
+  cardPressed: { backgroundColor: colors.muted },
+  cardDisabled: { opacity: 0.5 },
+  fill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  // 필수 사진 줄
+  row: { flexDirection: 'row', alignItems: 'stretch', minHeight: 84 },
+  rowThumb: { width: 96, backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
+  rowText: { flex: 1, paddingHorizontal: space.md, paddingVertical: space.md, justifyContent: 'center', gap: 2 },
+  sub: { fontFamily: font.regular, fontSize: 13, color: colors.mutedForeground },
+  title: { fontFamily: font.bold, fontSize: 17, color: colors.foreground },
+  markBox: { width: 52, alignItems: 'center', justifyContent: 'center' },
+  mark: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#c5c6c9', alignItems: 'center', justifyContent: 'center' },
   markTaken: { backgroundColor: colors.success, borderColor: colors.success },
-  markText: { color: colors.onSuccess, fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  // 전차 사진 카드
+  pair: { flexDirection: 'row', gap: 2, backgroundColor: colors.border },
+  half: { flex: 1, height: 132, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  refHalf: { backgroundColor: '#d9dbde' },
+  takenHalf: { backgroundColor: colors.successSoft },
+  emptyHalf: { backgroundColor: colors.background },
+  tag: {
+    position: 'absolute',
+    top: space.sm,
+    left: space.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: colors.card,
+    color: colors.foreground,
+    fontFamily: font.bold,
+    fontSize: 12,
+  },
+  tagTaken: { backgroundColor: colors.success, color: colors.onSuccess },
+  shootText: { fontFamily: font.bold, fontSize: 13, color: colors.foreground },
+  caption: { paddingHorizontal: 14, paddingVertical: space.md, gap: 2 },
 });

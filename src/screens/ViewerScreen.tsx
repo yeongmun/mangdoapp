@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { IconButton } from '../components/IconButton';
 import { LoadingView } from '../components/LoadingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
@@ -18,6 +19,7 @@ import { syncOffline } from '../offlineSync';
 import { takePhotoAndSave } from '../photo';
 import { enqueuePhoto, flushPhotoQueue, pendingPhotoCountFor, type UploadNotice } from '../photoUpload';
 import { readViewerPrefs, writeViewerPrefs } from '../viewerPrefs';
+import { colors, font, radius, space, TOUCH_MIN } from '../theme';
 
 interface Props {
   drawing: Drawing;
@@ -392,9 +394,7 @@ export function ViewerScreen({ drawing, onBack }: Props) {
           { paddingTop: insets.top + 8, paddingLeft: 16 + insets.left, paddingRight: 16 + insets.right },
         ]}
       >
-        <Pressable onPress={requestLeave} hitSlop={12}>
-          <Text style={styles.back}>‹ 목록</Text>
-        </Pressable>
+        <IconButton icon="chevron-left" label="목록으로" onPress={requestLeave} />
         <Text style={styles.title} numberOfLines={1}>
           {drawing.name}
         </Text>
@@ -451,23 +451,23 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#d0d3d9',
+    gap: space.md,
+    paddingBottom: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card,
   },
-  back: { fontSize: 17, color: '#1e66f5', marginRight: 16 },
-  title: { flex: 1, fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
+  title: { flex: 1, fontFamily: font.bold, fontSize: 17, color: colors.foreground },
   uploadTag: {
-    marginLeft: 8,
-    color: '#fff',
+    fontFamily: font.bold,
     fontSize: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
     overflow: 'hidden',
   },
-  uploadPending: { backgroundColor: '#ef6c00' },
-  uploadDone: { backgroundColor: '#2e7d32' },
+  uploadPending: { color: colors.tagWarmFg, backgroundColor: colors.tagWarmBg },
+  uploadDone: { color: '#15803d', backgroundColor: colors.successSoft },
   body: { flex: 1 },
   overlay: {
     ...StyleSheet.absoluteFill,
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 32,
   },
-  errorText: { fontSize: 16, color: '#d32f2f', textAlign: 'center', marginBottom: 16 },
-  retry: { backgroundColor: '#1e66f5', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  retryText: { color: '#fff', fontSize: 16 },
+  errorText: { fontFamily: font.regular, fontSize: 16, color: colors.destructive, textAlign: 'center', marginBottom: space.lg, lineHeight: 24 },
+  retry: { backgroundColor: colors.primary, paddingHorizontal: space.xl, minHeight: TOUCH_MIN, justifyContent: 'center', borderRadius: radius.md },
+  retryText: { fontFamily: font.bold, color: colors.onPrimary, fontSize: 16 },
 });

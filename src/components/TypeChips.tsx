@@ -1,7 +1,7 @@
 // 한 줄로 늘어선 선택 칩(점검 종류·시설물 종류). 하나만 고를 수 있고, 고른 것을 다시 누르면 푼다.
-// 값 목록은 부모가 준다(src/api.ts의 INSPECTION_TYPES / FACILITY_TYPES).
+// 값 목록은 부모가 준다(src/api.ts의 INSPECTION_TYPES / FACILITY_TYPES). 고른 칩은 검정 테두리 + 굵은 글자.
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, space, TOUCH_MIN } from '../theme';
+import { colors, font, radius, space, TOUCH_MIN } from '../theme';
 
 interface Props {
   label: string;
@@ -15,7 +15,6 @@ interface Props {
 export function TypeChips({ label, options, value, onChange, disabled = false }: Props) {
   return (
     <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel={label}>
-      <Text style={styles.label}>{label}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {options.map((option) => {
           const selected = option === value;
@@ -23,15 +22,11 @@ export function TypeChips({ label, options, value, onChange, disabled = false }:
             <Pressable
               key={option}
               accessibilityRole="radio"
-              accessibilityState={{ selected, disabled }}
+              accessibilityState={{ checked: selected, disabled }}
               disabled={disabled}
               onPress={() => onChange(selected ? null : option)}
-              style={({ pressed }) => [
-                styles.chip,
-                selected && styles.chipSelected,
-                pressed && !disabled && styles.chipPressed,
-                disabled && styles.chipDisabled,
-              ]}
+              hitSlop={{ top: 4, bottom: 4 }}
+              style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && !disabled && styles.chipPressed, disabled && styles.chipDisabled]}
             >
               <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{option}</Text>
             </Pressable>
@@ -44,20 +39,19 @@ export function TypeChips({ label, options, value, onChange, disabled = false }:
 
 const styles = StyleSheet.create({
   row: { marginBottom: space.md },
-  label: { fontSize: 13, fontWeight: '600', color: colors.mutedForeground, marginBottom: space.xs },
-  chips: { gap: space.sm, paddingVertical: 2 },
+  chips: { gap: space.sm },
   chip: {
-    minHeight: TOUCH_MIN,
-    paddingHorizontal: space.lg,
+    minHeight: TOUCH_MIN - 6,
+    paddingHorizontal: 14,
     justifyContent: 'center',
     borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.border,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
     backgroundColor: colors.card,
   },
-  chipSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
-  chipPressed: { opacity: 0.8 },
+  chipSelected: { borderWidth: 1.5, borderColor: colors.primary },
+  chipPressed: { backgroundColor: colors.muted },
   chipDisabled: { opacity: 0.5 },
-  chipText: { fontSize: 15, fontWeight: '500', color: colors.foreground },
-  chipTextSelected: { color: colors.onPrimary, fontWeight: '600' },
+  chipText: { fontFamily: font.regular, fontSize: 14, color: '#404145' },
+  chipTextSelected: { fontFamily: font.bold, color: colors.foreground },
 });
