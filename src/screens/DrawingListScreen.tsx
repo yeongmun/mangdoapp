@@ -36,6 +36,7 @@ import { nextStructure, photoProgress, recentPhotos, taskTypeOf, taskTypeOptions
 import { PreviousShotsView } from './PreviousShotsView';
 import { RequiredShotsView } from './RequiredShotsView';
 import { readShotsLocal } from '../shotsLocal';
+import { readHiddenProjects, writeHiddenProjects } from '../hiddenProjects';
 import { colors, font, radius, space, TABLET_MIN_WIDTH, TOUCH_MIN } from '../theme';
 import { configProblem } from '../config';
 import { readLastLocation, writeLastLocation } from '../lastProject';
@@ -191,6 +192,18 @@ export function DrawingListScreen({ onOpen }: Props) {
   const [query, setQuery] = useState('');
   // 맨 위 과업 목록의 과업구분 필터(웹 과업구분, 없으면 점검 종류). null = 전체
   const [taskFilter, setTaskFilter] = useState<string | null>(null);
+  // 이 기기에서 숨긴 과업(지우지 않는다 — 원본은 웹). 기기 파일에 저장해 껐다 켜도 그대로
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set(readHiddenProjects()));
+  const [showHidden, setShowHidden] = useState(false);
+  const setProjectHidden = useCallback((id: string, hidden: boolean) => {
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      if (hidden) next.add(id);
+      else next.delete(id);
+      writeHiddenProjects([...next]);
+      return next;
+    });
+  }, []);
   const changeProjectType = useCallback(
     async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null }) => {
       setSavingType(true);
@@ -532,18 +545,22 @@ export function DrawingListScreen({ onOpen }: Props) {
       ? '과업이 없습니다.\n웹에서 과업을 등록하면 여기 뜹니다.'
       : '이 프로젝트에는 도면이 없습니다.\nPC의 업로드 페이지에서 올려 주세요.';
   const q = query.trim();
-  const filterOptions = atTop ? taskTypeOptions(projects.filter((p) => p.depth === 0)) : [];
+  // 맨 위: 숨긴 과업은 빼고(「숨긴 과업 보기」면 숨긴 것만), 과업구분·검색으로 거른다
+  const topProjects = projects.filter((p) => p.depth === 0);
+  const hiddenCount = topProjects.filter((p) => hiddenIds.has(p.id)).length;
+  const viewingHidden = atTop && showHidden && hiddenCount > 0;
+  const pool = topProjects.filter((p) => hiddenIds.has(p.id) === viewingHidden);
+  const filterOptions = atTop ? taskTypeOptions(pool) : [];
   // 고른 구분이 목록에서 사라졌으면(새로 고침 뒤) 전체로 본다
   const activeFilter = taskFilter !== null && filterOptions.includes(taskFilter) ? taskFilter : null;
-  const visibleItems =
-    atTop && (q || activeFilter)
-      ? items.filter(
-          (item) =>
-            item.kind === 'project' &&
-            (activeFilter === null || (taskTypeOf(item.project) ?? UNSET_TASK_TYPE) === activeFilter) &&
-            (!q || [item.project.name, ...(home.childrenOf.get(item.project.id) ?? []).map((c) => c.name)].some((n) => n.includes(q))),
-        )
-      : items;
+  const visibleItems = atTop
+    ? items.filter((item) => {
+        if (item.kind !== 'project') return !viewingHidden && !q && !activeFilter;
+        if (hiddenIds.has(item.project.id) !== viewingHidden) return false;
+        if (activeFilter !== null && (taskTypeOf(item.project) ?? UNSET_TASK_TYPE) !== activeFilter) return false;
+        return !q || [item.project.name, ...(home.childrenOf.get(item.project.id) ?? []).map((c) => c.name)].some((n) => n.includes(q));
+      })
+    : items;
   const structureTabs = currentProject && currentProject.depth === 1;
 
   const header = (
@@ -682,7 +699,35 @@ export function DrawingListScreen({ onOpen }: Props) {
           ) : (
             <Text style={[styles.tag, styles.tagEmpty]}>점검 종류 미선택</Text>
           )}
-          <Text style={styles.meta}>{children.length > 0 ? `구조물 ${children.length}개` : `도면 ${project.totalDrawingCount}`}</Text>
+          <View style={styles.taskTopRight}>
+            <Text style={styles.meta}>{children.length > 0 ? `구조물 ${children.length}개` : `도면 ${project.totalDrawingCount}`}</Text>
+            <Pressable
+              onPress={() => {
+                const hidden = hiddenIds.has(project.id);
+                Alert.alert(
+                  project.name,
+                  hidden ? '과업 목록에 다시 보입니다.' : '이 기기의 과업 목록에서 숨깁니다. 지우는 게 아니라 아래 「숨긴 과업」에서 다시 보이게 할 수 있습니다.',
+                  [
+                    {
+                      text: hidden ? '다시 보이기' : '목록에서 숨기기',
+                      onPress: () => {
+                        setProjectHidden(project.id, !hidden);
+                        // 마지막 숨긴 과업을 되살리면 보통 목록으로 돌아간다
+                        if (hidden && hiddenCount === 1) setShowHidden(false);
+                      },
+                    },
+                    { text: '취소', style: 'cancel' },
+                  ],
+                );
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={`${project.name} ${hiddenIds.has(project.id) ? '다시 보이기' : '숨기기'}`}
+              style={({ pressed }) => [styles.moreButton, pressed && styles.cardPressed]}
+            >
+              <Feather name={hiddenIds.has(project.id) ? 'eye' : 'more-horizontal'} size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.taskName}>{project.name}</Text>
         {children.length > 0 && (
@@ -789,12 +834,30 @@ export function DrawingListScreen({ onOpen }: Props) {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             ListHeaderComponent={
               atTop ? (
-                <Text style={styles.sectionTitle}>진행 중인 과업</Text>
+                <Text style={styles.sectionTitle}>{viewingHidden ? '숨긴 과업' : '진행 중인 과업'}</Text>
               ) : hasDrawingRow ? (
                 <Text style={styles.hint}>도면을 길게 누르면 휴지통으로 보내거나 기기에서 지울 수 있습니다.</Text>
               ) : undefined
             }
-            ListFooterComponent={recentSection}
+            ListFooterComponent={
+              atTop ? (
+                <>
+                  {!viewingHidden && recentSection}
+                  {hiddenCount > 0 && (
+                    <Pressable
+                      onPress={() => setShowHidden((v) => !v)}
+                      style={({ pressed }) => [styles.hiddenToggle, pressed && styles.cardPressed]}
+                      accessibilityRole="button"
+                    >
+                      <Feather name={viewingHidden ? 'arrow-left' : 'eye-off'} size={16} color={colors.mutedForeground} />
+                      <Text style={styles.hiddenToggleText}>{viewingHidden ? '과업 목록으로' : `숨긴 과업 ${hiddenCount}개 보기`}</Text>
+                    </Pressable>
+                  )}
+                </>
+              ) : (
+                recentSection
+              )
+            }
             ListEmptyComponent={<Text style={styles.empty}>{q || activeFilter ? '찾는 과업이 없습니다.' : emptyText}</Text>}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
@@ -947,6 +1010,10 @@ const styles = StyleSheet.create({
   taskCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: space.lg, gap: space.sm, marginBottom: space.md },
   cardPressed: { backgroundColor: colors.muted },
   taskTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  taskTopRight: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  moreButton: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: -6 },
+  hiddenToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, marginTop: space.lg, borderRadius: radius.md },
+  hiddenToggleText: { fontFamily: font.semibold, fontSize: 14, color: colors.mutedForeground },
   tag: { fontFamily: font.bold, fontSize: 12, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: 4, overflow: 'hidden' },
   tagEmpty: { color: colors.mutedForeground, backgroundColor: colors.muted },
   taskName: { fontFamily: font.bold, fontSize: 18, lineHeight: 24, color: colors.foreground, marginTop: 2 },
