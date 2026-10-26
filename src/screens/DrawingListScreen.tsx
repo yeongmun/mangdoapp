@@ -743,7 +743,7 @@ export function DrawingListScreen({ onOpen }: Props) {
           })}
         </ScrollView>
       </View>
-    ) : null;
+    ) : undefined;
 
   return (
     <View style={styles.container}>
@@ -783,7 +783,7 @@ export function DrawingListScreen({ onOpen }: Props) {
                 <Text style={styles.sectionTitle}>진행 중인 과업</Text>
               ) : hasDrawingRow ? (
                 <Text style={styles.hint}>도면을 길게 누르면 휴지통으로 보내거나 기기에서 지울 수 있습니다.</Text>
-              ) : null
+              ) : undefined
             }
             ListFooterComponent={recentSection}
             ListEmptyComponent={<Text style={styles.empty}>{q ? '찾는 과업이 없습니다.' : emptyText}</Text>}

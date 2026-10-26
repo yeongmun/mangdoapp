@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type RefAttributes } from 'react';
 import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconButton } from '../components/IconButton';
 import { LoadingView } from '../components/LoadingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
+import { WebView as LibWebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
+
+// react-native-webview 14의 타입 선언은 `class WebView<P = undefined>`의 props를 `WebViewProps & P`로 둬서
+// 기본값이면 `never`가 된다(실제 동작은 정상). 같은 컴포넌트를 올바른 props 타입으로 다시 붙인다.
+type WebViewHandle = LibWebView<{}>;
+const WebView = LibWebView as unknown as ComponentType<WebViewProps & RefAttributes<WebViewHandle>>;
 import { recognizeHandwriting, type DamageDoc, type Drawing } from '../api';
 import { syncDecision } from '../offlineRules';
 import {
@@ -112,7 +117,7 @@ export function ViewerScreen({ drawing, onBack }: Props) {
   const mountedRef = useRef(true);
   const saveSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<WebViewHandle>(null);
   // 뷰어 페이지가 도면을 다 불러와 { type: 'ready' }를 보낸 뒤에만 저장 확인을 요청한다.
   const viewerReadyRef = useRef(false);
   const pendingFlushRef = useRef<((saved: boolean) => void) | null>(null);
