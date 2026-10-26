@@ -103,14 +103,68 @@ function textCell(text) {
   return td;
 }
 
+// 선 아이콘(Lucide 모양) — 이모지 대신. 장식이라 aria-hidden.
+const ICONS = {
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14" />',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 16l5-5 4 4 3-3 6 6" />',
+  table: '<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 10v10" />',
+  more: '<circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />',
+  frame: '<rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5" />',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />',
+};
+
+function icon(name) {
+  const span = document.createElement('span');
+  span.innerHTML = `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+  return span.firstElementChild;
+}
+
+function iconButton(iconName, label, onClick, className = '') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  if (className) button.className = className;
+  button.append(icon(iconName), label);
+  button.addEventListener('click', () => {
+    // 「더보기」 메뉴 안이면 누른 뒤 닫는다
+    button.closest('details.menu')?.removeAttribute('open');
+    onClick(button);
+  });
+  return button;
+}
+
+function renderStats(list) {
+  $('statDrawings').textContent = list.length;
+  $('statProgress').textContent = list.filter((d) => d.status === 'pending' || d.status === 'inprogress').length;
+  $('statOffline').textContent = list.filter((d) => d.offlineReady).length;
+}
+
 function renderRows(drawings) {
   const rows = $('rows');
   rows.replaceChildren();
   $('empty').hidden = drawings.length > 0;
+  renderStats(drawings);
 
   for (const drawing of drawings) {
     const tr = document.createElement('tr');
-    tr.append(textCell(drawing.name));
+
+    // 도면: 이름 + 올린 시각·진행률 + 오류
+    const nameTd = document.createElement('td');
+    nameTd.className = 'name-cell';
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = drawing.name;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${new Date(drawing.uploadedAt).toLocaleString('ko-KR')}${drawing.progress ? ` · ${drawing.progress}` : ''}`;
+    nameTd.append(name, meta);
+    if (drawing.error) {
+      const error = document.createElement('div');
+      error.className = 'error small';
+      error.textContent = drawing.error;
+      nameTd.append(error);
+    }
+    tr.append(nameTd);
 
     const statusTd = document.createElement('td');
     const badge = document.createElement('span');
@@ -121,106 +175,89 @@ function renderRows(drawings) {
     if (drawing.offlineReady) {
       const offlineBadge = document.createElement('span');
       offlineBadge.className = 'badge offline';
-      offlineBadge.textContent = '오프라인';
+      offlineBadge.textContent = '태블릿 받기 가능';
       statusTd.append(offlineBadge);
     }
-    if (drawing.error) {
-      const error = document.createElement('div');
-      error.className = 'error small';
-      error.textContent = drawing.error;
-      statusTd.append(error);
-    }
     tr.append(statusTd);
-
-    tr.append(textCell(drawing.progress || '-'));
-    tr.append(textCell(new Date(drawing.uploadedAt).toLocaleString('ko-KR')));
-
-    const exportTd = document.createElement('td');
-    if (drawing.objectKey && drawing.objectKey.toLowerCase().endsWith('.dxf')) {
-      // 산출은 DWG로만 받는다(2026-10-09 사용자 결정, 지스타캐드에서 바로 연다). 서버에 ODA_PATH가
-      // 있어야 하고 없으면 서버가 400으로 안내한다. DXF는 API(export.dxf)로는 여전히 받을 수 있다.
-      const dwgButton = document.createElement('button');
-      dwgButton.type = 'button';
-      dwgButton.textContent = 'DWG 내려받기';
-      dwgButton.addEventListener('click', () => exportDrawing(drawing, dwgButton, 'dwg'));
-      exportTd.append(dwgButton);
-      // 표에 적힌 기존 손상 행을 다시 세어 신규 번호를 잇는다(옛 도면용).
-      const reframeButton = document.createElement('button');
-      reframeButton.type = 'button';
-      reframeButton.textContent = '틀 다시 읽기';
-      reframeButton.title = '표에 이미 적힌 기존 손상 행을 다시 세어 신규 손상 번호를 그 다음부터 잇습니다';
-      reframeButton.addEventListener('click', async () => {
-        reframeButton.disabled = true;
-        try {
-          const updated = await api(`/drawings/${drawing.id}/reframe`, { method: 'POST' });
-          const starts = (updated.frames ?? []).map((f) => f.startNumber ?? 0);
-          showMessage(`틀 ${starts.length}개 — 기존 손상 행: ${starts.join(', ') || '없음'}`);
-          await loadList();
-        } catch (err) {
-          showMessage(err.message, true);
-        } finally {
-          reframeButton.disabled = false;
-        }
-      });
-      exportTd.append(' ', reframeButton);
-    } else {
-      exportTd.textContent = '변환 안 된 DWG — 다시 올리세요';
-    }
-    tr.append(exportTd);
-
-    // 사진 zip은 DWG로 올린 도면에서도 된다 — 사진은 도면 파일 형식과 상관이 없다.
-    const photoTd = document.createElement('td');
-    const photoButton = document.createElement('button');
-    photoButton.type = 'button';
-    photoButton.textContent = '사진 zip';
-    photoButton.addEventListener('click', () => downloadPhotos(drawing, photoButton));
-    photoTd.append(photoButton);
-    // 손상현황표 엑셀(2026-10-07): 도면의 손상(기존 행 포함)을 표 한 장으로.
-    const ledgerButton = document.createElement('button');
-    ledgerButton.type = 'button';
-    ledgerButton.textContent = '현황표 엑셀';
-    ledgerButton.addEventListener('click', () => downloadLedger(drawing, ledgerButton));
-    photoTd.append(' ', ledgerButton);
-    tr.append(photoTd);
 
     tr.append(moveSelectCell(drawing));
 
     const actionTd = document.createElement('td');
+    actionTd.className = 'actions-cell';
+    const isDxf = drawing.objectKey && drawing.objectKey.toLowerCase().endsWith('.dxf');
+    if (isDxf) {
+      // 산출은 DWG로만 받는다(2026-10-09 사용자 결정, 지스타캐드에서 바로 연다). 서버에 ODA_PATH가
+      // 있어야 하고 없으면 서버가 400으로 안내한다. DXF는 API(export.dxf)로는 여전히 받을 수 있다.
+      actionTd.append(iconButton('download', 'DWG', (b) => exportDrawing(drawing, b, 'dwg'), 'sm'));
+    } else {
+      const note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = '변환 안 된 DWG — 다시 올리세요';
+      actionTd.append(note);
+    }
+    // 사진 zip은 DWG로 올린 도면에서도 된다 — 사진은 도면 파일 형식과 상관이 없다.
+    actionTd.append(iconButton('image', '사진', (b) => downloadPhotos(drawing, b), 'sm'));
+    // 손상현황표 엑셀(2026-10-07): 도면의 손상(기존 행 포함)을 표 한 장으로.
+    actionTd.append(iconButton('table', '현황표', (b) => downloadLedger(drawing, b), 'sm'));
+
+    // 「더보기」: 자주 안 쓰는 일과 삭제
+    const menu = document.createElement('details');
+    menu.className = 'menu';
+    const summary = document.createElement('summary');
+    summary.setAttribute('aria-label', `${drawing.name} 더보기`);
+    summary.append(icon('more'));
+    const list = document.createElement('div');
+    list.className = 'menu-list';
+    if (isDxf) {
+      // 표에 적힌 기존 손상 행을 다시 세어 신규 번호를 잇는다(옛 도면용).
+      const reframe = iconButton('frame', '틀 다시 읽기', (b) => reframeDrawing(drawing, b));
+      reframe.title = '표에 이미 적힌 기존 손상 행을 다시 세어 신규 손상 번호를 그 다음부터 잇습니다';
+      list.append(reframe);
+    }
     const isSvf = (drawing.viewFormat ?? 'svf2') === 'svf';
     // 실패한 도면의 "다시 시도"는 변환을 다시 거는 것이라 결과가 SVF가 된다(서버가 viewFormat도 svf로
     // 적는다). 그래서 실패한 옛 도면에는 "다시 변환"을 따로 두지 않는다 — 버튼 둘이 같은 일을 한다.
-    if (drawing.status === 'failed') {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = '다시 시도';
-      button.addEventListener('click', () => retry(drawing.id, button));
-      actionTd.append(button);
-    }
+    if (drawing.status === 'failed') list.append(iconButton('refresh', '변환 다시 시도', (b) => retry(drawing.id, b)));
     // 오프라인 모드(설계 4장): 변환이 끝난 SVF2(또는 이 기능 전에 올린) 도면만 다시 변환할 수 있고,
     // 변환 중에는 눌러도 서버가 409를 준다.
-    if (!isSvf && drawing.status === 'success') {
-      const retranslateButton = document.createElement('button');
-      retranslateButton.type = 'button';
-      retranslateButton.textContent = '다시 변환';
-      retranslateButton.addEventListener('click', () => retranslate(drawing, retranslateButton));
-      actionTd.append(retranslateButton);
-    }
+    if (!isSvf && drawing.status === 'success') list.append(iconButton('refresh', '태블릿용으로 다시 변환', (b) => retranslate(drawing, b)));
+    if (list.childElementCount > 0) list.append(document.createElement('hr'));
     // 삭제는 휴지통으로 옮기기다 — 아래 휴지통에서 복구할 수 있다(서버는 영구 삭제하지 않는다).
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'danger';
-    deleteButton.textContent = '삭제';
-    deleteButton.addEventListener('click', () => removeDrawing(drawing, deleteButton));
-    actionTd.append(deleteButton);
+    list.append(iconButton('trash', '휴지통으로', (b) => removeDrawing(drawing, b), 'danger'));
+    menu.append(summary, list);
+    actionTd.append(menu);
+
     tr.append(actionTd);
     rows.append(tr);
   }
 }
 
+async function reframeDrawing(drawing, button) {
+  button.disabled = true;
+  try {
+    const updated = await api(`/drawings/${drawing.id}/reframe`, { method: 'POST' });
+    const starts = (updated.frames ?? []).map((f) => f.startNumber ?? 0);
+    showMessage(`틀 ${starts.length}개 — 기존 손상 행: ${starts.join(', ') || '없음'}`);
+    await loadList();
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// 바깥을 누르면 열린 「더보기」를 닫는다
+document.addEventListener('click', (event) => {
+  for (const open of document.querySelectorAll('details.menu[open]')) {
+    if (!open.contains(event.target)) open.removeAttribute('open');
+  }
+});
+
 function renderTrash(items) {
   const rows = $('trashRows');
   rows.replaceChildren();
   $('trashSection').hidden = items.length === 0;
+  $('statTrash').textContent = items.length;
   for (const item of items) {
     const tr = document.createElement('tr');
     tr.append(textCell(item.name));
@@ -304,9 +341,26 @@ function renderProjects() {
   list.append(projectRow('unfiled', '미분류', `도면 ${unfiledCount()}`, false));
 
   const current = projects.find((p) => p.id === selected);
+  const parent = current?.parentId ? projects.find((p) => p.id === current.parentId) : undefined;
   $('projectMemo').textContent = current ? current.memo : '';
-  $('currentTitle').textContent = current ? current.path : '미분류';
+  $('currentTitle').textContent = current ? current.name : '미분류';
+  $('crumb').textContent = parent ? `도면 관리 › ${parent.name}` : '도면 관리';
   $('uploadTarget').textContent = `올릴 곳: ${current ? current.path : '미분류'}`;
+  $('projectHint').hidden = !!current;
+  // 과업구분(웹)·점검 종류(앱)·시설물 종류(앱) 칩
+  const chips = $('projectChips');
+  chips.replaceChildren();
+  for (const [value, tone] of [
+    [current?.taskType, 'warm'],
+    [current?.inspectionType !== current?.taskType ? current?.inspectionType : undefined, 'cool'],
+    [current?.facilityType, ''],
+  ]) {
+    if (!value) continue;
+    const chip = document.createElement('span');
+    chip.className = `chip ${tone}`;
+    chip.textContent = value;
+    chips.append(chip);
+  }
 
   // 하위 만들기는 최상위 프로젝트를 골랐을 때만 된다(설계 2.1 — 깊이는 2단계까지다).
   $('newChild').disabled = !(current && current.depth === 0);
@@ -627,11 +681,31 @@ async function downloadPhotos(drawing, button) {
 
 $('accessKey').value = getKey();
 
+// 사이드바 아래 접근키 상태: 없으면 펼쳐 둔다
+function renderKeyState() {
+  const has = !!getKey();
+  $('keyDot').classList.toggle('ok', has);
+  $('keyState').textContent = has ? '접근키 저장됨' : '접근키 없음 — 입력하세요';
+  if (!has) $('keyBox').open = true;
+}
+renderKeyState();
+
 $('saveKey').addEventListener('click', () => {
   setKey($('accessKey').value.trim());
+  renderKeyState();
+  $('keyBox').open = false;
   showMessage('접근키를 저장했습니다.');
   loadList();
 });
+
+// 업로드 칸: 고른 파일 이름 보이기, 끌어 놓기 강조
+function showPickedFile() {
+  const file = $('file').files[0];
+  $('fileName').textContent = file ? `${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)` : '파일을 여기로 끌어 놓거나 눌러서 고르세요';
+}
+$('file').addEventListener('change', showPickedFile);
+for (const type of ['dragenter', 'dragover']) $('drop').addEventListener(type, () => $('drop').classList.add('over'));
+for (const type of ['dragleave', 'drop']) $('drop').addEventListener(type, () => $('drop').classList.remove('over'));
 
 $('refresh').addEventListener('click', loadList);
 
@@ -680,6 +754,7 @@ $('uploadForm').addEventListener('submit', async (event) => {
     if (record.__warning) showMessage(`업로드 완료: ${record.name} — ${record.__warning}`, true);
     else showMessage(`업로드 완료: ${record.name} — 변환을 시작했습니다.`);
     $('uploadForm').reset();
+    showPickedFile();
     await loadList();
   } catch (err) {
     showMessage(err.message, true);
