@@ -9,7 +9,11 @@ import { readJsonFile, writeJsonFileAtomic } from './jsonFile.js';
 // 없다. 값 목록은 앱(src/api.ts)과 같아야 한다. 설계: docs/design/2026-10-24-field-photo-checklist.md 결정 5
 export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
 export const FACILITY_TYPES = ['교량', '터널', '옹벽', '절토사면', '건축물', '기타'] as const;
+// 과업구분: 웹(daenong)의 과업구분을 웹이 앱 프로젝트를 만들·연결할 때 넣는다(앱 목록 필터용, 2026-10-26).
+// 최상위에만. 웹 app/work-status/lib/appLink.ts의 APP_LINKED_TASK_TYPES와 같은 값.
+export const TASK_TYPES = ['정밀안전점검', '정기안전점검', '정밀안전진단', '옹벽(사급)'] as const;
 export type InspectionType = (typeof INSPECTION_TYPES)[number];
+export type TaskType = (typeof TASK_TYPES)[number];
 export type FacilityType = (typeof FACILITY_TYPES)[number];
 
 export interface ProjectRecord {
@@ -20,6 +24,7 @@ export interface ProjectRecord {
   createdAt: string;
   inspectionType?: InspectionType;
   facilityType?: FacilityType;
+  taskType?: TaskType;
 }
 
 export type ProjectRuleCode = 'name' | 'memo' | 'parent' | 'depth' | 'duplicate' | 'notEmpty' | 'type';
@@ -89,6 +94,13 @@ function validateInspectionType(value: unknown, parentId: string | null): Inspec
   return value as InspectionType;
 }
 
+function validateTaskType(value: unknown, parentId: string | null): TaskType | undefined {
+  if (value === undefined) return undefined;
+  if (!TASK_TYPES.includes(value as TaskType)) throw new ProjectRuleError('type', '과업구분 값이 올바르지 않습니다.');
+  if (parentId !== null) throw new ProjectRuleError('type', '과업구분은 상위 프로젝트에만 둘 수 있습니다.');
+  return value as TaskType;
+}
+
 function validateFacilityType(value: unknown, parentId: string | null): FacilityType | undefined {
   if (value === undefined) return undefined;
   if (!FACILITY_TYPES.includes(value as FacilityType)) {
@@ -118,7 +130,7 @@ export class ProjectsStore {
   }
 
   create(
-    input: { name: unknown; memo?: unknown; parentId?: unknown; inspectionType?: unknown; facilityType?: unknown },
+    input: { name: unknown; memo?: unknown; parentId?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown },
     createdAt: string,
   ): Promise<ProjectRecord> {
     return this.serialize(async () => {
@@ -132,16 +144,18 @@ export class ProjectsStore {
       if (inspectionType !== undefined) record.inspectionType = inspectionType;
       const facilityType = validateFacilityType(input.facilityType, parentId);
       if (facilityType !== undefined) record.facilityType = facilityType;
+      const taskType = validateTaskType(input.taskType, parentId);
+      if (taskType !== undefined) record.taskType = taskType;
       await writeJsonFileAtomic(this.filePath, [...records, record]);
       return record;
     });
   }
 
   // 준 키만 바꾼다. parentId는 여기서 바꿀 수 없다(프로젝트 옮기기는 범위 밖).
-  // inspectionType/facilityType은 null이면 지운다.
+  // inspectionType/facilityType/taskType은 null이면 지운다.
   update(
     id: string,
-    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown },
+    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown },
   ): Promise<ProjectRecord | null> {
     return this.serialize(async () => {
       const records = await this.readAll();
@@ -164,6 +178,10 @@ export class ProjectsStore {
       if ('facilityType' in patch) {
         if (patch.facilityType === null) delete next.facilityType;
         else next.facilityType = validateFacilityType(patch.facilityType, current.parentId);
+      }
+      if ('taskType' in patch) {
+        if (patch.taskType === null) delete next.taskType;
+        else next.taskType = validateTaskType(patch.taskType, current.parentId);
       }
       records[index] = next;
       await writeJsonFileAtomic(this.filePath, records);

@@ -1,6 +1,6 @@
 // 과업 목록 카드의 사진 진행·이어서 찍기·최근 찍은 사진(2026-10-25 농농 폰 시안). 기기 저장(shots/<id>.json) 기준.
 import { describe, expect, it } from 'vitest';
-import { nextStructure, photoProgress, recentPhotos, type ShotCache } from '../../src/homeSummary.js';
+import { nextStructure, photoProgress, recentPhotos, taskTypeOf, taskTypeOptions, type ShotCache } from '../../src/homeSummary.js';
 
 const shot = (id: string, extra: Record<string, unknown> = {}) => ({ id, kind: 'required' as const, member: '교대', label: 'A1', number: '001', thumbUrl: null, ...extra });
 
@@ -61,5 +61,21 @@ describe('recentPhotos', () => {
       ['pa', '2', 'file:///2.jpg'],
     ]);
     expect(out[0].projectName).toBe('B교');
+  });
+});
+
+describe('과업구분 필터', () => {
+  it('웹이 넣은 과업구분, 없으면 앱에서 고른 점검 종류', () => {
+    expect(taskTypeOf({ taskType: '옹벽(사급)', inspectionType: '정기안전점검' })).toBe('옹벽(사급)');
+    expect(taskTypeOf({ inspectionType: '정밀안전진단' })).toBe('정밀안전진단');
+    expect(taskTypeOf({})).toBeNull();
+  });
+  it('보기는 있는 것만, 정해진 순서로, 미지정은 맨 끝', () => {
+    expect(taskTypeOptions([{ taskType: '옹벽(사급)' }, { inspectionType: '정기안전점검' }, {}, { taskType: '정기안전점검' }])).toEqual([
+      '정기안전점검',
+      '옹벽(사급)',
+      '미지정',
+    ]);
+    expect(taskTypeOptions([{}, {}])).toEqual([]);
   });
 });

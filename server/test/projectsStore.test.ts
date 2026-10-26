@@ -231,3 +231,22 @@ describe('점검 종류·시설물 종류', () => {
     expect(cleared && 'inspectionType' in cleared).toBe(false);
   });
 });
+
+// 과업구분(웹 daenong의 과업구분을 웹이 넣는다 — 앱 목록 필터용, 2026-10-26). 최상위에만.
+describe('과업구분(taskType)', () => {
+  const T = '2026-10-26T00:00:00.000Z';
+
+  it('최상위에 저장하고 update로 바꾸고 null이면 지운다', async () => {
+    const p = await store.create({ name: '옹벽1', taskType: '옹벽(사급)' }, T);
+    expect(p.taskType).toBe('옹벽(사급)');
+    expect((await store.update(p.id, { taskType: '정밀안전진단' }))?.taskType).toBe('정밀안전진단');
+    const cleared = await store.update(p.id, { taskType: null });
+    expect(cleared && 'taskType' in cleared).toBe(false);
+  });
+
+  it('허용값 밖이거나 하위면 거부(type)', async () => {
+    await expect(store.create({ name: 'X', taskType: '건기법' }, T)).rejects.toMatchObject({ code: 'type' });
+    const top = await store.create({ name: 'Y' }, T);
+    await expect(store.create({ name: 'Z', parentId: top.id, taskType: '정기안전점검' }, T)).rejects.toMatchObject({ code: 'type' });
+  });
+});

@@ -78,3 +78,20 @@ export function recentPhotos(items: { projectId: string; projectName: string; ca
   }
   return out.sort((a, b) => b.at - a.at).slice(0, limit);
 }
+
+// 과업 목록 필터(2026-10-26): 웹 과업구분(taskType, 웹이 넣음), 없으면 앱에서 고른 점검 종류
+export const TASK_TYPE_ORDER = ['정밀안전점검', '정기안전점검', '정밀안전진단', '옹벽(사급)'];
+export const UNSET_TASK_TYPE = '미지정';
+
+export function taskTypeOf(project: { taskType?: string; inspectionType?: string }): string | null {
+  return project.taskType ?? project.inspectionType ?? null;
+}
+
+/** 칩 보기: 목록에 있는 구분만 정해진 순서로, 구분 없는 과업이 있으면 「미지정」을 끝에. 구분이 하나도 없으면 빈 배열(칩 안 보임) */
+export function taskTypeOptions(projects: { taskType?: string; inspectionType?: string }[]): string[] {
+  const present = new Set(projects.map(taskTypeOf));
+  const known = TASK_TYPE_ORDER.filter((t) => present.has(t));
+  const others = [...present].filter((t): t is string => t !== null && !TASK_TYPE_ORDER.includes(t));
+  if (known.length + others.length === 0) return [];
+  return [...known, ...others, ...(present.has(null) ? [UNSET_TASK_TYPE] : [])];
+}

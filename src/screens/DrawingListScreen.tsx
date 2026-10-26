@@ -32,7 +32,7 @@ import { IconButton } from '../components/IconButton';
 import { LoadingView } from '../components/LoadingView';
 import { TypeChips } from '../components/TypeChips';
 import { Wordmark } from '../components/Wordmark';
-import { nextStructure, photoProgress, recentPhotos, type ShotCache } from '../homeSummary';
+import { nextStructure, photoProgress, recentPhotos, taskTypeOf, taskTypeOptions, UNSET_TASK_TYPE, type ShotCache } from '../homeSummary';
 import { PreviousShotsView } from './PreviousShotsView';
 import { RequiredShotsView } from './RequiredShotsView';
 import { readShotsLocal } from '../shotsLocal';
@@ -189,6 +189,8 @@ export function DrawingListScreen({ onOpen }: Props) {
   }, [location]);
   // 맨 위 과업 목록의 검색
   const [query, setQuery] = useState('');
+  // 맨 위 과업 목록의 과업구분 필터(웹 과업구분, 없으면 점검 종류). null = 전체
+  const [taskFilter, setTaskFilter] = useState<string | null>(null);
   const changeProjectType = useCallback(
     async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null }) => {
       setSavingType(true);
@@ -530,12 +532,16 @@ export function DrawingListScreen({ onOpen }: Props) {
       ? '과업이 없습니다.\n웹에서 과업을 등록하면 여기 뜹니다.'
       : '이 프로젝트에는 도면이 없습니다.\nPC의 업로드 페이지에서 올려 주세요.';
   const q = query.trim();
+  const filterOptions = atTop ? taskTypeOptions(projects.filter((p) => p.depth === 0)) : [];
+  // 고른 구분이 목록에서 사라졌으면(새로 고침 뒤) 전체로 본다
+  const activeFilter = taskFilter !== null && filterOptions.includes(taskFilter) ? taskFilter : null;
   const visibleItems =
-    atTop && q
+    atTop && (q || activeFilter)
       ? items.filter(
           (item) =>
             item.kind === 'project' &&
-            [item.project.name, ...(home.childrenOf.get(item.project.id) ?? []).map((c) => c.name)].some((n) => n.includes(q)),
+            (activeFilter === null || (taskTypeOf(item.project) ?? UNSET_TASK_TYPE) === activeFilter) &&
+            (!q || [item.project.name, ...(home.childrenOf.get(item.project.id) ?? []).map((c) => c.name)].some((n) => n.includes(q))),
         )
       : items;
   const structureTabs = currentProject && currentProject.depth === 1;
@@ -590,6 +596,9 @@ export function DrawingListScreen({ onOpen }: Props) {
             accessibilityLabel="과업·구조물 검색"
           />
         </View>
+      )}
+      {atTop && filterOptions.length > 0 && (
+        <TypeChips label="과업구분" options={filterOptions} value={activeFilter ?? undefined} onChange={setTaskFilter} />
       )}
       {currentProject && currentProject.depth === 0 && (
         <TypeChips
@@ -668,8 +677,8 @@ export function DrawingListScreen({ onOpen }: Props) {
       // 카드 전체도 눌리지만 화면 읽기는 안쪽 두 버튼을 따로 잡는다(accessible={false})
       <Pressable style={({ pressed }) => [styles.taskCard, pressed && styles.cardPressed]} onPress={() => goTo(project.id)} accessible={false}>
         <View style={styles.taskTop}>
-          {project.inspectionType ? (
-            <Text style={[styles.tag, inspectionTag(project.inspectionType)]}>{project.inspectionType}</Text>
+          {taskTypeOf(project) ? (
+            <Text style={[styles.tag, inspectionTag(taskTypeOf(project)!)]}>{taskTypeOf(project)}</Text>
           ) : (
             <Text style={[styles.tag, styles.tagEmpty]}>점검 종류 미선택</Text>
           )}
@@ -721,7 +730,7 @@ export function DrawingListScreen({ onOpen }: Props) {
   };
 
   const recentSection =
-    atTop && !q && home.recent.length > 0 ? (
+    atTop && !q && !activeFilter && home.recent.length > 0 ? (
       <View style={styles.recent}>
         <Text style={styles.sectionTitle}>최근 찍은 사진</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentRow}>
@@ -786,7 +795,7 @@ export function DrawingListScreen({ onOpen }: Props) {
               ) : undefined
             }
             ListFooterComponent={recentSection}
-            ListEmptyComponent={<Text style={styles.empty}>{q ? '찾는 과업이 없습니다.' : emptyText}</Text>}
+            ListEmptyComponent={<Text style={styles.empty}>{q || activeFilter ? '찾는 과업이 없습니다.' : emptyText}</Text>}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => {

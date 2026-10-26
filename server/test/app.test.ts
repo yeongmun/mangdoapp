@@ -1710,6 +1710,19 @@ describe('프로젝트 점검 종류·시설물 종류', () => {
   });
 });
 
+describe('프로젝트 과업구분(taskType)', () => {
+  it('POST로 넣고 PATCH로 바꾼다, GET 목록에 실린다', async () => {
+    const { app } = setup();
+    const res = await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '옹벽1', taskType: '옹벽(사급)' });
+    expect(res.status).toBe(201);
+    expect(res.body.taskType).toBe('옹벽(사급)');
+    const patched = await request(app).patch(`/api/projects/${res.body.id}`).set('x-access-key', KEY).send({ taskType: '정기안전점검' });
+    expect(patched.body.taskType).toBe('정기안전점검');
+    const list = await request(app).get('/api/projects').set('x-access-key', KEY);
+    expect(list.body[0].taskType).toBe('정기안전점검');
+  });
+});
+
 // 촬영 항목(필수 사진). 설계: docs/design/2026-10-24-field-photo-checklist.md 서버(앱)
 describe('촬영 항목 API (/api/projects/:id/shots)', () => {
   async function bridge(app: ReturnType<typeof setup>['app']) {

@@ -67,6 +67,8 @@ export interface Project {
   childCount: number;
   /** 점검 종류 — 최상위(과업)에만. 서버 projectsStore.ts의 INSPECTION_TYPES와 같은 값 */
   inspectionType?: string;
+  /** 웹(daenong) 과업구분 — 최상위만, 웹이 넣는다(앱은 읽기만, 목록 필터용) */
+  taskType?: string;
   /** 시설물 종류 — 하위(구조물)에만. 서버 FACILITY_TYPES와 같은 값 */
   facilityType?: string;
 }
