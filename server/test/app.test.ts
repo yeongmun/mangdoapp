@@ -104,6 +104,7 @@ function setup(
   readKey?: string,
   converter?: import('../src/oda.js').DrawingConverter | null,
   transcriber?: import('../src/handwriting.js').Transcriber | null,
+  maxReportBytes?: number,
 ) {
   const aps = fakeAps(apsOverrides);
   const drawings = new DrawingsStore(join(dir, 'data', 'drawings.json'));
@@ -147,6 +148,7 @@ function setup(
     now: () => NOW,
     maxUploadBytes,
     maxPhotoBytes,
+    maxReportBytes,
   });
   return { app, aps, drawings, damages, originals, photos, trash, projects, shots, offlineAps, offline, fetchCdn, viewerBundle };
 }
@@ -1818,6 +1820,19 @@ describe('전차보고서 API (/api/projects/:id/previous-report)', () => {
     const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교' })).body;
     return (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id })).body;
   }
+
+  it('전차보고서 상한은 도면 상한과 따로다 — 도면 상한을 넘어도 받고, 보고서 상한을 넘으면 보고서 문구로 413', async () => {
+    const small = setup({}, 10);
+    const child = await structure(small.app);
+    const ok = await request(small.app).post(`/api/projects/${child.id}/previous-report`).set('x-access-key', KEY).attach('file', sampleHwpx(), { filename: 'a.hwpx' });
+    expect(ok.status).toBe(201);
+
+    const { app } = setup({}, undefined, undefined, {}, undefined, undefined, undefined, undefined, 10);
+    const other = await structure(app);
+    const tooBig = await request(app).post(`/api/projects/${other.id}/previous-report`).set('x-access-key', KEY).attach('file', sampleHwpx(), { filename: 'a.hwpx' });
+    expect(tooBig.status).toBe(413);
+    expect(tooBig.body.error).toBe('전차보고서가 1024MB를 넘습니다.');
+  });
 
   it('hwpx를 올리면 페이지·사진 수를 돌려주고 shots에 previous가 생긴다', async () => {
     const { app } = setup();

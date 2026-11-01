@@ -44,6 +44,9 @@ export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 // 잘못된 파일을 올리다 디스크가 차는 것을 막는다(스펙 2장).
 export const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
 
+// 전차보고서(hwpx) 상한. 사진 많은 보고서는 DXF 상한(100MB)을 넘는다. 메모리에 통째로 올려 읽으므로 상한은 둔다.
+export const MAX_REPORT_BYTES = 1024 * 1024 * 1024;
+
 export interface AppDeps {
   accessKey: string;
   /** 읽기 전용 접근키(GET만). 없으면 accessKey 하나만 받는다 */
@@ -69,6 +72,7 @@ export interface AppDeps {
   now?: () => number;
   maxUploadBytes?: number;
   maxPhotoBytes?: number;
+  maxReportBytes?: number;
 }
 
 function messageOf(err: unknown): string {
@@ -298,6 +302,10 @@ export function createApp(deps: AppDeps) {
     storage: multer.memoryStorage(),
     limits: { fileSize: deps.maxPhotoBytes ?? MAX_PHOTO_BYTES },
   });
+  const reportUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: deps.maxReportBytes ?? MAX_REPORT_BYTES },
+  });
 
   // 이 미들웨어는 라우트 본문(도면 404·손상 id 400)보다 먼저 돈다 — 너무 큰 파일은 도면이
   // 없어도 413이 먼저 나간다. multer가 폼을 읽는 단계라 순서를 바꿀 수 없고, 어차피 거부되는
@@ -320,6 +328,17 @@ export function createApp(deps: AppDeps) {
         return;
       }
       next();
+    });
+  };
+
+  // 보고서도 사진처럼 공용 문구(100MB) 대신 실제 상한을 말한다.
+  const reportUploadField: RequestHandler = (req, res, next) => {
+    reportUpload.single('file')(req, res, (err: unknown) => {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        res.status(413).json({ error: `전차보고서가 ${MAX_REPORT_BYTES / 1024 / 1024}MB를 넘습니다.` });
+        return;
+      }
+      next(err);
     });
   };
 
@@ -784,7 +803,7 @@ export function createApp(deps: AppDeps) {
 
   // 전차보고서(hwpx) 업로드 → 사진·캡션 추출 → previous shot(페이지 = 표). .hwp는 웹(daenong)이 한컴으로
   // hwpx로 바꿔 보낸다 — 이 서버는 hwpx만 읽는다(hwpxPhotos.ts). 참조 이미지 썸네일은 여기서 만든다.
-  api.post('/projects/:id/previous-report', upload.single('file'), async (req, res) => {
+  api.post('/projects/:id/previous-report', reportUploadField, async (req, res) => {
     const project = await findShotProject(req, res);
     if (!project) return;
     const file = req.file;
