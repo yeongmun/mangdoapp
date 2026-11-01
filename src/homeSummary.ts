@@ -47,6 +47,12 @@ export function photoProgress(caches: ShotCache[]): { taken: number; total: numb
   return { taken, total };
 }
 
+/** 다음에 찍을 사진: kind를 주면 그 종류에서, 아니면 찍을 것(toShoot) 중 안 찍은 첫 항목. 없으면 null */
+export function nextShot(cache: ShotCache, kind?: 'required' | 'previous'): CachedShot | null {
+  const pool = kind ? active(cache).filter((s) => s.kind === kind) : toShoot(cache);
+  return pool.find((s) => !isTaken(cache, s)) ?? null;
+}
+
 /** 「이어서 찍기」: 남은 사진이 있는 첫 구조물(기기에 목록이 없는 = 한 번도 안 연 구조물도 남은 것). 다 찍었으면 첫 구조물, 구조물이 없으면 null */
 export function nextStructure(children: { id: string }[], caches: Record<string, ShotCache>): string | null {
   for (const child of children) {

@@ -147,3 +147,6 @@ export async function downloadDrawings(
   onProgress(total, total, '');
   return { ok, failed };
 }
+
+/** 「모두 받기」가 도는 중인지 — 다른 화면(업로드 대기)의 동기화가 index.json을 같이 쓰지 않게 본다 */
+export const downloadBusy = { current: false };

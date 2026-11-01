@@ -30,7 +30,7 @@ export function IconButton({ icon, label, onPress, badge, disabled = false }: Pr
 }
 
 const styles = StyleSheet.create({
-  button: { width: TOUCH_MIN, height: TOUCH_MIN, borderRadius: TOUCH_MIN / 2, backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
+  button: { width: TOUCH_MIN, height: TOUCH_MIN, borderRadius: TOUCH_MIN / 2, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   pressed: { backgroundColor: colors.border },
   disabled: { opacity: 0.4 },
   badge: {

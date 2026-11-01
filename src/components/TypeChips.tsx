@@ -1,7 +1,8 @@
-// 한 줄로 늘어선 선택 칩(점검 종류·시설물 종류). 하나만 고를 수 있고, 고른 것을 다시 누르면 푼다.
-// 값 목록은 부모가 준다(src/api.ts의 INSPECTION_TYPES / FACILITY_TYPES). 고른 칩은 검정 테두리 + 굵은 글자.
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, font, radius, space, TOUCH_MIN } from '../theme';
+// 한 줄로 늘어선 선택 칩(점검 종류·과업구분 필터). 하나만 고를 수 있고, 고른 것을 다시 누르면 푼다.
+// 3차 시안: 흰 알약, 고르면 진한 회색 바탕 + 흰 글자. 누르는 동안 살짝 작아진다.
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { colors, font, space, TOUCH_MIN } from '../theme';
+import { PressScale } from './motion';
 
 interface Props {
   label: string;
@@ -19,17 +20,18 @@ export function TypeChips({ label, options, value, onChange, disabled = false }:
         {options.map((option) => {
           const selected = option === value;
           return (
-            <Pressable
+            <PressScale
               key={option}
               accessibilityRole="radio"
               accessibilityState={{ checked: selected, disabled }}
               disabled={disabled}
               onPress={() => onChange(selected ? null : option)}
               hitSlop={{ top: 4, bottom: 4 }}
-              style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && !disabled && styles.chipPressed, disabled && styles.chipDisabled]}
+              to={0.94}
+              style={[styles.chip, selected && styles.chipSelected, disabled && styles.chipDisabled]}
             >
               <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{option}</Text>
-            </Pressable>
+            </PressScale>
           );
         })}
       </ScrollView>
@@ -40,18 +42,9 @@ export function TypeChips({ label, options, value, onChange, disabled = false }:
 const styles = StyleSheet.create({
   row: { marginBottom: space.md },
   chips: { gap: space.sm },
-  chip: {
-    minHeight: TOUCH_MIN - 6,
-    paddingHorizontal: 14,
-    justifyContent: 'center',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.card,
-  },
-  chipSelected: { borderWidth: 1.5, borderColor: colors.primary },
-  chipPressed: { backgroundColor: colors.muted },
+  chip: { minHeight: TOUCH_MIN - 6, paddingHorizontal: 15, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.card },
+  chipSelected: { backgroundColor: colors.foreground },
   chipDisabled: { opacity: 0.5 },
-  chipText: { fontFamily: font.regular, fontSize: 14, color: '#404145' },
-  chipTextSelected: { fontFamily: font.bold, color: colors.foreground },
+  chipText: { fontFamily: font.semibold, fontSize: 14, color: colors.ink2 },
+  chipTextSelected: { fontFamily: font.bold, color: '#ffffff' },
 });

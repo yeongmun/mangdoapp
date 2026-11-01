@@ -324,6 +324,12 @@ export function shotRefThumbRequest(shot: Shot): { uri: string; headers: Record<
   return { uri: `${API_URL}${shot.refThumbUrl}`, headers: { 'x-access-key': ACCESS_KEY } };
 }
 
+/** 보고서 참조 이미지 원본(「사진 한 장」 화면에서 크게 볼 때) */
+export function shotRefRequest(shot: Shot): { uri: string; headers: Record<string, string> } | null {
+  if (!shot.refUrl) return null;
+  return { uri: `${API_URL}${shot.refUrl}`, headers: { 'x-access-key': ACCESS_KEY } };
+}
+
 // 보고서 페이지(group) 휴지통 넣기/복구
 export async function setGroupTrashed(projectId: string, group: string, trashed: boolean): Promise<void> {
   let res: Response;

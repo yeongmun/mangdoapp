@@ -36,6 +36,23 @@ export function readShotsLocal(projectId: string): LocalShotState {
   }
 }
 
+/** 이 기기에 저장된 모든 구조물의 촬영 목록(「찍은 사진」 탭). 프로젝트 목록 없이도(오프라인) 읽힌다 */
+export function listShotsLocal(): { projectId: string; state: LocalShotState }[] {
+  try {
+    const dir = new Directory(Paths.document, DIR_NAME);
+    if (!dir.exists) return [];
+    return dir
+      .list()
+      .filter((entry): entry is File => entry instanceof File && entry.name.endsWith('.json'))
+      .map((f) => {
+        const projectId = f.name.replace(/\.json$/, '');
+        return { projectId, state: readShotsLocal(projectId) };
+      });
+  } catch {
+    return [];
+  }
+}
+
 export function writeShotsLocal(projectId: string, state: LocalShotState): void {
   try {
     new Directory(Paths.document, DIR_NAME).create({ intermediates: true, idempotent: true });

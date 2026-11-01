@@ -7,6 +7,7 @@ import { takePhotoAndSave } from './photo';
 import { enqueuePhoto, flushPhotoQueue, queuedShotIds } from './photoUpload';
 import { reconcileLocal } from './shotsRules';
 import { readShotsLocal, writeShotsLocal, type LocalShotState } from './shotsLocal';
+import { useToast } from './components/Toast';
 
 /** 서버 파일명 규칙(shotsStore.shotFileName)과 같은 모양 — 대기열 항목의 filename으로 보낸다 */
 export function fileNameFor(projectName: string, shot: Shot): string {
@@ -18,6 +19,7 @@ export function useShots(project: Project, onPhotoQueued?: () => void) {
   const [state, setState] = useState<LocalShotState>(() => readShotsLocal(project.id));
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const toast = useToast();
 
   const refresh = useCallback(async () => {
     try {
@@ -85,12 +87,13 @@ export function useShots(project: Project, onPhotoQueued?: () => void) {
           return next;
         });
         onPhotoQueued?.();
+        toast(`${shot.member} · ${shot.label} 저장했어요`);
         void flushPhotoQueue(() => undefined);
       } finally {
         setBusyId(null);
       }
     },
-    [project.id, project.name, state.list?.projectName, onPhotoQueued],
+    [project.id, project.name, state.list?.projectName, onPhotoQueued, toast],
   );
 
   return { state, setState, error, busyId, refresh, isTaken, takenThumb, shoot };

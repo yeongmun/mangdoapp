@@ -1,11 +1,15 @@
-// [전차 사진] 탭(2026-10-24, 3단계). 웹에서 올린 전차보고서에서 뽑은 사진을 보고서 페이지(group)별로 보여 준다.
-// 카드를 누르면 카메라(참조 사진과 같은 자리를 다시 찍는다). 필요 없는 페이지는 「휴지통으로」 — 서버에
+// [전차 사진] 탭(2026-10-24, 3단계, 2026-11-01 3차 시안으로 다시 그림). 웹에서 올린 전차보고서에서 뽑은 사진을
+// 보고서 페이지(group)별 큰 카드로 보여 준다. 카드 아래 버튼은 바로 카메라, 위 보고서 사진을 누르면 「사진 한 장」
+// 화면(ShotDetailModal)에서 크게 보고 넘기며 찍는다. 필요 없는 페이지는 「휴지통으로」 — 서버에
 // trashed 표시만 하므로 「휴지통 보기」에서 「복구」할 수 있다. 참조 이미지는 온라인일 때 기기에 내려받아 둔다.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
-import { setGroupTrashed, shotRefThumbRequest, type Project, type Shot } from '../api';
-import { CompareShotCard } from '../components/ShotCard';
+import { setGroupTrashed, shotRefRequest, shotRefThumbRequest, type Project, type Shot } from '../api';
+import { PreviousShotCard } from '../components/ShotCard';
+import { NextShotButton, ShotProgressCard } from '../components/ShotProgress';
+import { Skeleton } from '../components/motion';
+import { ShotDetailModal } from './ShotDetailModal';
 import { refFileFor, writeShotsLocal } from '../shotsLocal';
 import { useShots } from '../useShots';
 import { colors, font, radius, space, TOUCH_MIN } from '../theme';
@@ -13,9 +17,11 @@ import { colors, font, radius, space, TOUCH_MIN } from '../theme';
 interface Props {
   project: Project;
   onPhotoQueued?: () => void;
+  /** 홈 「카메라 열기」로 들어왔으면 목록을 받자마자 다음 사진 카메라를 연다(한 번) */
+  autoShoot?: boolean;
 }
 
-export function PreviousShotsView({ project, onPhotoQueued }: Props) {
+export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }: Props) {
   const { state, setState, error, busyId, refresh, isTaken, takenThumb, shoot } = useShots(project, onPhotoQueued);
   const [showTrash, setShowTrash] = useState(false);
   const [changingGroup, setChangingGroup] = useState<string | null>(null);
@@ -25,6 +31,24 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
   const trashedCount = previous.filter((s) => s.trashed === true).length;
   const activeShots = previous.filter((s) => s.trashed !== true);
   const takenCount = activeShots.filter(isTaken).length;
+  const next = activeShots.find((s) => !isTaken(s)) ?? null;
+  // 「사진 한 장」 화면: 지금 보이는(휴지통 아닌) 전차 사진 중 몇 번째에서 열지
+  const [detailIndex, setDetailIndex] = useState<number | null>(null);
+
+  const autoDone = useRef(false);
+  useEffect(() => {
+    if (!autoShoot || autoDone.current || state.list === null || next === null) return;
+    autoDone.current = true;
+    void shoot(next);
+  }, [autoShoot, state.list, next, shoot]);
+
+  const thumbOf = useCallback(
+    (shot: Shot) => {
+      const localRef = state.refs[shot.id];
+      return localRef ? { uri: localRef } : shotRefThumbRequest(shot);
+    },
+    [state.refs],
+  );
 
   // 참조 이미지 내려받기(없는 것만, 온라인일 때). 한 장이 실패해도 다음 장을 계속 받고(404·500 한 건에
   // 전부 포기하지 않게 — 리뷰 6), 연속 실패가 쌓이면(오프라인) 그만둔다. 기기 저장은 몇 장마다 한 번.
@@ -105,23 +129,36 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
   );
 
   if (state.list === null && error) return <Text style={styles.error}>{error}</Text>;
-  if (state.list !== null && previous.length === 0) {
+  if (state.list === null) {
+    return (
+      <View style={{ gap: space.md }}>
+        <Skeleton style={{ height: 118, borderRadius: 22 }} />
+        <Skeleton style={{ height: 290, borderRadius: 26 }} />
+      </View>
+    );
+  }
+  if (previous.length === 0) {
     return <Text style={styles.notice}>웹 과업 상세에서 이 구조물에 전차보고서(한글)를 올리면 사진이 여기 뜹니다.</Text>;
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.summaryRow}>
-        <Text style={styles.summary}>{showTrash ? `휴지통 ${trashedCount}` : `${takenCount}/${activeShots.length} 찍음`}</Text>
-        <Pressable onPress={() => setShowTrash((v) => !v)} style={[styles.trashToggle, showTrash && styles.trashToggleOn]} accessibilityRole="button">
-          <Text style={[styles.trashToggleText, showTrash && styles.trashToggleTextOn]}>{showTrash ? '← 돌아가기' : `휴지통 ${trashedCount}`}</Text>
-        </Pressable>
-      </View>
-      {showTrash && visible.length === 0 && <Text style={styles.notice}>휴지통이 비어 있습니다.</Text>}
       <SectionList
         sections={sections}
         keyExtractor={(shot) => shot.id}
         stickySectionHeadersEnabled={false}
+        ListHeaderComponent={
+          <View>
+            {!showTrash && <ShotProgressCard taken={takenCount} total={activeShots.length} caption="전차 사진 · 같은 자리에서 다시" />}
+            <View style={styles.summaryRow}>
+              <Text style={styles.summary}>{showTrash ? `휴지통 ${trashedCount}` : `보고서 페이지 ${sections.length}`}</Text>
+              <Pressable onPress={() => setShowTrash((v) => !v)} style={[styles.trashToggle, showTrash && styles.trashToggleOn]} accessibilityRole="button">
+                <Text style={[styles.trashToggleText, showTrash && styles.trashToggleTextOn]}>{showTrash ? '← 돌아가기' : `휴지통 ${trashedCount}`}</Text>
+              </Pressable>
+            </View>
+            {showTrash && visible.length === 0 && <Text style={styles.notice}>휴지통이 비어 있습니다.</Text>}
+          </View>
+        }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
@@ -135,25 +172,40 @@ export function PreviousShotsView({ project, onPhotoQueued }: Props) {
             </Pressable>
           </View>
         )}
-        renderItem={({ item: shot }) => {
-          const localRef = state.refs[shot.id];
-          const refThumb = localRef ? { uri: localRef } : shotRefThumbRequest(shot);
-          return (
-            <CompareShotCard
-              member={shot.member}
-              label={shot.label}
-              number={shot.number}
-              caption={shot.caption}
-              taken={isTaken(shot)}
-              thumb={takenThumb(shot)}
-              refThumb={refThumb}
-              disabled={busyId !== null || showTrash}
-              onPress={() => void shoot(shot)}
-            />
-          );
-        }}
+        renderItem={({ item: shot }) => (
+          <PreviousShotCard
+            member={shot.member}
+            label={shot.label}
+            number={shot.number}
+            caption={shot.caption}
+            taken={isTaken(shot)}
+            thumb={takenThumb(shot)}
+            refThumb={thumbOf(shot)}
+            disabled={busyId !== null || showTrash}
+            onPress={() => void shoot(shot)}
+            onPressImage={() => {
+              const i = activeShots.findIndex((s) => s.id === shot.id);
+              if (i >= 0) setDetailIndex(i);
+            }}
+          />
+        )}
         contentContainerStyle={styles.list}
       />
+      {!showTrash && (
+        <NextShotButton nextLabel={next ? `${next.member} ${next.label}` : null} disabled={busyId !== null} onPress={() => next && void shoot(next)} />
+      )}
+      {detailIndex !== null && (
+        <ShotDetailModal
+          shots={activeShots}
+          startIndex={detailIndex}
+          projectName={state.list?.projectName ?? project.name}
+          refSource={(s) => (state.refs[s.id] ? { uri: state.refs[s.id] } : shotRefRequest(s) ?? thumbOf(s))}
+          takenThumb={takenThumb}
+          isTaken={isTaken}
+          onClose={() => setDetailIndex(null)}
+          onShoot={(s) => void shoot(s)}
+        />
+      )}
     </View>
   );
 }
@@ -162,16 +214,16 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.xs, paddingHorizontal: 2 },
   summary: { fontFamily: font.bold, fontSize: 15, color: colors.foreground },
-  trashToggle: { minHeight: 36, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.card },
-  trashToggleOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  trashToggleText: { fontFamily: font.semibold, fontSize: 13, color: colors.foreground },
+  trashToggle: { minHeight: 36, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card },
+  trashToggleOn: { backgroundColor: colors.foreground },
+  trashToggleText: { fontFamily: font.semibold, fontSize: 13, color: colors.ink2 },
   trashToggleTextOn: { color: colors.onPrimary },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.md, marginBottom: space.sm, paddingHorizontal: 2 },
-  sectionTitle: { fontFamily: font.bold, fontSize: 17, color: colors.foreground },
-  pageButton: { minHeight: TOUCH_MIN - 8, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.card },
-  pageButtonPressed: { backgroundColor: colors.muted },
-  pageButtonText: { fontFamily: font.regular, fontSize: 13, color: '#404145' },
-  list: { paddingBottom: space.xxl },
+  sectionTitle: { fontFamily: font.heavy, fontSize: 18, color: colors.foreground },
+  pageButton: { minHeight: TOUCH_MIN - 8, paddingHorizontal: space.md, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card },
+  pageButtonPressed: { backgroundColor: colors.border },
+  pageButtonText: { fontFamily: font.semibold, fontSize: 13, color: colors.ink2 },
+  list: { paddingBottom: space.lg },
   notice: { fontFamily: font.regular, fontSize: 15, color: colors.mutedForeground, lineHeight: 23, marginTop: space.xxl, textAlign: 'center' },
   error: { fontFamily: font.regular, fontSize: 15, color: colors.destructive, lineHeight: 23, marginTop: space.xxl, textAlign: 'center' },
 });

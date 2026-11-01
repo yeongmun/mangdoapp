@@ -251,6 +251,11 @@ export async function flushPhotoQueue(notify: (notice: UploadNotice) => void): P
   }
 }
 
+/** 「업로드 대기」 탭: 아직 안 올라간 사진들(먼저 찍은 것부터) */
+export function pendingPhotoItems(): PhotoQueueItem[] {
+  return [...readQueue()].sort((a, b) => a.addedAt - b.addedAt);
+}
+
 /** 목록 화면 배지의 숫자. */
 export function pendingPhotoCount(): number {
   return pendingCount(readQueue());

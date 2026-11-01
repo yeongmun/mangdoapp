@@ -1,14 +1,24 @@
-// 찍을 사진 한 장의 카드(2026-10-24, 2026-10-25 농농 시안으로 다시 그림). 카드 전체가 버튼이다(카메라).
-// - ShotCard: 필수 사진 줄 — 왼쪽 사진 자리, 가운데 부재·번호·설명, 오른쪽 체크 동그라미.
-// - CompareShotCard: 전차 사진 — 위에 [전차 | 이번] 두 장을 나란히, 아래 캡션. 같은 자리에서 찍기 쉽게.
-// 찍으면 초록 테두리 + ✓. 썸네일은 기기 사본(찍은 직후) 또는 서버 썸네일.
+// 찍을 사진 카드(2026-11-01 3차 시안 — 둥근 카드·파랑).
+// - ShotTile: [필수 사진] 2열 카드. 누르면 바로 카메라. 찍으면 사진 + 파란 ✓(톡 튀어나옴)
+// - PreviousShotCard: [전차 사진] 큰 카드. 위 보고서 사진을 누르면 「사진 한 장」 화면(onPressImage),
+//   아래 버튼은 바로 카메라(onShoot). 찍으면 이번 사진이 오른쪽 아래에 겹친다.
+// 누르는 동안 카드는 살짝 작아지고 사진은 살짝 커진다(PressScale·ZoomImage).
 import { Feather } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, font, radius, space } from '../theme';
+import { CheckPop, PressScale, ZoomImage } from './motion';
 
 type Source = { uri: string; headers?: Record<string, string> } | null;
 
-interface Props {
+function Check({ taken, size = 26 }: { taken: boolean; size?: number }) {
+  return (
+    <CheckPop visible={taken} style={[styles.check, { width: size, height: size, borderRadius: size / 2 }]}>
+      <Feather name="check" size={size * 0.55} color={colors.onPrimary} />
+    </CheckPop>
+  );
+}
+
+interface TileProps {
   member: string;
   label: string;
   number: string;
@@ -19,122 +29,117 @@ interface Props {
   onPress: () => void;
 }
 
-export function ShotCard({ member, label, number, taken, thumb, disabled = false, onPress }: Props) {
+export function ShotTile({ member, label, number, taken, thumb, disabled = false, onPress }: TileProps) {
   return (
-    <Pressable
+    <PressScale
       accessibilityRole="button"
-      accessibilityLabel={`${member} ${label} ${taken ? '찍음' : '안 찍음'}`}
+      accessibilityLabel={`${member} ${label} ${taken ? '찍음, 다시 찍기' : '안 찍음, 찍기'}`}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, styles.row, taken && styles.cardTaken, pressed && styles.cardPressed, disabled && styles.cardDisabled]}
+      style={[styles.tile, disabled && styles.disabled]}
     >
-      <View style={styles.rowThumb}>
-        {thumb ? <Image source={thumb} style={styles.fill} resizeMode="cover" /> : <Feather name="camera" size={24} color={colors.mutedForeground} />}
+      <View style={[styles.tilePhoto, !taken && styles.tilePhotoEmpty]}>
+        {taken && thumb ? <ZoomImage source={thumb} style={StyleSheet.absoluteFill} /> : <Feather name="camera" size={26} color={colors.subtle} />}
+        <View style={styles.checkCorner}>
+          <Check taken={taken} />
+        </View>
       </View>
-      <View style={styles.rowText}>
+      <View style={styles.tileText}>
         <Text style={styles.sub} numberOfLines={1}>
-          {member} · No. {number}
+          {member} · {number}
         </Text>
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={styles.tileTitle} numberOfLines={2}>
           {label}
         </Text>
       </View>
-      <View style={styles.markBox}>
-        <View style={[styles.mark, taken && styles.markTaken]}>{taken && <Feather name="check" size={16} color={colors.onSuccess} />}</View>
-      </View>
-    </Pressable>
+    </PressScale>
   );
 }
 
-interface CompareProps extends Props {
-  /** 보고서에서 뽑은 참조 이미지 */
+interface PreviousProps extends TileProps {
   refThumb: Source;
-  /** 보고서 캡션 원문 */
   caption?: string;
+  /** 보고서 사진을 눌렀을 때(사진 한 장 화면) */
+  onPressImage: () => void;
 }
 
-export function CompareShotCard({ member, label, number, taken, thumb, refThumb, caption, disabled = false, onPress }: CompareProps) {
+export function PreviousShotCard({ member, label, number, taken, thumb, refThumb, caption, disabled = false, onPress, onPressImage }: PreviousProps) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${caption ?? label} ${taken ? '찍음' : '안 찍음'}`}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.card, taken && styles.cardTaken, pressed && styles.cardPressed, disabled && styles.cardDisabled]}
-    >
-      <View style={styles.pair}>
-        <View style={[styles.half, styles.refHalf]}>
-          {refThumb ? <Image source={refThumb} style={styles.fill} resizeMode="cover" /> : <Feather name="image" size={24} color={colors.mutedForeground} />}
-          <Text style={styles.tag}>전차</Text>
-        </View>
-        <View style={[styles.half, taken ? styles.takenHalf : styles.emptyHalf]}>
-          {taken && thumb ? <Image source={thumb} style={styles.fill} resizeMode="cover" /> : null}
+    <View style={[styles.big, disabled && styles.disabled]}>
+      <PressScale onPress={onPressImage} accessibilityRole="imagebutton" accessibilityLabel={`${caption ?? label} 보고서 사진 크게 보기`} to={0.98}>
+        <View style={styles.bigPhoto}>
+          {refThumb ? <ZoomImage source={refThumb} style={StyleSheet.absoluteFill} /> : <Feather name="image" size={34} color="rgba(255,255,255,0.8)" />}
+          <Text style={styles.photoChip}>전차 보고서</Text>
+          {taken && thumb ? (
+            <View style={styles.inset}>
+              <ZoomImage source={thumb} style={StyleSheet.absoluteFill} />
+            </View>
+          ) : null}
           {taken ? (
-            <Text style={[styles.tag, styles.tagTaken]}>이번 · 찍음</Text>
-          ) : (
-            <>
-              <Feather name="camera" size={26} color={colors.foreground} />
-              <Text style={styles.shootText}>눌러서 촬영</Text>
-            </>
-          )}
+            <View style={styles.insetCheck}>
+              <Check taken size={26} />
+            </View>
+          ) : null}
         </View>
-      </View>
-      <View style={styles.caption}>
-        <Text style={styles.title} numberOfLines={2}>
+      </PressScale>
+      <View style={styles.bigText}>
+        <Text style={styles.bigTitle} numberOfLines={2}>
           {caption ?? label}
         </Text>
         <Text style={styles.sub}>
           {member} · No. {number}
         </Text>
       </View>
-    </Pressable>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.shootButton, taken ? styles.shootAgain : styles.shootFirst, pressed && styles.shootPressed]}
+      >
+        {!taken && <Feather name="camera" size={18} color={colors.primaryText} />}
+        <Text style={[styles.shootText, taken ? styles.shootTextAgain : styles.shootTextFirst]}>{taken ? '다시 찍기' : '같은 자리에서 찍기'}</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    marginBottom: space.sm + 2,
-  },
-  cardTaken: { borderWidth: 1.5, borderColor: colors.success },
-  cardPressed: { backgroundColor: colors.muted },
-  cardDisabled: { opacity: 0.5 },
-  fill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
-  // 필수 사진 줄
-  row: { flexDirection: 'row', alignItems: 'stretch', minHeight: 84 },
-  rowThumb: { width: 96, backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
-  rowText: { flex: 1, paddingHorizontal: space.md, paddingVertical: space.md, justifyContent: 'center', gap: 2 },
-  sub: { fontFamily: font.regular, fontSize: 13, color: colors.mutedForeground },
-  title: { fontFamily: font.bold, fontSize: 17, color: colors.foreground },
-  markBox: { width: 52, alignItems: 'center', justifyContent: 'center' },
-  mark: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#c5c6c9', alignItems: 'center', justifyContent: 'center' },
-  markTaken: { backgroundColor: colors.success, borderColor: colors.success },
-  // 전차 사진 카드
-  pair: { flexDirection: 'row', gap: 2, backgroundColor: colors.border },
-  half: { flex: 1, height: 132, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  refHalf: { backgroundColor: '#d9dbde' },
-  takenHalf: { backgroundColor: colors.successSoft },
-  emptyHalf: { backgroundColor: colors.background },
-  tag: {
+  disabled: { opacity: 0.5 },
+  check: { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff' },
+  sub: { fontFamily: font.semibold, fontSize: 12.5, color: colors.subtle },
+  // 필수 사진 2열 카드
+  tile: { backgroundColor: colors.card, borderRadius: radius.lg, padding: space.sm, gap: space.sm },
+  tilePhoto: { height: 104, borderRadius: 16, overflow: 'hidden', backgroundColor: '#c9d2dc', alignItems: 'center', justifyContent: 'center' },
+  tilePhotoEmpty: { backgroundColor: colors.muted },
+  checkCorner: { position: 'absolute', top: 8, right: 8 },
+  tileText: { paddingHorizontal: 6, paddingBottom: 4, gap: 1 },
+  tileTitle: { fontFamily: font.bold, fontSize: 15.5, color: colors.foreground },
+  // 전차 사진 큰 카드
+  big: { backgroundColor: colors.card, borderRadius: radius.xl, padding: 10, gap: space.md, marginBottom: space.md },
+  bigPhoto: { height: 180, borderRadius: 18, overflow: 'hidden', backgroundColor: '#9aa6b2', alignItems: 'center', justifyContent: 'center' },
+  photoChip: {
     position: 'absolute',
-    top: space.sm,
-    left: space.sm,
-    paddingHorizontal: space.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
+    top: 10,
+    left: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
     overflow: 'hidden',
-    backgroundColor: colors.card,
-    color: colors.foreground,
+    backgroundColor: colors.photoChip,
+    color: '#ffffff',
     fontFamily: font.bold,
     fontSize: 12,
   },
-  tagTaken: { backgroundColor: colors.success, color: colors.onSuccess },
-  shootText: { fontFamily: font.bold, fontSize: 13, color: colors.foreground },
-  caption: { paddingHorizontal: 14, paddingVertical: space.md, gap: 2 },
+  inset: { position: 'absolute', right: 10, bottom: 10, width: 84, height: 64, borderRadius: 12, borderWidth: 3, borderColor: '#ffffff', overflow: 'hidden', backgroundColor: '#7f98ad' },
+  insetCheck: { position: 'absolute', right: 4, bottom: 62 },
+  bigText: { paddingHorizontal: space.sm, gap: 3 },
+  bigTitle: { fontFamily: font.bold, fontSize: 17, color: colors.foreground },
+  shootButton: { minHeight: 48, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginHorizontal: 2, marginBottom: 2 },
+  shootFirst: { backgroundColor: colors.primarySoft },
+  shootAgain: { backgroundColor: colors.muted },
+  shootPressed: { opacity: 0.75 },
+  shootText: { fontFamily: font.bold, fontSize: 15 },
+  shootTextFirst: { color: colors.primaryText },
+  shootTextAgain: { color: colors.ink2 },
 });

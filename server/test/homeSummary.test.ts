@@ -79,3 +79,17 @@ describe('과업구분 필터', () => {
     expect(taskTypeOptions([{}, {}])).toEqual([]);
   });
 });
+
+describe('nextShot (이어서 찍기·다음 사진 찍기)', () => {
+  it('찍을 것(전차 있으면 전차, 없으면 필수) 중 안 찍은 첫 항목. 다 찍었거나 목록이 없으면 null', async () => {
+    const { nextShot } = await import('../../src/homeSummary.js');
+    expect(nextShot(cache([shot('1', { photo: { savedAt: 'x' } }), shot('2', { label: 'A2' })]))?.id).toBe('2');
+    expect(nextShot(cache([shot('1'), shot('2', { kind: 'previous' })]))?.id).toBe('2');
+    expect(nextShot(cache([shot('1')], { '1': { uri: 'f', takenAt: 1 } }))).toBeNull();
+    expect(nextShot(cache(null))).toBeNull();
+  });
+  it('kind를 주면 그 종류에서만 고른다(탭별 다음 사진)', async () => {
+    const { nextShot } = await import('../../src/homeSummary.js');
+    expect(nextShot(cache([shot('1'), shot('2', { kind: 'previous' })]), 'required')?.id).toBe('1');
+  });
+});
