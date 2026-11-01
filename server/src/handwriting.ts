@@ -23,7 +23,7 @@ export interface Transcriber {
 const NUM = String.raw`(\d+(?:[.,]\d+)?|[.,]\d+)`;
 
 function num(raw: string): number | null {
-  const n = Number(raw.replace(',', '.').replace(/^[.,]/, '0.'));
+  const n = Number(raw.replace(",", ".").replace(/^[.,]/, "0."));
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
@@ -31,19 +31,19 @@ export function parseHandwriting(text: string): HandwritingValues {
   // 모델이 설명을 덧붙이거나 따옴표·단위를 섞어도 숫자를 찾는다(2026-10-19: 앞뒤를 고정한 정규식이라
   // "0.2/0.3" 외의 글이 조금만 섞여도 전부 null이 됐다). O/o→0, l/I→1은 손글씨 전사의 흔한 혼동.
   let s = text
-    .replace(/[`"'“”‘’]/g, ' ')
-    .replace(/[，]/g, ',')
-    .replace(/(?<=\d)[Oo]|[Oo](?=[.,]?\d)/g, '0')
-    .replace(/(?<=\d)[lI|]|[lI|](?=[.,]?\d)/g, '1');
+    .replace(/[`"'“”‘’]/g, " ")
+    .replace(/[，]/g, ",")
+    .replace(/(?<=\d)[Oo]|[Oo](?=[.,]?\d)/g, "0")
+    .replace(/(?<=\d)[lI|]|[lI|](?=[.,]?\d)/g, "1");
   let count: number | null = null;
   // 개소: 3EA · 3ea · 3개 · 3개소 (어디에 있든 첫 번째)
   const ea = /(\d+)\s*(?:EA|ea|Ea|개소|개)(?![a-zA-Z가-힣])/.exec(s);
   if (ea) {
     count = Number(ea[1]);
-    s = s.slice(0, ea.index) + ' ' + s.slice(ea.index + ea[0].length);
+    s = s.slice(0, ea.index) + " " + s.slice(ea.index + ea[0].length);
   }
   // 숫자 뒤의 단위(mm, m, ㎡, cm)는 뗀다 — "0.2mm/0.3m"
-  s = s.replace(/(\d)\s*(mm|cm|㎡|m2|m)(?![a-zA-Z])/gi, '$1');
+  s = s.replace(/(\d)\s*(mm|cm|㎡|m2|m)(?![a-zA-Z])/gi, "$1");
   const pair = new RegExp(`${NUM}\\s*[/x×X*]\\s*${NUM}`).exec(s);
   if (pair) {
     // 뒤에 x3처럼 붙은 개소: "1.2x0.5x3"
@@ -59,15 +59,15 @@ export function parseHandwriting(text: string): HandwritingValues {
   return { width: null, length: null, count, text };
 }
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-export const DEFAULT_HANDWRITING_MODEL = 'claude-sonnet-5-5';
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+export const DEFAULT_HANDWRITING_MODEL = "claude-sonnet-5-5";
 
 // 2026-10-19: "읽을 수 없으면 빈 줄"이라고 하니 모델이 조금만 애매해도 빈 답을 냈다. 가장 그럴듯한 전사를 반드시 내게 한다.
 const PROMPT =
-  '이 그림은 교량 점검자가 태블릿 펜으로 쓴 짧은 손글씨 치수입니다. 획이 각지거나 삐뚤어도 숫자입니다. ' +
+  "이 그림은 교량 점검자가 태블릿 펜으로 쓴 짧은 손글씨 치수입니다. 획이 각지거나 삐뚤어도 숫자입니다. " +
   '형식은 보통 "폭/길이"(예: 0.2/0.3), "가로x세로"(예: 1.2x0.5), 뒤에 개소 "3EA"가 붙기도 합니다. ' +
-  '보이는 대로 **한 줄로만** 옮겨 적으세요: 숫자·소수점·슬래시(/)·곱하기(x)·EA만 씁니다. ' +
-  '애매해도 가장 그럴듯한 글자로 반드시 적고, 설명·따옴표·단위(mm, m)는 붙이지 마세요. 획이 전혀 없을 때만 빈 줄을 내세요.';
+  "보이는 대로 **한 줄로만** 옮겨 적으세요: 숫자·소수점·슬래시(/)·곱하기(x)·EA만 씁니다. " +
+  "애매해도 가장 그럴듯한 글자로 반드시 적고, 설명·따옴표·단위(mm, m)는 붙이지 마세요. 획이 전혀 없을 때만 빈 줄을 내세요.";
 
 /** Claude 비전으로 옮겨 적는다. 키가 없으면 만들지 않는다(앱에 "서버에 키가 없다"고 알린다). */
 export class ClaudeTranscriber implements Transcriber {
@@ -79,35 +79,46 @@ export class ClaudeTranscriber implements Transcriber {
 
   async transcribe(png: Buffer): Promise<string> {
     const res = await this.fetchImpl(ANTHROPIC_URL, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
+        "content-type": "application/json",
+        "x-api-key": this.apiKey,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
         model: this.model,
-        max_tokens: 64,
+        max_tokens: 1028,
         messages: [
           {
-            role: 'user',
+            role: "user",
             content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png.toString('base64') } },
-              { type: 'text', text: PROMPT },
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: "image/png",
+                  data: png.toString("base64"),
+                },
+              },
+              { type: "text", text: PROMPT },
             ],
           },
         ],
       }),
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`손글씨 인식 요청 실패 (${res.status}) ${body.slice(0, 200)}`);
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `손글씨 인식 요청 실패 (${res.status}) ${body.slice(0, 200)}`,
+      );
     }
-    const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+    const data = (await res.json()) as {
+      content?: { type: string; text?: string }[];
+    };
     return (data.content ?? [])
-      .filter((c) => c.type === 'text' && typeof c.text === 'string')
+      .filter((c) => c.type === "text" && typeof c.text === "string")
       .map((c) => c.text!)
-      .join('')
+      .join("")
       .trim();
   }
 }
