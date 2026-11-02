@@ -1,7 +1,8 @@
 // 「구조물 정보」 아래 시트(2026-11-03) — 교량의 경간·교대·교각·신축이음 수와 형식을 넣으면 서버가 필수 사진을
 // 그 수만큼 펴고(교각(P1)…), 형식에 맞지 않는 칸(케이블·강바닥판…)은 뺀다. 값 변환·검사는 순수 모듈 facilityInfo.ts.
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { BottomSheet } from './BottomSheet';
 import { PressScale } from './motion';
@@ -31,6 +32,21 @@ interface Props {
 
 export function FacilityInfoSheet({ visible, info, saving, onClose, onSave }: Props) {
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  // 키보드가 올라오면 시트가 그만큼 밀려 올라간다(BottomSheet의 KeyboardAvoidingView). 입력 영역 높이를
+  // 키보드 뺀 남은 높이에 맞춰 줄여야 제목·입력칸이 화면 위로 넘어가지 않는다(11-03 아이폰).
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboard(e.endCoordinates.height));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboard(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  // 손잡이·제목·설명·오류·저장 버튼·아래 여백 ≈ 280 + 위아래 안전 영역
+  const chrome = 280 + insets.top + insets.bottom;
+  const scrollMax = Math.max(140, Math.min(height * 0.6, height - keyboard - chrome));
   const [form, setForm] = useState<InfoForm>(() => formFromInfo(info));
   const [error, setError] = useState<string | null>(null);
   // 열 때마다 저장된 값으로 다시 채운다
@@ -53,7 +69,7 @@ export function FacilityInfoSheet({ visible, info, saving, onClose, onSave }: Pr
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="구조물 정보" description="경간·교각마다 찍을 칸이 생기고, 형식에 맞지 않는 칸은 빠져요.">
-      <ScrollView style={{ maxHeight: height * 0.6 }} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ maxHeight: scrollMax }} keyboardShouldPersistTaps="handled">
         <View style={styles.grid}>
           {[...COUNT_FIELDS, ...METER_FIELDS].map(([key, label]) => (
             <View key={key} style={styles.field}>

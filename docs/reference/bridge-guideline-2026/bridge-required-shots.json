@@ -1,7 +1,11 @@
 {
   "facilityType": "교량",
   "source": "시설물의 안전 및 유지관리 실시 세부지침(안전점검·진단 편) 해설서(교량편) 2026.2",
-  "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"],
+  "levels": [
+    "정기안전점검",
+    "정밀안전점검",
+    "정밀안전진단"
+  ],
   "legend": {
     "basis.지침": "해설서에 근거 있음 (ref에 조항)",
     "basis.관행": "해설서에 직접 규정은 없지만 보고서 전경·부위별 사진에 통상 들어가는 컷",
@@ -15,8 +19,17 @@
     "when": "이 조건이 맞는 교량에서만 목록에 나타남. 없으면 항상"
   },
   "conditions": {
-    "deck": ["concrete", "steel", "none"],
-    "girder": ["RC", "PSC", "steel", "none"],
+    "deck": [
+      "concrete",
+      "steel",
+      "none"
+    ],
+    "girder": [
+      "RC",
+      "PSC",
+      "steel",
+      "none"
+    ],
     "box": "박스거더 여부(true/false)",
     "trussOrArch": "트러스·아치교 여부",
     "cable": "현수교·사장교 등 케이블 교량 여부",
@@ -25,58 +38,635 @@
     "publicUse": "공중이 이용하는 부위 해당 항목 배열: 추락방지시설 | 도로포장 | 도로부신축이음부 | 환기구덮개"
   },
   "shots": [
-    { "id": "gen-side", "group": "전경", "member": "전경", "label": "교량 측면 전경", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "부록A 3.2·3.3 서두 '시설물의 전경사진'" },
-    { "id": "gen-deck-fwd", "group": "전경", "member": "교면", "label": "교면 전경(시점→종점)", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "관행" },
-    { "id": "gen-deck-back", "group": "전경", "member": "교면", "label": "교면 전경(종점→시점)", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "관행" },
-    { "id": "gen-name", "group": "전경", "member": "교명판", "label": "교명주·교명판", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "관행" },
-    { "id": "gen-under", "group": "전경", "member": "하면", "label": "교량 하면 전경", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "관행" },
-
-    { "id": "deck-conc", "group": "상부구조", "member": "바닥판", "label": "콘크리트 바닥판 하면", "hint": "균열·망상균열, 누수·백태, 철근노출. 받침부(단부) 부스러짐·사인장균열, 중앙부 휨균열", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "deck": "concrete" }, "basis": "지침", "ref": "1.2.1 가. 콘크리트 바닥판" },
-    { "id": "deck-steel", "group": "상부구조", "member": "강바닥판", "label": "강바닥판 하면", "hint": "도장 손상·부식, 피로균열(종리브-횡리브 교차부 등)", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "deck": "steel" }, "basis": "지침", "ref": "1.2.1 강바닥판" },
-
-    { "id": "gdr-rc-mid", "group": "상부구조", "member": "거더", "label": "RC 거더 지간중앙부", "hint": "휨(횡방향) 균열", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "girder": "RC" }, "basis": "지침", "ref": "1.2.1 철근콘크리트 거더 (단순보: 중앙·1/4·받침부, 연속보: 중앙·변곡점·교각상부·받침부, 라멘: 중앙·우각부·교각부)" },
-    { "id": "gdr-rc-end", "group": "상부구조", "member": "거더", "label": "RC 거더 받침부(단부)", "hint": "부스러짐, 복부 사인장균열", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "girder": "RC" }, "basis": "지침", "ref": "1.2.1 철근콘크리트 거더" },
-    { "id": "gdr-psc-mid", "group": "상부구조", "member": "거더", "label": "PSC 거더 중앙부", "hint": "휨균열·처짐, 쉬스관 노출, 강선방향 균열, 시공이음부 누수", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "girder": "PSC" }, "basis": "지침", "ref": "1.2.1 프리스트레스 콘크리트 거더" },
-    { "id": "gdr-psc-end", "group": "상부구조", "member": "거더", "label": "PSC 거더 받침부·강선 정착부", "hint": "부스러짐, 사인장균열, 정착부 균열·파손", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "girder": "PSC" }, "basis": "지침", "ref": "1.2.1 프리스트레스 콘크리트 거더" },
-    { "id": "gdr-steel-mid", "group": "상부구조", "member": "거더", "label": "강거더 중앙부", "hint": "부식, 플랜지 변형·처짐, 맞대기 용접부·덮개판 끝 균열", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "girder": "steel" }, "basis": "지침", "ref": "1.2.1 강 거더" },
-    { "id": "gdr-steel-end", "group": "상부구조", "member": "거더", "label": "강거더 받침부", "hint": "복부판 부식·국부좌굴, 지점보강재 하단 용접부 균열", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "girder": "steel" }, "basis": "지침", "ref": "1.2.1 강 거더" },
-    { "id": "gdr-steel-splice", "group": "상부구조", "member": "거더", "label": "강거더 현장이음부(볼트)", "hint": "볼트 손상, 누수", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "girder": "steel" }, "basis": "지침", "ref": "1.2.1 강 거더 공통" },
-    { "id": "gdr-box-inside", "group": "상부구조", "member": "거더", "label": "박스거더 내부", "hint": "강박스: 바닥 물고임·부식, 출입구 방치 / PSC박스: 플랜지·복부 강선방향 균열", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "box": true }, "basis": "지침", "ref": "1.2.1 강박스·PSC 박스거더" },
-    { "id": "gdr-truss-node", "group": "상부구조", "member": "거더", "label": "트러스·아치 부재 연결판(격점)", "hint": "현재·사재·수직재 연결판 부식, 균열, 변형", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "trussOrArch": true }, "basis": "지침", "ref": "1.2.1 강 거더 부재연결판" },
-
-    { "id": "xbeam", "group": "2차부재", "member": "가로보", "label": "가로보·세로보(브레이싱)", "hint": "콘크리트: 박락·철근노출·경사균열 / 강재: 변형, 교차부 균열, 거세트판 용접부 균열", "repeat": "perSpan", "levels": ["정기안전점검", "정밀안전진단"], "levelNote": "정기안전점검은 제3종시설물만, 정밀안전점검은 점검 대상 아님", "levelWhen": { "정기안전점검": { "facilityClass": 3 } }, "basis": "지침", "ref": "[표 1.1] 2차부재" },
-
-    { "id": "cable-main", "group": "케이블", "member": "케이블", "label": "케이블 전경", "hint": "도장 손상·부식, 변형·꺾임, 소선 단선, 보호관 파손", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "cable": true }, "basis": "지침", "ref": "1.2.1 케이블" },
-    { "id": "cable-anchor", "group": "케이블", "member": "정착구", "label": "케이블 정착구(댐퍼 포함)", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "cable": true }, "basis": "지침", "ref": "1.2.1 케이블" },
-    { "id": "cable-band", "group": "케이블", "member": "행어밴드", "label": "행어밴드·새들", "hint": "고정볼트 이완·탈락, 변형", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "cable": true }, "basis": "지침", "ref": "1.2.1 케이블" },
-    { "id": "pylon", "group": "하부구조", "member": "주탑", "label": "주탑(하단부 포함)", "hint": "강주탑 하단 연결볼트 부식·파단 / 콘크리트 주탑은 교각 요령", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "cable": true }, "basis": "지침", "ref": "1.2.1 강주탑·콘크리트 주탑" },
-
-    { "id": "abut-front", "group": "하부구조", "member": "교대", "label": "교대 전면(벽체)", "hint": "기울음, 수직균열, 배수구 막힘, 앞성토부 유실", "repeat": "perAbutment", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 교대" },
-    { "id": "abut-coping", "group": "하부구조", "member": "교대", "label": "교대 두부(코핑)·흉벽", "hint": "물고임, 받침부 균열, 두부-흉벽 경계 균열, 신축유간 부족", "repeat": "perAbutment", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 교대" },
-    { "id": "abut-wing", "group": "하부구조", "member": "날개벽", "label": "날개벽(좌·우)", "hint": "이동·전도, 구체와 분리, 뒤채움재 유출", "repeat": "perAbutment", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 교대" },
-    { "id": "pier-body", "group": "하부구조", "member": "교각", "label": "교각 전경(기둥·벽체)", "hint": "기울음, 시공이음부 균열, 수면접촉부 침식", "repeat": "perPier", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 교각" },
-    { "id": "pier-coping", "group": "하부구조", "member": "교각", "label": "교각 두부(코핑)", "hint": "물고임, 받침부 하부 균열·파손", "repeat": "perPier", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 교각" },
-    { "id": "foundation", "group": "하부구조", "member": "기초", "label": "기초(노출부·수면접촉부)", "hint": "침식, 세굴, 말뚝·케이슨 노출, 침하", "repeat": "perPier", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "river": true }, "basis": "지침", "ref": "1.2.1 기초 (수중이면 수중조사)" },
-
-    { "id": "bearing", "group": "받침", "member": "교량받침", "label": "교량받침(가동·고정)", "hint": "이동량, 밀착상태, 편기, 앵커볼트, 탄성받침 부풀음·갈라짐, 받침콘크리트 파손", "repeat": "perSupport", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 교량받침" },
-
-    { "id": "joint-top", "group": "기타부재", "member": "신축이음", "label": "신축이음 상면(본체·후타재)", "hint": "유간, 오물퇴적, 고무판 마모, 후타재 균열, 단차", "repeat": "perJoint", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 신축이음" },
-    { "id": "joint-under", "group": "기타부재", "member": "신축이음", "label": "신축이음 하면(누수)", "repeat": "perJoint", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 신축이음 본체 누수" },
-    { "id": "pavement", "group": "기타부재", "member": "교면포장", "label": "교면포장 상태", "hint": "균열, 함몰, 단차, 바퀴자국, 신축이음 전후 단차", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 교면포장 (경간별 기록 후 사진 촬영)" },
-    { "id": "drain-inlet", "group": "기타부재", "member": "배수시설", "label": "배수구(그레이팅)", "hint": "막힘, 뚜껑 파손·누락, 설치높이", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 배수시설" },
-    { "id": "drain-pipe", "group": "기타부재", "member": "배수시설", "label": "배수관(하면)", "hint": "연결부 어긋남, 지지철물 이완, 길이 부족", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 배수시설" },
-    { "id": "railing", "group": "기타부재", "member": "난간 및 연석", "label": "난간·연석(방호울타리)", "hint": "부식, 연결부 파손, 처짐·선형불량", "repeat": "perSide", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "1.2.1 난간 및 연석" },
-    { "id": "freeboard", "group": "하천", "member": "여유고", "label": "여유고(형하공간·수위)", "hint": "여유고 미확보·월류 흔적", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "river": true }, "basis": "지침", "ref": "1.2.1 여유고" },
-
-    { "id": "pub-fall", "group": "공중이용부위", "member": "추락방지시설", "label": "추락방지시설(보도 난간·점검로)", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "publicUse": "추락방지시설" }, "basis": "지침", "ref": "[표 1.1] 공중이 이용하는 부위" },
-    { "id": "pub-pave", "group": "공중이용부위", "member": "도로포장", "label": "도로포장(포트홀·배수불량)", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "publicUse": "도로포장" }, "basis": "지침", "ref": "[표 1.1] 공중이 이용하는 부위" },
-    { "id": "pub-joint", "group": "공중이용부위", "member": "도로부 신축이음부", "label": "도로부 신축이음부", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "publicUse": "도로부신축이음부" }, "basis": "지침", "ref": "[표 1.1] 공중이 이용하는 부위" },
-    { "id": "pub-cover", "group": "공중이용부위", "member": "환기구 등의 덮개", "label": "환기구·점검구 덮개", "repeat": "once", "levels": ["정기안전점검", "정밀안전점검", "정밀안전진단"], "when": { "publicUse": "환기구덮개" }, "basis": "지침", "ref": "[표 1.1] 공중이 이용하는 부위" },
-
-    { "id": "equip", "group": "기타", "member": "장비", "label": "사용장비 및 기기", "hint": "반발경도계, 탄산화 시약, 균열폭 측정기 등 실제 쓴 장비", "repeat": "once", "levels": ["정밀안전점검", "정밀안전진단"], "basis": "지침", "ref": "부록A 3.2·3.3 부록 '사용장비 및 기기의 사진'" }
+    {
+      "id": "gen-side",
+      "group": "전경",
+      "member": "전경",
+      "label": "교량 측면 전경",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "부록A 3.2·3.3 서두 '시설물의 전경사진'"
+    },
+    {
+      "id": "gen-deck-fwd",
+      "group": "전경",
+      "member": "교면",
+      "label": "교면 전경(시점→종점)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "관행"
+    },
+    {
+      "id": "gen-deck-back",
+      "group": "전경",
+      "member": "교면",
+      "label": "교면 전경(종점→시점)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "관행"
+    },
+    {
+      "id": "gen-name",
+      "group": "전경",
+      "member": "교명판",
+      "label": "교명주·교명판",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "관행"
+    },
+    {
+      "id": "gen-under",
+      "group": "전경",
+      "member": "하면",
+      "label": "교량 하면 전경",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "관행"
+    },
+    {
+      "id": "deck-conc",
+      "group": "상부구조",
+      "member": "바닥판",
+      "label": "콘크리트 바닥판 하면",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "deck": "concrete"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 가. 콘크리트 바닥판"
+    },
+    {
+      "id": "deck-steel",
+      "group": "상부구조",
+      "member": "강바닥판",
+      "label": "강바닥판 하면",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "deck": "steel"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 강바닥판"
+    },
+    {
+      "id": "gdr-rc-mid",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "RC 거더 지간중앙부",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "girder": "RC"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 철근콘크리트 거더 (단순보: 중앙·1/4·받침부, 연속보: 중앙·변곡점·교각상부·받침부, 라멘: 중앙·우각부·교각부)"
+    },
+    {
+      "id": "gdr-rc-end",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "RC 거더 받침부(단부)",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "girder": "RC"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 철근콘크리트 거더"
+    },
+    {
+      "id": "gdr-psc-mid",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "PSC 거더 중앙부",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "girder": "PSC"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 프리스트레스 콘크리트 거더"
+    },
+    {
+      "id": "gdr-psc-end",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "PSC 거더 받침부·강선 정착부",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "girder": "PSC"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 프리스트레스 콘크리트 거더"
+    },
+    {
+      "id": "gdr-steel-mid",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "강거더 중앙부",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "girder": "steel"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 강 거더"
+    },
+    {
+      "id": "gdr-steel-end",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "강거더 받침부",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "girder": "steel"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 강 거더"
+    },
+    {
+      "id": "gdr-steel-splice",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "강거더 현장이음부(볼트)",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "girder": "steel"
+      },
+      "basis": "지침",
+      "ref": "1.2.1 강 거더 공통"
+    },
+    {
+      "id": "gdr-box-inside",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "박스거더 내부",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "box": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 강박스·PSC 박스거더"
+    },
+    {
+      "id": "gdr-truss-node",
+      "group": "상부구조",
+      "member": "거더",
+      "label": "트러스·아치 부재 연결판(격점)",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "trussOrArch": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 강 거더 부재연결판"
+    },
+    {
+      "id": "xbeam",
+      "group": "2차부재",
+      "member": "가로보",
+      "label": "가로보·세로보(브레이싱)",
+      "repeat": "perSpan",
+      "levels": [
+        "정기안전점검",
+        "정밀안전진단"
+      ],
+      "levelNote": "정기안전점검은 제3종시설물만, 정밀안전점검은 점검 대상 아님",
+      "levelWhen": {
+        "정기안전점검": {
+          "facilityClass": 3
+        }
+      },
+      "basis": "지침",
+      "ref": "[표 1.1] 2차부재"
+    },
+    {
+      "id": "cable-main",
+      "group": "케이블",
+      "member": "케이블",
+      "label": "케이블 전경",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "cable": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 케이블"
+    },
+    {
+      "id": "cable-anchor",
+      "group": "케이블",
+      "member": "정착구",
+      "label": "케이블 정착구(댐퍼 포함)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "cable": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 케이블"
+    },
+    {
+      "id": "cable-band",
+      "group": "케이블",
+      "member": "행어밴드",
+      "label": "행어밴드·새들",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "cable": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 케이블"
+    },
+    {
+      "id": "pylon",
+      "group": "하부구조",
+      "member": "주탑",
+      "label": "주탑(하단부 포함)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "cable": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 강주탑·콘크리트 주탑"
+    },
+    {
+      "id": "abut-front",
+      "group": "하부구조",
+      "member": "교대",
+      "label": "교대 전면(벽체)",
+      "repeat": "perAbutment",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 교대"
+    },
+    {
+      "id": "abut-coping",
+      "group": "하부구조",
+      "member": "교대",
+      "label": "교대 두부(코핑)·흉벽",
+      "repeat": "perAbutment",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 교대"
+    },
+    {
+      "id": "abut-wing",
+      "group": "하부구조",
+      "member": "날개벽",
+      "label": "날개벽(좌·우)",
+      "repeat": "perAbutment",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 교대"
+    },
+    {
+      "id": "pier-body",
+      "group": "하부구조",
+      "member": "교각",
+      "label": "교각 전경(기둥·벽체)",
+      "repeat": "perPier",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 교각"
+    },
+    {
+      "id": "pier-coping",
+      "group": "하부구조",
+      "member": "교각",
+      "label": "교각 두부(코핑)",
+      "repeat": "perPier",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 교각"
+    },
+    {
+      "id": "foundation",
+      "group": "하부구조",
+      "member": "기초",
+      "label": "기초(노출부·수면접촉부)",
+      "repeat": "perPier",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "river": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 기초 (수중이면 수중조사)"
+    },
+    {
+      "id": "bearing",
+      "group": "받침",
+      "member": "교량받침",
+      "label": "교량받침(가동·고정)",
+      "repeat": "perSupport",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 교량받침"
+    },
+    {
+      "id": "joint-top",
+      "group": "기타부재",
+      "member": "신축이음",
+      "label": "신축이음 상면(본체·후타재)",
+      "repeat": "perJoint",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 신축이음"
+    },
+    {
+      "id": "joint-under",
+      "group": "기타부재",
+      "member": "신축이음",
+      "label": "신축이음 하면(누수)",
+      "repeat": "perJoint",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 신축이음 본체 누수"
+    },
+    {
+      "id": "pavement",
+      "group": "기타부재",
+      "member": "교면포장",
+      "label": "교면포장 상태",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 교면포장 (경간별 기록 후 사진 촬영)"
+    },
+    {
+      "id": "drain-inlet",
+      "group": "기타부재",
+      "member": "배수시설",
+      "label": "배수구(그레이팅)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 배수시설"
+    },
+    {
+      "id": "drain-pipe",
+      "group": "기타부재",
+      "member": "배수시설",
+      "label": "배수관(하면)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 배수시설"
+    },
+    {
+      "id": "railing",
+      "group": "기타부재",
+      "member": "난간 및 연석",
+      "label": "난간·연석(방호울타리)",
+      "repeat": "perSide",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "1.2.1 난간 및 연석"
+    },
+    {
+      "id": "freeboard",
+      "group": "하천",
+      "member": "여유고",
+      "label": "여유고(형하공간·수위)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "river": true
+      },
+      "basis": "지침",
+      "ref": "1.2.1 여유고"
+    },
+    {
+      "id": "pub-fall",
+      "group": "공중이용부위",
+      "member": "추락방지시설",
+      "label": "추락방지시설(보도 난간·점검로)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "publicUse": "추락방지시설"
+      },
+      "basis": "지침",
+      "ref": "[표 1.1] 공중이 이용하는 부위"
+    },
+    {
+      "id": "pub-pave",
+      "group": "공중이용부위",
+      "member": "도로포장",
+      "label": "도로포장(포트홀·배수불량)",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "publicUse": "도로포장"
+      },
+      "basis": "지침",
+      "ref": "[표 1.1] 공중이 이용하는 부위"
+    },
+    {
+      "id": "pub-joint",
+      "group": "공중이용부위",
+      "member": "도로부 신축이음부",
+      "label": "도로부 신축이음부",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "publicUse": "도로부신축이음부"
+      },
+      "basis": "지침",
+      "ref": "[표 1.1] 공중이 이용하는 부위"
+    },
+    {
+      "id": "pub-cover",
+      "group": "공중이용부위",
+      "member": "환기구 등의 덮개",
+      "label": "환기구·점검구 덮개",
+      "repeat": "once",
+      "levels": [
+        "정기안전점검",
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "publicUse": "환기구덮개"
+      },
+      "basis": "지침",
+      "ref": "[표 1.1] 공중이 이용하는 부위"
+    },
+    {
+      "id": "equip",
+      "group": "기타",
+      "member": "장비",
+      "label": "사용장비 및 기기",
+      "repeat": "once",
+      "levels": [
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "basis": "지침",
+      "ref": "부록A 3.2·3.3 부록 '사용장비 및 기기의 사진'"
+    }
   ],
   "testShots": {
     "note": "재료시험 사진은 고정 목록이 아니라 비파괴 계획(bridge-ndt-rules.json)에서 산출된 시험 개소마다 1장씩 만든다. 예: 반발경도 P3-1, 탄산화 S5-1",
-    "levels": ["정밀안전점검", "정밀안전진단"]
+    "levels": [
+      "정밀안전점검",
+      "정밀안전진단"
+    ]
   }
 }

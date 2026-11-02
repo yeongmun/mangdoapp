@@ -111,7 +111,6 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, o
                   <ShotTile
                     member={shot.member}
                     label={shot.label}
-                    hint={shot.hint}
                     number={shot.number}
                     taken={isTaken(shot)}
                     thumb={takenThumb(shot)}
