@@ -1,453 +1,453 @@
 {
- "info": [
-  {
-   "key": "subKinds",
-   "label": "시설 구성",
-   "type": "multi",
-   "required": true,
-   "default": [],
-   "options": [
-    [
-     "intake",
-     "취수시설(취수탑·취수문)"
-    ],
-    [
-     "intakeStation",
-     "취수장"
-    ],
-    [
-     "pipeline",
-     "관로(취·도·송수관로)"
-    ],
-    [
-     "waterTunnel",
-     "수로터널"
-    ],
-    [
-     "purification",
-     "정수시설(정수장)"
-    ],
-    [
-     "booster",
-     "가압장"
-    ],
-    [
-     "reservoir",
-     "배수지·조절지"
-    ]
-   ]
-  },
-  {
-   "key": "basins",
-   "label": "지(池)·수조 수",
-   "type": "count",
-   "default": 0,
-   "required": false,
-   "max": 60
-  },
-  {
-   "key": "pumps",
-   "label": "펌프 수(호기)",
-   "type": "count",
-   "default": 0,
-   "required": false,
-   "max": 30
-  },
-  {
-   "key": "valveChambers",
-   "label": "조사 밸브실 수",
-   "type": "count",
-   "default": 0,
-   "required": false,
-   "max": 200
-  },
-  {
-   "key": "testBoxes",
-   "label": "T/B(전위측정함) 수",
-   "type": "count",
-   "default": 0,
-   "required": false,
-   "max": 300
-  },
-  {
-   "key": "pipeLength",
-   "label": "관로 연장",
-   "type": "meter",
-   "default": 0,
-   "required": false,
-   "max": 200000
-  },
-  {
-   "key": "tunnelLength",
-   "label": "수로터널 연장",
-   "type": "meter",
-   "default": 0,
-   "required": false,
-   "max": 50000
-  },
-  {
-   "key": "tunnelSections",
-   "label": "수로터널 구간 수",
-   "type": "count",
-   "default": 3,
-   "required": false,
-   "max": 30
-  },
-  {
-   "key": "equipment",
-   "label": "있는 설비",
-   "type": "multi",
-   "default": [],
-   "required": false,
-   "options": [
-    [
-     "crane",
-     "크레인·호이스트(2톤 이하)"
-    ],
-    [
-     "surge",
-     "수격압 방지설비"
-    ],
-    [
-     "chlorine",
-     "염소중화설비"
-    ],
-    [
-     "drainPump",
-     "펌프실 배수펌프"
-    ],
-    [
-     "steel",
-     "강 구조물(연락교·약품탱크 등)"
-    ]
-   ]
-  },
-  {
-   "key": "publicUse",
-   "label": "공중이 이용하는 부위",
-   "type": "multi",
-   "default": [],
-   "required": false,
-   "options": [
-    [
-     "추락방지시설",
-     "추락방지시설"
-    ],
-    [
-     "도로포장",
-     "도로포장"
-    ],
-    [
-     "도로부신축이음부",
-     "도로부 신축이음부"
-    ],
-    [
-     "환기구덮개",
-     "환기구·맨홀 덮개"
-    ]
-   ]
-  }
- ],
- "shots": [
-  {
-   "member": "전경",
-   "label": "시설물 전경",
-   "근거": "세부지침 부록A 3.2·3.3 서두 '시설물의 전경사진, 부위별 사진'"
-  },
-  {
-   "member": "전경",
-   "label": "시설 출입구·명판",
-   "근거": "관행"
-  },
-  {
-   "member": "외벽",
-   "label": "구조물 외벽·주변지반(침하·경사)",
-   "근거": "세부지침 11.2.1 가. 2) 침하/부상·경사·활동, 해설 표 11.2.5"
-  },
-  {
-   "member": "신축이음",
-   "label": "구조물 신축이음부(누수·탈락)",
-   "근거": "세부지침 11.2.1 가. 2) 누수(신축이음 부위)·신축이음 탈락/열화"
-  },
-  {
-   "member": "방수도장",
-   "label": "방수·방식도장 상태",
-   "근거": "세부지침 11.2.2 가. 2)(가) ③, 해설 표 11.2.5"
-  },
-  {
-   "member": "취수탑",
-   "label": "취수탑·취수문 전경",
-   "when": {
-    "subKinds": "intake"
-   },
-   "근거": "세부지침 11.2.2 가. 1), 11.2.1 해설 2.(1)"
-  },
-  {
-   "member": "취수구",
-   "label": "취수구 주변 세굴·퇴사",
-   "when": {
-    "subKinds": "intake"
-   },
-   "근거": "세부지침 11.2.2 가. 1) ②"
-  },
-  {
-   "member": "취수부대",
-   "label": "취수시설 부대시설(스크린 등)",
-   "when": {
-    "subKinds": "intake"
-   },
-   "근거": "세부지침 11.2.2 가. 1) ③"
-  },
-  {
-   "member": "흡수정",
-   "label": "흡수정 내부(Pit)",
-   "when": {
-    "subKinds": "intakeStation"
-   },
-   "근거": "세부지침 11.2.2 가. 2)(가) ①"
-  },
-  {
-   "member": "취수펌프장",
-   "label": "취수펌프장 구조물 내부",
-   "when": {
-    "subKinds": "intakeStation"
-   },
-   "근거": "세부지침 11.2.2 가. 2)(가) ②"
-  },
-  {
-   "member": "관로",
-   "label": "관로 노선 답사(지상부)",
-   "when": {
-    "subKinds": "pipeline"
-   },
-   "근거": "세부지침 11.2.2 가. 3)(가) ④"
-  },
-  {
-   "member": "관노출부",
-   "label": "관 노출부 도장·부식",
-   "when": {
-    "subKinds": "pipeline"
-   },
-   "근거": "세부지침 11.2.2 가. 3)(가) ③"
-  },
-  {
-   "member": "횡단부",
-   "label": "하천·도로·철도 횡단구간",
-   "when": {
-    "subKinds": "pipeline"
-   },
-   "근거": "세부지침 11.2.2 가. 3)(가) ⑤⑥"
-  },
-  {
-   "member": "T/B",
-   "label": "T/B 관대지전위 측정",
-   "levels": [
-    "정밀안전점검",
-    "정밀안전진단"
-   ],
-   "when": {
-    "subKinds": "pipeline"
-   },
-   "근거": "세부지침 11.2.2 가. 3)(가) ⑦, [표 11.4]"
-  },
-  {
-   "member": "밸브실",
-   "label": "밸브실 외부 전경",
-   "repeat": {
-    "count": "valveChambers",
-    "prefix": "V"
-   },
-   "근거": "세부지침 11.2.1 나. 1)(파) 밸브실 상태평가표(예) 4. 사진대지 (정밀점검: 차도 상 밸브실, 진단: 전체)"
-  },
-  {
-   "member": "밸브실",
-   "label": "밸브실 내부(배관·밸브)",
-   "repeat": {
-    "count": "valveChambers",
-    "prefix": "V"
-   },
-   "근거": "세부지침 11.2.1 나. 1)(파) 밸브실 상태평가표(예) 4. 사진대지, 해설 1.(17)"
-  },
-  {
-   "member": "터널입구",
-   "label": "수로터널 입구부(절취면·보호공)",
-   "when": {
-    "subKinds": "waterTunnel"
-   },
-   "근거": "세부지침 11.2.2 나. 3)(다) ④"
-  },
-  {
-   "member": "터널출구",
-   "label": "수로터널 출구부(절취면·보호공)",
-   "when": {
-    "subKinds": "waterTunnel"
-   },
-   "근거": "세부지침 11.2.2 나. 3)(다) ④"
-  },
-  {
-   "member": "터널",
-   "label": "라이닝 내부(구간별)",
-   "levels": [
-    "정밀안전점검",
-    "정밀안전진단"
-   ],
-   "when": {
-    "subKinds": "waterTunnel"
-   },
-   "repeat": {
-    "count": "tunnelSections",
-    "prefix": "구간"
-   },
-   "근거": "세부지침 11.2.1 나. 2)(가) 구간(복합부재) 구분, 해설 표 11.2.4 (내부는 단수 필요 → 정밀점검·진단)"
-  },
-  {
-   "member": "수조",
-   "label": "지(池)·수조 내부 전경",
-   "repeat": {
-    "count": "basins",
-    "prefix": ""
-   },
-   "근거": "세부지침 [표 11.53] 3단계 복합부재(착수정·침전지·여과지·정수지 등), 11.2.1 해설 2.(2)"
-  },
-  {
-   "member": "배관실",
-   "label": "정수장 배관실(관랑)",
-   "when": {
-    "subKinds": "purification"
-   },
-   "근거": "관행"
-  },
-  {
-   "member": "가압펌프장",
-   "label": "가압장 구조물 내부",
-   "when": {
-    "subKinds": "booster"
-   },
-   "근거": "세부지침 11.2.2 가. 5) ①"
-  },
-  {
-   "member": "퇴수관로",
-   "label": "비상 퇴수관로",
-   "when": {
-    "subKinds": "booster"
-   },
-   "근거": "세부지침 11.2.2 가. 5) ③"
-  },
-  {
-   "member": "배수지상부",
-   "label": "배수지 상부·주변지반(누수·침하)",
-   "when": {
-    "subKinds": "reservoir"
-   },
-   "근거": "세부지침 11.2.2 가. 6) ②"
-  },
-  {
-   "member": "펌프",
-   "label": "펌프·전동기·베드",
-   "repeat": {
-    "count": "pumps",
-    "prefix": "P"
-   },
-   "근거": "세부지침 11.2.1 가. 4)(가), 11.2.2 다. 1) ②"
-  },
-  {
-   "member": "토출배관",
-   "label": "토출 배관·밸브",
-   "repeat": {
-    "count": "pumps",
-    "prefix": "P"
-   },
-   "근거": "세부지침 11.2.1 가. 4)(나), 11.2.2 다. 1) ①"
-  },
-  {
-   "member": "제어반",
-   "label": "기동반·현장제어반",
-   "repeat": {
-    "count": "pumps",
-    "prefix": "P"
-   },
-   "근거": "세부지침 11.2.1 가. 4)(다), 11.2.2 다. 2)"
-  },
-  {
-   "member": "수격압설비",
-   "label": "수격압 방지설비",
-   "when": {
-    "equipment": "surge"
-   },
-   "근거": "세부지침 11.2.2 가. 5) ②, 다. 1) ③"
-  },
-  {
-   "member": "크레인",
-   "label": "크레인·호이스트(레일·로프)",
-   "when": {
-    "equipment": "crane"
-   },
-   "근거": "세부지침 11.2.2 다. 1) ⑤, 11.2.1 가. 4) ※"
-  },
-  {
-   "member": "염소중화",
-   "label": "염소중화설비",
-   "when": {
-    "equipment": "chlorine"
-   },
-   "근거": "세부지침 11.2.2 다. 1) ②, 11.1.2 기계ㆍ전기설비 정의"
-  },
-  {
-   "member": "배수펌프",
-   "label": "펌프실 배수펌프",
-   "when": {
-    "equipment": "drainPump"
-   },
-   "근거": "세부지침 11.2.2 다. 1) ④"
-  },
-  {
-   "member": "강구조물",
-   "label": "강 구조물(연락교·약품탱크 등)",
-   "when": {
-    "equipment": "steel"
-   },
-   "근거": "세부지침 11.2.1 가. 3), 해설 3.(1)"
-  },
-  {
-   "member": "추락방지시설",
-   "label": "난간·점검로·사다리 등받이울",
-   "when": {
-    "publicUse": "추락방지시설"
-   },
-   "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, 11.4.1 나. 6) 해설 3"
-  },
-  {
-   "member": "도로포장",
-   "label": "도로포장(포트홀·배수불량)",
-   "when": {
-    "publicUse": "도로포장"
-   },
-   "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, [표 11.50]"
-  },
-  {
-   "member": "도로부신축이음",
-   "label": "도로부 신축이음부",
-   "when": {
-    "publicUse": "도로부신축이음부"
-   },
-   "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, [표 11.51]"
-  },
-  {
-   "member": "덮개",
-   "label": "환기구·맨홀·점검구 덮개",
-   "when": {
-    "publicUse": "환기구덮개"
-   },
-   "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, 11.4.1 나. 6) 해설 5"
-  },
-  {
-   "member": "장비",
-   "label": "사용장비 및 기기",
-   "levels": [
-    "정밀안전점검",
-    "정밀안전진단"
-   ],
-   "근거": "세부지침 부록A 3.2·3.3 부록 '사용장비 및 기기의 사진'"
-  }
- ]
+  "info": [
+    {
+      "key": "subKinds",
+      "label": "시설 구성",
+      "type": "multi",
+      "required": true,
+      "default": [],
+      "options": [
+        [
+          "intake",
+          "취수시설(취수탑·취수문)"
+        ],
+        [
+          "intakeStation",
+          "취수장"
+        ],
+        [
+          "pipeline",
+          "관로(취·도·송수관로)"
+        ],
+        [
+          "waterTunnel",
+          "수로터널"
+        ],
+        [
+          "purification",
+          "정수시설(정수장)"
+        ],
+        [
+          "booster",
+          "가압장"
+        ],
+        [
+          "reservoir",
+          "배수지·조절지"
+        ]
+      ]
+    },
+    {
+      "key": "basins",
+      "label": "지(池)·수조 수",
+      "type": "count",
+      "default": 0,
+      "required": false,
+      "max": 60
+    },
+    {
+      "key": "pumps",
+      "label": "펌프 수(호기)",
+      "type": "count",
+      "default": 0,
+      "required": false,
+      "max": 30
+    },
+    {
+      "key": "valveChambers",
+      "label": "조사 밸브실 수",
+      "type": "count",
+      "default": 0,
+      "required": false,
+      "max": 200
+    },
+    {
+      "key": "testBoxes",
+      "label": "T/B(전위측정함) 수",
+      "type": "count",
+      "default": 0,
+      "required": false,
+      "max": 300
+    },
+    {
+      "key": "pipeLength",
+      "label": "관로 연장",
+      "type": "meter",
+      "default": 0,
+      "required": false,
+      "max": 200000
+    },
+    {
+      "key": "tunnelLength",
+      "label": "수로터널 연장",
+      "type": "meter",
+      "default": 0,
+      "required": false,
+      "max": 50000
+    },
+    {
+      "key": "tunnelSections",
+      "label": "수로터널 구간 수",
+      "type": "count",
+      "default": 3,
+      "required": false,
+      "max": 30
+    },
+    {
+      "key": "equipment",
+      "label": "있는 설비",
+      "type": "multi",
+      "default": [],
+      "required": false,
+      "options": [
+        [
+          "crane",
+          "크레인·호이스트(2톤 이하)"
+        ],
+        [
+          "surge",
+          "수격압 방지설비"
+        ],
+        [
+          "chlorine",
+          "염소중화설비"
+        ],
+        [
+          "drainPump",
+          "펌프실 배수펌프"
+        ],
+        [
+          "steel",
+          "강 구조물(연락교·약품탱크 등)"
+        ]
+      ]
+    },
+    {
+      "key": "publicUse",
+      "label": "공중이 이용하는 부위",
+      "type": "multi",
+      "default": [],
+      "required": false,
+      "options": [
+        [
+          "추락방지시설",
+          "추락방지시설"
+        ],
+        [
+          "도로포장",
+          "도로포장"
+        ],
+        [
+          "도로부신축이음부",
+          "도로부 신축이음부"
+        ],
+        [
+          "환기구덮개",
+          "환기구·맨홀 덮개"
+        ]
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "member": "전경",
+      "label": "시설물 전경",
+      "근거": "세부지침 부록A 3.2·3.3 서두 '시설물의 전경사진, 부위별 사진'"
+    },
+    {
+      "member": "전경",
+      "label": "시설 출입구·명판",
+      "근거": "관행"
+    },
+    {
+      "member": "외벽",
+      "label": "구조물 외벽·주변지반",
+      "근거": "세부지침 11.2.1 가. 2) 침하/부상·경사·활동, 해설 표 11.2.5"
+    },
+    {
+      "member": "신축이음",
+      "label": "구조물 신축이음부",
+      "근거": "세부지침 11.2.1 가. 2) 누수(신축이음 부위)·신축이음 탈락/열화"
+    },
+    {
+      "member": "방수도장",
+      "label": "방수·방식도장 상태",
+      "근거": "세부지침 11.2.2 가. 2)(가) ③, 해설 표 11.2.5"
+    },
+    {
+      "member": "취수탑",
+      "label": "취수탑·취수문 전경",
+      "when": {
+        "subKinds": "intake"
+      },
+      "근거": "세부지침 11.2.2 가. 1), 11.2.1 해설 2.(1)"
+    },
+    {
+      "member": "취수구",
+      "label": "취수구 주변",
+      "when": {
+        "subKinds": "intake"
+      },
+      "근거": "세부지침 11.2.2 가. 1) ②"
+    },
+    {
+      "member": "취수부대",
+      "label": "취수시설 부대시설(스크린 등)",
+      "when": {
+        "subKinds": "intake"
+      },
+      "근거": "세부지침 11.2.2 가. 1) ③"
+    },
+    {
+      "member": "흡수정",
+      "label": "흡수정 내부(Pit)",
+      "when": {
+        "subKinds": "intakeStation"
+      },
+      "근거": "세부지침 11.2.2 가. 2)(가) ①"
+    },
+    {
+      "member": "취수펌프장",
+      "label": "취수펌프장 구조물 내부",
+      "when": {
+        "subKinds": "intakeStation"
+      },
+      "근거": "세부지침 11.2.2 가. 2)(가) ②"
+    },
+    {
+      "member": "관로",
+      "label": "관로 노선 답사(지상부)",
+      "when": {
+        "subKinds": "pipeline"
+      },
+      "근거": "세부지침 11.2.2 가. 3)(가) ④"
+    },
+    {
+      "member": "관노출부",
+      "label": "관 노출부",
+      "when": {
+        "subKinds": "pipeline"
+      },
+      "근거": "세부지침 11.2.2 가. 3)(가) ③"
+    },
+    {
+      "member": "횡단부",
+      "label": "하천·도로·철도 횡단구간",
+      "when": {
+        "subKinds": "pipeline"
+      },
+      "근거": "세부지침 11.2.2 가. 3)(가) ⑤⑥"
+    },
+    {
+      "member": "T/B",
+      "label": "T/B 관대지전위 측정",
+      "levels": [
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "subKinds": "pipeline"
+      },
+      "근거": "세부지침 11.2.2 가. 3)(가) ⑦, [표 11.4]"
+    },
+    {
+      "member": "밸브실",
+      "label": "밸브실 외부 전경",
+      "repeat": {
+        "count": "valveChambers",
+        "prefix": "V"
+      },
+      "근거": "세부지침 11.2.1 나. 1)(파) 밸브실 상태평가표(예) 4. 사진대지 (정밀점검: 차도 상 밸브실, 진단: 전체)"
+    },
+    {
+      "member": "밸브실",
+      "label": "밸브실 내부(배관·밸브)",
+      "repeat": {
+        "count": "valveChambers",
+        "prefix": "V"
+      },
+      "근거": "세부지침 11.2.1 나. 1)(파) 밸브실 상태평가표(예) 4. 사진대지, 해설 1.(17)"
+    },
+    {
+      "member": "터널입구",
+      "label": "수로터널 입구부(절취면·보호공)",
+      "when": {
+        "subKinds": "waterTunnel"
+      },
+      "근거": "세부지침 11.2.2 나. 3)(다) ④"
+    },
+    {
+      "member": "터널출구",
+      "label": "수로터널 출구부(절취면·보호공)",
+      "when": {
+        "subKinds": "waterTunnel"
+      },
+      "근거": "세부지침 11.2.2 나. 3)(다) ④"
+    },
+    {
+      "member": "터널",
+      "label": "라이닝 내부(구간별)",
+      "levels": [
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "when": {
+        "subKinds": "waterTunnel"
+      },
+      "repeat": {
+        "count": "tunnelSections",
+        "prefix": "구간"
+      },
+      "근거": "세부지침 11.2.1 나. 2)(가) 구간(복합부재) 구분, 해설 표 11.2.4 (내부는 단수 필요 → 정밀점검·진단)"
+    },
+    {
+      "member": "수조",
+      "label": "지(池)·수조 내부 전경",
+      "repeat": {
+        "count": "basins",
+        "prefix": ""
+      },
+      "근거": "세부지침 [표 11.53] 3단계 복합부재(착수정·침전지·여과지·정수지 등), 11.2.1 해설 2.(2)"
+    },
+    {
+      "member": "배관실",
+      "label": "정수장 배관실(관랑)",
+      "when": {
+        "subKinds": "purification"
+      },
+      "근거": "관행"
+    },
+    {
+      "member": "가압펌프장",
+      "label": "가압장 구조물 내부",
+      "when": {
+        "subKinds": "booster"
+      },
+      "근거": "세부지침 11.2.2 가. 5) ①"
+    },
+    {
+      "member": "퇴수관로",
+      "label": "비상 퇴수관로",
+      "when": {
+        "subKinds": "booster"
+      },
+      "근거": "세부지침 11.2.2 가. 5) ③"
+    },
+    {
+      "member": "배수지상부",
+      "label": "배수지 상부·주변지반",
+      "when": {
+        "subKinds": "reservoir"
+      },
+      "근거": "세부지침 11.2.2 가. 6) ②"
+    },
+    {
+      "member": "펌프",
+      "label": "펌프·전동기·베드",
+      "repeat": {
+        "count": "pumps",
+        "prefix": "P"
+      },
+      "근거": "세부지침 11.2.1 가. 4)(가), 11.2.2 다. 1) ②"
+    },
+    {
+      "member": "토출배관",
+      "label": "토출 배관·밸브",
+      "repeat": {
+        "count": "pumps",
+        "prefix": "P"
+      },
+      "근거": "세부지침 11.2.1 가. 4)(나), 11.2.2 다. 1) ①"
+    },
+    {
+      "member": "제어반",
+      "label": "기동반·현장제어반",
+      "repeat": {
+        "count": "pumps",
+        "prefix": "P"
+      },
+      "근거": "세부지침 11.2.1 가. 4)(다), 11.2.2 다. 2)"
+    },
+    {
+      "member": "수격압설비",
+      "label": "수격압 방지설비",
+      "when": {
+        "equipment": "surge"
+      },
+      "근거": "세부지침 11.2.2 가. 5) ②, 다. 1) ③"
+    },
+    {
+      "member": "크레인",
+      "label": "크레인·호이스트(레일·로프)",
+      "when": {
+        "equipment": "crane"
+      },
+      "근거": "세부지침 11.2.2 다. 1) ⑤, 11.2.1 가. 4) ※"
+    },
+    {
+      "member": "염소중화",
+      "label": "염소중화설비",
+      "when": {
+        "equipment": "chlorine"
+      },
+      "근거": "세부지침 11.2.2 다. 1) ②, 11.1.2 기계ㆍ전기설비 정의"
+    },
+    {
+      "member": "배수펌프",
+      "label": "펌프실 배수펌프",
+      "when": {
+        "equipment": "drainPump"
+      },
+      "근거": "세부지침 11.2.2 다. 1) ④"
+    },
+    {
+      "member": "강구조물",
+      "label": "강 구조물(연락교·약품탱크 등)",
+      "when": {
+        "equipment": "steel"
+      },
+      "근거": "세부지침 11.2.1 가. 3), 해설 3.(1)"
+    },
+    {
+      "member": "추락방지시설",
+      "label": "난간·점검로·사다리 등받이울",
+      "when": {
+        "publicUse": "추락방지시설"
+      },
+      "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, 11.4.1 나. 6) 해설 3"
+    },
+    {
+      "member": "도로포장",
+      "label": "도로포장",
+      "when": {
+        "publicUse": "도로포장"
+      },
+      "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, [표 11.50]"
+    },
+    {
+      "member": "도로부신축이음",
+      "label": "도로부 신축이음부",
+      "when": {
+        "publicUse": "도로부신축이음부"
+      },
+      "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, [표 11.51]"
+    },
+    {
+      "member": "덮개",
+      "label": "환기구·맨홀·점검구 덮개",
+      "when": {
+        "publicUse": "환기구덮개"
+      },
+      "근거": "세부지침 [표 11.1] 공중이 이용하는 부위, 11.4.1 나. 6) 해설 5"
+    },
+    {
+      "member": "장비",
+      "label": "사용장비 및 기기",
+      "levels": [
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "근거": "세부지침 부록A 3.2·3.3 부록 '사용장비 및 기기의 사진'"
+    }
+  ]
 }

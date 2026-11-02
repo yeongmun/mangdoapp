@@ -1,454 +1,454 @@
 {
- "info": [
-  {
-   "key": "units",
-   "label": "단위시설",
-   "type": "multi",
-   "options": [
-    [
-     "grit",
-     "침사지·유입펌프장"
-    ],
-    [
-     "equalization",
-     "유량조정조·분배조"
-    ],
-    [
-     "primary",
-     "최초침전지"
-    ],
-    [
-     "aeration",
-     "포기조(생물반응조)"
-    ],
-    [
-     "secondary",
-     "최종침전지"
-    ],
-    [
-     "disinfection",
-     "소독조"
-    ],
-    [
-     "outfall",
-     "방류관거·방류펌프장"
-    ],
-    [
-     "thickener",
-     "농축조"
-    ],
-    [
-     "digester",
-     "소화조"
-    ],
-    [
-     "dewatering",
-     "탈수기동"
-    ],
-    [
-     "otherTreatment",
-     "기타 수처리(탈질·탈인·여과)"
-    ],
-    [
-     "utilityTunnel",
-     "공동구"
-    ]
-   ],
-   "default": [],
-   "required": true
-  },
-  {
-   "key": "primaryCount",
-   "label": "최초침전지 지 수",
-   "type": "count",
-   "default": null,
-   "required": false,
-   "max": 30
-  },
-  {
-   "key": "aerationCount",
-   "label": "포기조 지 수",
-   "type": "count",
-   "default": null,
-   "required": false,
-   "max": 30
-  },
-  {
-   "key": "secondaryCount",
-   "label": "최종침전지 지 수",
-   "type": "count",
-   "default": null,
-   "required": false,
-   "max": 30
-  },
-  {
-   "key": "pumps",
-   "label": "주요 펌프 대수(11kW 초과)",
-   "type": "count",
-   "default": null,
-   "required": false,
-   "max": 40
-  },
-  {
-   "key": "chlorine",
-   "label": "염소 저장·중화설비",
-   "type": "bool",
-   "default": false,
-   "required": false
-  },
-  {
-   "key": "crane",
-   "label": "크레인·호이스트",
-   "type": "bool",
-   "default": true,
-   "required": false
-  },
-  {
-   "key": "steelStructure",
-   "label": "강재 구조물(연락교·탱크 등)",
-   "type": "bool",
-   "default": false,
-   "required": false
-  },
-  {
-   "key": "publicUse",
-   "label": "공중이 이용하는 부위",
-   "type": "multi",
-   "options": [
-    [
-     "추락방지시설",
-     "추락방지시설"
-    ],
-    [
-     "도로포장",
-     "도로포장"
-    ],
-    [
-     "도로부신축이음부",
-     "도로부 신축이음부"
-    ],
-    [
-     "환기구덮개",
-     "환기구 등의 덮개"
-    ]
-   ],
-   "default": [
-    "추락방지시설",
-    "환기구덮개"
-   ],
-   "required": false
-  },
-  {
-   "key": "repMembers",
-   "label": "부재별 대표부재 수(철근탐사)",
-   "type": "count",
-   "default": null,
-   "required": false,
-   "max": 50
-  }
- ],
- "shots": [
-  {
-   "member": "전경",
-   "label": "처리장 전경",
-   "근거": "세부지침 부록A 3.2·3.3 서두 '시설물의 전경사진'"
-  },
-  {
-   "member": "침사지",
-   "label": "침사지·유입펌프장 전경",
-   "when": {
-    "units": "grit"
-   },
-   "근거": "세부지침 12.2.2 가. 1)"
-  },
-  {
-   "member": "침사지",
-   "label": "침사지 내부(배수 후 벽체·바닥)",
-   "when": {
-    "units": "grit"
-   },
-   "근거": "세부지침 12.2.2 가. 1) 1지씩 지내 배수 후 조사"
-  },
-  {
-   "member": "유입펌프장",
-   "label": "펌프실 구조물(진동 균열)",
-   "when": {
-    "units": "grit"
-   },
-   "근거": "세부지침 12.2.2 가. 1) 기계가동 시 진동 균열"
-  },
-  {
-   "member": "스크린·수문",
-   "label": "스크린·수문·권양기(강재)",
-   "when": {
-    "units": "grit"
-   },
-   "근거": "세부지침 12.2.2 가. 1) 강재 구조물 도장·부식"
-  },
-  {
-   "member": "긴급차단게이트",
-   "label": "긴급차단게이트",
-   "when": {
-    "units": "grit"
-   },
-   "근거": "세부지침 12.2.2 가. 1), 12.2.1 나. 3)(마) 작동시험"
-  },
-  {
-   "member": "수위계",
-   "label": "Level Gauge(부식·작동)",
-   "when": {
-    "units": "grit"
-   },
-   "근거": "세부지침 12.2.2 가. 1)"
-  },
-  {
-   "member": "유량조정조",
-   "label": "유량조정조·분배조 내부",
-   "when": {
-    "units": "equalization"
-   },
-   "근거": "세부지침 12.2.2 가. 2)"
-  },
-  {
-   "member": "최초침전지",
-   "label": "최초침전지 전경",
-   "when": {
-    "units": "primary"
-   },
-   "근거": "세부지침 12.2.2 가. 3), 해설 12.2.1 사진 예시"
-  },
-  {
-   "member": "최초침전지",
-   "label": "지별 내부(벽체·바닥·상부슬래브)",
-   "when": {
-    "units": "primary"
-   },
-   "repeat": {
-    "count": "primaryCount",
-    "prefix": "PS"
-   },
-   "근거": "세부지침 12.2.2 가. 3), 12.2.1 【해설】1.(2) 벽체·슬래브 구분"
-  },
-  {
-   "member": "포기조",
-   "label": "포기조(생물반응조) 전경",
-   "when": {
-    "units": "aeration"
-   },
-   "근거": "세부지침 12.2.2 가. 4), 해설 12.2.1 사진 예시"
-  },
-  {
-   "member": "포기조",
-   "label": "지별 내부(벽체·바닥·격벽)",
-   "when": {
-    "units": "aeration"
-   },
-   "repeat": {
-    "count": "aerationCount",
-    "prefix": "AT"
-   },
-   "근거": "세부지침 12.2.2 가. 4)"
-  },
-  {
-   "member": "최종침전지",
-   "label": "최종침전지 전경",
-   "when": {
-    "units": "secondary"
-   },
-   "근거": "세부지침 12.2.2 가. 5)"
-  },
-  {
-   "member": "최종침전지",
-   "label": "지별 내부(벽체·바닥·상부슬래브)",
-   "when": {
-    "units": "secondary"
-   },
-   "repeat": {
-    "count": "secondaryCount",
-    "prefix": "FS"
-   },
-   "근거": "세부지침 12.2.2 가. 5)"
-  },
-  {
-   "member": "소독조",
-   "label": "소독조 내부",
-   "when": {
-    "units": "disinfection"
-   },
-   "근거": "세부지침 12.2.2 가. 6)"
-  },
-  {
-   "member": "염소설비",
-   "label": "염소 저장·중화설비·배관",
-   "when": {
-    "chlorine": true
-   },
-   "근거": "세부지침 12.2.2 다. 1)②, 12.2.1 나. 3)(라) 가스누출"
-  },
-  {
-   "member": "경보·중화장치",
-   "label": "경보·중화장치(약품 비치)",
-   "when": {
-    "chlorine": true
-   },
-   "근거": "세부지침 12.2.2 가. 6) 자동 작동·가성소다 비치"
-  },
-  {
-   "member": "방류펌프장",
-   "label": "방류관거·방류펌프장·방류수문",
-   "when": {
-    "units": "outfall"
-   },
-   "근거": "세부지침 12.2.2 가. 7), 12.2.1 나. 3)(마)"
-  },
-  {
-   "member": "농축조",
-   "label": "농축조 내부",
-   "when": {
-    "units": "thickener"
-   },
-   "근거": "세부지침 12.2.2 가. 8)"
-  },
-  {
-   "member": "소화조",
-   "label": "소화조 외부·내부",
-   "when": {
-    "units": "digester"
-   },
-   "근거": "세부지침 12.2.2 가. 8)"
-  },
-  {
-   "member": "가스설비",
-   "label": "가스 포집·저장·공급설비·배관",
-   "when": {
-    "units": "digester"
-   },
-   "근거": "세부지침 12.2.1 나. 3)(라) 메탄가스 누출"
-  },
-  {
-   "member": "탈수기",
-   "label": "탈수기·탈수기동",
-   "when": {
-    "units": "dewatering"
-   },
-   "근거": "세부지침 [해설 표 12.2.2] 하수처리설비(탈수기)"
-  },
-  {
-   "member": "기타수처리",
-   "label": "탈질·탈인·여과조",
-   "when": {
-    "units": "otherTreatment"
-   },
-   "근거": "세부지침 12.2.2 가. 9)"
-  },
-  {
-   "member": "공동구",
-   "label": "장내 공동구",
-   "when": {
-    "units": "utilityTunnel"
-   },
-   "근거": "세부지침 [표 12.6] 주1 대상시설물"
-  },
-  {
-   "member": "신축이음",
-   "label": "구조물 신축이음부(누수·탈락)",
-   "근거": "세부지침 12.2.1 가. 1), [표 12.25]·[표 12.26]"
-  },
-  {
-   "member": "주변지반",
-   "label": "구조물 주변지반(침하·함몰)",
-   "근거": "세부지침 [해설 표 12.2.1] 주변지반 공동·함몰, 12.2.1 가. 1) 침하/부상"
-  },
-  {
-   "member": "강구조물",
-   "label": "강재 구조물(연락교·탱크 등)",
-   "when": {
-    "steelStructure": true
-   },
-   "근거": "세부지침 12.2.1 가. 2), 【해설】2."
-  },
-  {
-   "member": "펌프",
-   "label": "펌프·전동기(베드 기초 포함)",
-   "repeat": {
-    "count": "pumps",
-    "prefix": "WP"
-   },
-   "근거": "세부지침 12.2.1 가. 3) 가), [표 12.34], 11kW 이하 제외"
-  },
-  {
-   "member": "장내배관",
-   "label": "장내 배관·관연결부",
-   "근거": "세부지침 12.2.1 가. 3) 나)"
-  },
-  {
-   "member": "밸브",
-   "label": "밸브(본체·플랜지·축봉부)",
-   "근거": "세부지침 12.2.1 가. 3) 나)"
-  },
-  {
-   "member": "배수펌프",
-   "label": "배수펌프 설치 상태",
-   "근거": "세부지침 12.2.2 다. 1)④"
-  },
-  {
-   "member": "크레인",
-   "label": "크레인·호이스트(레일·로프)",
-   "when": {
-    "crane": true
-   },
-   "근거": "세부지침 12.2.2 다. 1)⑤"
-  },
-  {
-   "member": "기동반",
-   "label": "기동반(MCC)·현장제어반",
-   "근거": "세부지침 12.2.2 다. 2)①②"
-  },
-  {
-   "member": "추락방지시설",
-   "label": "난간·점검로·사다리 등받이울",
-   "when": {
-    "publicUse": "추락방지시설"
-   },
-   "근거": "세부지침 12.1.4 나. 1), [표 12.42], 12.4.1 마. 【해설】3"
-  },
-  {
-   "member": "도로포장",
-   "label": "장내 도로포장(포트홀·물고임)",
-   "when": {
-    "publicUse": "도로포장"
-   },
-   "근거": "세부지침 12.1.4 나. 2), [표 12.43]"
-  },
-  {
-   "member": "도로부신축이음",
-   "label": "도로부 신축이음부",
-   "when": {
-    "publicUse": "도로부신축이음부"
-   },
-   "근거": "세부지침 12.1.4 나. 3), [표 12.44]"
-  },
-  {
-   "member": "환기구덮개",
-   "label": "맨홀·점검구 덮개",
-   "when": {
-    "publicUse": "환기구덮개"
-   },
-   "근거": "세부지침 12.1.4 나. 4), [표 12.45], 12.4.1 마. 【해설】5"
-  },
-  {
-   "member": "가스측정",
-   "label": "밀폐공간 산소·유해가스 측정",
-   "근거": "세부지침 12.2.2 라. 【해설】(4) 출입 전 농도 측정"
-  },
-  {
-   "member": "장비",
-   "label": "사용장비 및 기기",
-   "levels": [
-    "정밀안전점검",
-    "정밀안전진단"
-   ],
-   "근거": "세부지침 부록A 3.2·3.3 부록 '사용장비 및 기기의 사진'"
-  }
- ]
+  "info": [
+    {
+      "key": "units",
+      "label": "단위시설",
+      "type": "multi",
+      "options": [
+        [
+          "grit",
+          "침사지·유입펌프장"
+        ],
+        [
+          "equalization",
+          "유량조정조·분배조"
+        ],
+        [
+          "primary",
+          "최초침전지"
+        ],
+        [
+          "aeration",
+          "포기조(생물반응조)"
+        ],
+        [
+          "secondary",
+          "최종침전지"
+        ],
+        [
+          "disinfection",
+          "소독조"
+        ],
+        [
+          "outfall",
+          "방류관거·방류펌프장"
+        ],
+        [
+          "thickener",
+          "농축조"
+        ],
+        [
+          "digester",
+          "소화조"
+        ],
+        [
+          "dewatering",
+          "탈수기동"
+        ],
+        [
+          "otherTreatment",
+          "기타 수처리(탈질·탈인·여과)"
+        ],
+        [
+          "utilityTunnel",
+          "공동구"
+        ]
+      ],
+      "default": [],
+      "required": true
+    },
+    {
+      "key": "primaryCount",
+      "label": "최초침전지 지 수",
+      "type": "count",
+      "default": null,
+      "required": false,
+      "max": 30
+    },
+    {
+      "key": "aerationCount",
+      "label": "포기조 지 수",
+      "type": "count",
+      "default": null,
+      "required": false,
+      "max": 30
+    },
+    {
+      "key": "secondaryCount",
+      "label": "최종침전지 지 수",
+      "type": "count",
+      "default": null,
+      "required": false,
+      "max": 30
+    },
+    {
+      "key": "pumps",
+      "label": "주요 펌프 대수(11kW 초과)",
+      "type": "count",
+      "default": null,
+      "required": false,
+      "max": 40
+    },
+    {
+      "key": "chlorine",
+      "label": "염소 저장·중화설비",
+      "type": "bool",
+      "default": false,
+      "required": false
+    },
+    {
+      "key": "crane",
+      "label": "크레인·호이스트",
+      "type": "bool",
+      "default": true,
+      "required": false
+    },
+    {
+      "key": "steelStructure",
+      "label": "강재 구조물(연락교·탱크 등)",
+      "type": "bool",
+      "default": false,
+      "required": false
+    },
+    {
+      "key": "publicUse",
+      "label": "공중이 이용하는 부위",
+      "type": "multi",
+      "options": [
+        [
+          "추락방지시설",
+          "추락방지시설"
+        ],
+        [
+          "도로포장",
+          "도로포장"
+        ],
+        [
+          "도로부신축이음부",
+          "도로부 신축이음부"
+        ],
+        [
+          "환기구덮개",
+          "환기구 등의 덮개"
+        ]
+      ],
+      "default": [
+        "추락방지시설",
+        "환기구덮개"
+      ],
+      "required": false
+    },
+    {
+      "key": "repMembers",
+      "label": "부재별 대표부재 수(철근탐사)",
+      "type": "count",
+      "default": null,
+      "required": false,
+      "max": 50
+    }
+  ],
+  "shots": [
+    {
+      "member": "전경",
+      "label": "처리장 전경",
+      "근거": "세부지침 부록A 3.2·3.3 서두 '시설물의 전경사진'"
+    },
+    {
+      "member": "침사지",
+      "label": "침사지·유입펌프장 전경",
+      "when": {
+        "units": "grit"
+      },
+      "근거": "세부지침 12.2.2 가. 1)"
+    },
+    {
+      "member": "침사지",
+      "label": "침사지 내부(배수 후 벽체·바닥)",
+      "when": {
+        "units": "grit"
+      },
+      "근거": "세부지침 12.2.2 가. 1) 1지씩 지내 배수 후 조사"
+    },
+    {
+      "member": "유입펌프장",
+      "label": "펌프실 구조물",
+      "when": {
+        "units": "grit"
+      },
+      "근거": "세부지침 12.2.2 가. 1) 기계가동 시 진동 균열"
+    },
+    {
+      "member": "스크린·수문",
+      "label": "스크린·수문·권양기(강재)",
+      "when": {
+        "units": "grit"
+      },
+      "근거": "세부지침 12.2.2 가. 1) 강재 구조물 도장·부식"
+    },
+    {
+      "member": "긴급차단게이트",
+      "label": "긴급차단게이트",
+      "when": {
+        "units": "grit"
+      },
+      "근거": "세부지침 12.2.2 가. 1), 12.2.1 나. 3)(마) 작동시험"
+    },
+    {
+      "member": "수위계",
+      "label": "수위계(Level Gauge)",
+      "when": {
+        "units": "grit"
+      },
+      "근거": "세부지침 12.2.2 가. 1)"
+    },
+    {
+      "member": "유량조정조",
+      "label": "유량조정조·분배조 내부",
+      "when": {
+        "units": "equalization"
+      },
+      "근거": "세부지침 12.2.2 가. 2)"
+    },
+    {
+      "member": "최초침전지",
+      "label": "최초침전지 전경",
+      "when": {
+        "units": "primary"
+      },
+      "근거": "세부지침 12.2.2 가. 3), 해설 12.2.1 사진 예시"
+    },
+    {
+      "member": "최초침전지",
+      "label": "지별 내부(벽체·바닥·상부슬래브)",
+      "when": {
+        "units": "primary"
+      },
+      "repeat": {
+        "count": "primaryCount",
+        "prefix": "PS"
+      },
+      "근거": "세부지침 12.2.2 가. 3), 12.2.1 【해설】1.(2) 벽체·슬래브 구분"
+    },
+    {
+      "member": "포기조",
+      "label": "포기조(생물반응조) 전경",
+      "when": {
+        "units": "aeration"
+      },
+      "근거": "세부지침 12.2.2 가. 4), 해설 12.2.1 사진 예시"
+    },
+    {
+      "member": "포기조",
+      "label": "지별 내부(벽체·바닥·격벽)",
+      "when": {
+        "units": "aeration"
+      },
+      "repeat": {
+        "count": "aerationCount",
+        "prefix": "AT"
+      },
+      "근거": "세부지침 12.2.2 가. 4)"
+    },
+    {
+      "member": "최종침전지",
+      "label": "최종침전지 전경",
+      "when": {
+        "units": "secondary"
+      },
+      "근거": "세부지침 12.2.2 가. 5)"
+    },
+    {
+      "member": "최종침전지",
+      "label": "지별 내부(벽체·바닥·상부슬래브)",
+      "when": {
+        "units": "secondary"
+      },
+      "repeat": {
+        "count": "secondaryCount",
+        "prefix": "FS"
+      },
+      "근거": "세부지침 12.2.2 가. 5)"
+    },
+    {
+      "member": "소독조",
+      "label": "소독조 내부",
+      "when": {
+        "units": "disinfection"
+      },
+      "근거": "세부지침 12.2.2 가. 6)"
+    },
+    {
+      "member": "염소설비",
+      "label": "염소 저장·중화설비·배관",
+      "when": {
+        "chlorine": true
+      },
+      "근거": "세부지침 12.2.2 다. 1)②, 12.2.1 나. 3)(라) 가스누출"
+    },
+    {
+      "member": "경보·중화장치",
+      "label": "경보·중화장치(약품 비치)",
+      "when": {
+        "chlorine": true
+      },
+      "근거": "세부지침 12.2.2 가. 6) 자동 작동·가성소다 비치"
+    },
+    {
+      "member": "방류펌프장",
+      "label": "방류관거·방류펌프장·방류수문",
+      "when": {
+        "units": "outfall"
+      },
+      "근거": "세부지침 12.2.2 가. 7), 12.2.1 나. 3)(마)"
+    },
+    {
+      "member": "농축조",
+      "label": "농축조 내부",
+      "when": {
+        "units": "thickener"
+      },
+      "근거": "세부지침 12.2.2 가. 8)"
+    },
+    {
+      "member": "소화조",
+      "label": "소화조 외부·내부",
+      "when": {
+        "units": "digester"
+      },
+      "근거": "세부지침 12.2.2 가. 8)"
+    },
+    {
+      "member": "가스설비",
+      "label": "가스 포집·저장·공급설비·배관",
+      "when": {
+        "units": "digester"
+      },
+      "근거": "세부지침 12.2.1 나. 3)(라) 메탄가스 누출"
+    },
+    {
+      "member": "탈수기",
+      "label": "탈수기·탈수기동",
+      "when": {
+        "units": "dewatering"
+      },
+      "근거": "세부지침 [해설 표 12.2.2] 하수처리설비(탈수기)"
+    },
+    {
+      "member": "기타수처리",
+      "label": "탈질·탈인·여과조",
+      "when": {
+        "units": "otherTreatment"
+      },
+      "근거": "세부지침 12.2.2 가. 9)"
+    },
+    {
+      "member": "공동구",
+      "label": "장내 공동구",
+      "when": {
+        "units": "utilityTunnel"
+      },
+      "근거": "세부지침 [표 12.6] 주1 대상시설물"
+    },
+    {
+      "member": "신축이음",
+      "label": "구조물 신축이음부",
+      "근거": "세부지침 12.2.1 가. 1), [표 12.25]·[표 12.26]"
+    },
+    {
+      "member": "주변지반",
+      "label": "구조물 주변지반",
+      "근거": "세부지침 [해설 표 12.2.1] 주변지반 공동·함몰, 12.2.1 가. 1) 침하/부상"
+    },
+    {
+      "member": "강구조물",
+      "label": "강재 구조물(연락교·탱크 등)",
+      "when": {
+        "steelStructure": true
+      },
+      "근거": "세부지침 12.2.1 가. 2), 【해설】2."
+    },
+    {
+      "member": "펌프",
+      "label": "펌프·전동기(베드 기초 포함)",
+      "repeat": {
+        "count": "pumps",
+        "prefix": "WP"
+      },
+      "근거": "세부지침 12.2.1 가. 3) 가), [표 12.34], 11kW 이하 제외"
+    },
+    {
+      "member": "장내배관",
+      "label": "장내 배관·관연결부",
+      "근거": "세부지침 12.2.1 가. 3) 나)"
+    },
+    {
+      "member": "밸브",
+      "label": "밸브(본체·플랜지·축봉부)",
+      "근거": "세부지침 12.2.1 가. 3) 나)"
+    },
+    {
+      "member": "배수펌프",
+      "label": "배수펌프 설치 상태",
+      "근거": "세부지침 12.2.2 다. 1)④"
+    },
+    {
+      "member": "크레인",
+      "label": "크레인·호이스트(레일·로프)",
+      "when": {
+        "crane": true
+      },
+      "근거": "세부지침 12.2.2 다. 1)⑤"
+    },
+    {
+      "member": "기동반",
+      "label": "기동반(MCC)·현장제어반",
+      "근거": "세부지침 12.2.2 다. 2)①②"
+    },
+    {
+      "member": "추락방지시설",
+      "label": "난간·점검로·사다리 등받이울",
+      "when": {
+        "publicUse": "추락방지시설"
+      },
+      "근거": "세부지침 12.1.4 나. 1), [표 12.42], 12.4.1 마. 【해설】3"
+    },
+    {
+      "member": "도로포장",
+      "label": "장내 도로포장",
+      "when": {
+        "publicUse": "도로포장"
+      },
+      "근거": "세부지침 12.1.4 나. 2), [표 12.43]"
+    },
+    {
+      "member": "도로부신축이음",
+      "label": "도로부 신축이음부",
+      "when": {
+        "publicUse": "도로부신축이음부"
+      },
+      "근거": "세부지침 12.1.4 나. 3), [표 12.44]"
+    },
+    {
+      "member": "환기구덮개",
+      "label": "맨홀·점검구 덮개",
+      "when": {
+        "publicUse": "환기구덮개"
+      },
+      "근거": "세부지침 12.1.4 나. 4), [표 12.45], 12.4.1 마. 【해설】5"
+    },
+    {
+      "member": "가스측정",
+      "label": "밀폐공간 산소·유해가스 측정",
+      "근거": "세부지침 12.2.2 라. 【해설】(4) 출입 전 농도 측정"
+    },
+    {
+      "member": "장비",
+      "label": "사용장비 및 기기",
+      "levels": [
+        "정밀안전점검",
+        "정밀안전진단"
+      ],
+      "근거": "세부지침 부록A 3.2·3.3 부록 '사용장비 및 기기의 사진'"
+    }
+  ]
 }

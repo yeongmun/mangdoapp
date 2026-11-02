@@ -497,7 +497,7 @@
       "id": "joint-under",
       "group": "기타부재",
       "member": "신축이음",
-      "label": "신축이음 하면(누수)",
+      "label": "신축이음 하면",
       "repeat": "perJoint",
       "levels": [
         "정기안전점검",
@@ -601,7 +601,7 @@
       "id": "pub-pave",
       "group": "공중이용부위",
       "member": "도로포장",
-      "label": "도로포장(포트홀·배수불량)",
+      "label": "도로포장",
       "repeat": "once",
       "levels": [
         "정기안전점검",
