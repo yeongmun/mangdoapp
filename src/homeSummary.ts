@@ -10,6 +10,8 @@ export interface CachedShot {
   number: string;
   photo?: { savedAt: string };
   thumbUrl: string | null;
+  /** 원본 사진 주소(크게 보기) */
+  url?: string | null;
   trashed?: true;
 }
 

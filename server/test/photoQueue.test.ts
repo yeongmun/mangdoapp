@@ -148,3 +148,22 @@ describe('parseQueue', () => {
     expect('target' in parseQueue([item('b', { target: { kind: 'shot' } as never })])[0]).toBe(false);
   });
 });
+
+describe('holdUntil (되돌리기 틈)', () => {
+  const base = { id: 'h', drawingId: '', damageId: '', uri: 'file:///h.jpg', filename: 'h.jpg', addedAt: 1, tries: 0, lastTriedAt: 0 };
+  it('잡아 둔 동안은 보내지 않고, 시각이 지나면 보낸다', () => {
+    const item = { ...base, holdUntil: 5_000 };
+    expect(nextRetry([item], 4_999)).toBeNull();
+    expect(nextRetry([item], 5_000)?.id).toBe('h');
+  });
+  it('잡아 둔 항목은 건너뛰고 다음 항목을 보낸다', () => {
+    const held = { ...base, holdUntil: 9_000 };
+    const other = { ...base, id: 'o', addedAt: 2 };
+    expect(nextRetry([held, other], 1_000)?.id).toBe('o');
+  });
+  it('parseQueue가 holdUntil을 지킨다', () => {
+    const parsed = parseQueue([{ ...base, target: { kind: 'shot', projectId: 'p', shotId: 's' }, holdUntil: 7 }]);
+    expect(parsed[0].holdUntil).toBe(7);
+    expect(parseQueue([{ ...base, drawingId: 'd', damageId: 'x', holdUntil: 'x' }])[0].holdUntil).toBeUndefined();
+  });
+});

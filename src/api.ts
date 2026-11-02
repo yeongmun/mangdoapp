@@ -290,6 +290,12 @@ export async function fetchShots(projectId: string): Promise<ShotList> {
   return (await res.json()) as ShotList;
 }
 
+/** 찍은 사진 원본(크게 보기). 서버에 사진이 없으면 null */
+export function shotPhotoSource(shot: { url?: string | null; photo?: { savedAt: string } }): { uri: string; headers: Record<string, string> } | null {
+  if (!shot.url || !shot.photo) return null;
+  return { uri: `${API_URL}${shot.url}?v=${encodeURIComponent(shot.photo.savedAt)}`, headers: { 'x-access-key': ACCESS_KEY } };
+}
+
 /** 썸네일 전체 주소(Image source용). 서버는 x-access-key가 있어야 준다 */
 export function shotThumbSource(shot: { thumbUrl: string | null; photo?: { savedAt: string } }): { uri: string; headers: Record<string, string> } | null {
   if (!shot.thumbUrl) return null;

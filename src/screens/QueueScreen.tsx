@@ -4,7 +4,9 @@ import { Feather } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PressScale } from '../components/motion';
+import { AnimatedBar, PressScale, Skeleton } from '../components/motion';
+import { useOnline } from '../components/NetworkWatch';
+import { useUploadStatus } from '../useUploadStatus';
 import { useToast } from '../components/Toast';
 import { pendingPushCount } from '../offlineRules';
 import { readIndex } from '../offlineStore';
@@ -14,9 +16,12 @@ import { MAX_PHOTO_TRIES, type PhotoQueueItem } from '../photoQueue';
 import { flushPhotoQueue, pendingPhotoItems, retryPendingPhotos } from '../photoUpload';
 import { colors, font, space } from '../theme';
 
-function statusOf(item: PhotoQueueItem): { text: string; color: string } {
+function statusOf(item: PhotoQueueItem, uploadingId: string | null, online: boolean): { text: string; color: string } {
+  if (item.id === uploadingId) return { text: '올리는 중…', color: colors.primaryText };
+  if (item.holdUntil !== undefined && Date.now() < item.holdUntil) return { text: '방금 찍음 — 곧 보내요', color: colors.mutedForeground };
   if (item.tries >= MAX_PHOTO_TRIES) return { text: `${item.tries}번 실패 — 멈춤`, color: colors.destructive };
   if (item.tries > 0) return { text: `${item.tries}번 실패 — 곧 다시 보내요`, color: colors.tagOrangeFg };
+  if (!online) return { text: '인터넷 연결되면 보내요', color: colors.mutedForeground };
   return { text: '보낼 차례를 기다려요', color: colors.mutedForeground };
 }
 
@@ -27,6 +32,8 @@ export function QueueScreen({ active, onChanged }: { active: boolean; onChanged?
   const [items, setItems] = useState<PhotoQueueItem[]>([]);
   const [damages, setDamages] = useState(0);
   const [sending, setSending] = useState(false);
+  const upload = useUploadStatus();
+  const online = useOnline();
 
   const reload = useCallback(() => {
     const photos = pendingPhotoItems();
@@ -45,6 +52,10 @@ export function QueueScreen({ active, onChanged }: { active: boolean; onChanged?
     const t = setInterval(reload, 3000);
     return () => clearInterval(t);
   }, [active, reload]);
+  // 한 장 올라갈 때마다 바로 줄이 빠진다(3초를 기다리지 않게)
+  useEffect(() => {
+    if (active) reload();
+  }, [active, reload, upload.version]);
 
   const sendAll = useCallback(async () => {
     setSending(true);
@@ -60,7 +71,9 @@ export function QueueScreen({ active, onChanged }: { active: boolean; onChanged?
       setSending(false);
       onChanged?.(reload());
     }
-    const left = pendingPhotoItems().length;
+    // 방금 찍어 「되돌리기」를 기다리는 사진은 몇 초 뒤 저절로 간다 — 실패로 세지 않는다
+    const now = Date.now();
+    const left = pendingPhotoItems().filter((x) => x.holdUntil === undefined || now >= x.holdUntil).length;
     toast(left === 0 ? '모두 올렸어요' : `${left}장은 아직 못 올렸어요 — 연결을 확인해 주세요`);
   }, [reload, onChanged, toast]);
 
@@ -79,6 +92,14 @@ export function QueueScreen({ active, onChanged }: { active: boolean; onChanged?
             </>
           )}
         </Text>
+        {upload.total > 0 && (
+          <View style={styles.progress} accessibilityLabel={`올리는 중 ${Math.min(upload.done + 1, upload.total)} / ${upload.total}`}>
+            <Text style={styles.progressText}>
+              올리는 중 {Math.min(upload.done + 1, upload.total)} / {upload.total}
+            </Text>
+            <AnimatedBar ratio={upload.done / upload.total} height={6} />
+          </View>
+        )}
         {damages > 0 && <Text style={styles.sub}>손상 기록 {damages}개도 아직 서버에 안 올라갔어요(도면에서 그린 것)</Text>}
       </View>
 
@@ -97,7 +118,8 @@ export function QueueScreen({ active, onChanged }: { active: boolean; onChanged?
           ) : undefined
         }
         renderItem={({ item, index }) => {
-          const st = statusOf(item);
+          const st = statusOf(item, upload.uploadingId, online);
+          const uploading = item.id === upload.uploadingId;
           return (
             <View style={[styles.row, index === 0 && styles.rowFirst, index === items.length - 1 && styles.rowLast]}>
               <Image source={{ uri: item.uri }} style={styles.thumb} resizeMode="cover" />
@@ -106,6 +128,7 @@ export function QueueScreen({ active, onChanged }: { active: boolean; onChanged?
                   {item.filename}
                 </Text>
                 <Text style={[styles.status, { color: st.color }]}>{st.text}</Text>
+                {uploading && <Skeleton style={styles.uploadingBar} />}
               </View>
             </View>
           );
@@ -137,6 +160,9 @@ const styles = StyleSheet.create({
   thumb: { width: 52, height: 52, borderRadius: 12, backgroundColor: colors.border },
   name: { fontFamily: font.bold, fontSize: 14.5, color: colors.foreground },
   status: { fontFamily: font.semibold, fontSize: 12.5 },
+  uploadingBar: { height: 4, borderRadius: 2, backgroundColor: colors.primary, marginTop: 2 },
+  progress: { gap: 6, marginTop: 4 },
+  progressText: { fontFamily: font.semibold, fontSize: 13.5, color: colors.primaryText },
   empty: { alignItems: 'center', paddingTop: 48, paddingHorizontal: space.xl, gap: space.md },
   emptyIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 22, color: colors.mutedForeground, textAlign: 'center' },

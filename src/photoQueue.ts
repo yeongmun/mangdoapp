@@ -25,6 +25,8 @@ export interface PhotoQueueItem {
   tries: number;
   /** 마지막으로 보낸 시각(epoch ms). 아직 한 번도 안 보냈으면 0. */
   lastTriedAt: number;
+  /** 이 시각(epoch ms)까지는 보내지 않는다 — 찍은 직후 「되돌리기」를 누를 틈(2026-11-02). 없으면 바로 보낸다 */
+  holdUntil?: number;
 }
 
 export type PhotoUploadOutcome = 'ok' | 'retry' | 'drop';
@@ -47,6 +49,7 @@ export function nextRetry(queue: PhotoQueueItem[], now: number): PhotoQueueItem 
   let best: PhotoQueueItem | null = null;
   for (const item of Array.isArray(queue) ? queue : []) {
     if (item.tries >= MAX_PHOTO_TRIES) continue;
+    if (item.holdUntil !== undefined && now < item.holdUntil) continue;
     if (now - item.lastTriedAt < retryDelayMs(item.tries)) continue;
     if (best === null || item.addedAt < best.addedAt || (item.addedAt === best.addedAt && item.id < best.id)) {
       best = item;
@@ -117,6 +120,7 @@ export function parseQueue(value: unknown): PhotoQueueItem[] {
       lastTriedAt: numberOr(entry.lastTriedAt, 0),
     };
     if (target !== undefined) parsed.target = target;
+    if (typeof entry.holdUntil === 'number' && Number.isFinite(entry.holdUntil)) parsed.holdUntil = entry.holdUntil;
     result.push(parsed);
   }
   return result;

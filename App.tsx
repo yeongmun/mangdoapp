@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Drawing } from './src/api';
+import { NetworkWatch, OFFLINE_STRIP_HEIGHT, useOnline } from './src/components/NetworkWatch';
 import { TabBar, TAB_BAR_HEIGHT, type MainTab } from './src/components/TabBar';
 import { ToastProvider } from './src/components/Toast';
 import { pendingPhotoCount } from './src/photoUpload';
@@ -30,6 +31,9 @@ export default function App() {
   const [pending, setPending] = useState(() => pendingPhotoCount());
   const [navRequest, setNavRequest] = useState<{ projectId: string; nonce: number } | null>(null);
   const showTabBar = tab !== 'tasks' || listKind !== 'structure';
+  const online = useOnline();
+  const stripShown = showTabBar && !online;
+  const refreshPending = useCallback(() => setPending(pendingPhotoCount()), []);
 
   useEffect(() => {
     if (ready) void SplashScreen.hideAsync().catch(() => undefined);
@@ -55,7 +59,7 @@ export default function App() {
           <ViewerScreen drawing={opened} onBack={closeViewer} />
         </ToastProvider>
       ) : (
-        <ToastProvider bottomOffset={showTabBar ? TAB_BAR_HEIGHT : 0}>
+        <ToastProvider bottomOffset={(showTabBar ? TAB_BAR_HEIGHT : 0) + (stripShown ? OFFLINE_STRIP_HEIGHT : 0)}>
           <View style={{ flex: 1, backgroundColor: colors.background }}>
             {/* 세 화면을 모두 띄워 두고 고른 것만 보인다 — 과업 화면의 위치·스크롤이 탭을 오가도 그대로 */}
             <View style={{ flex: 1, display: tab === 'tasks' ? 'flex' : 'none' }}>
@@ -80,6 +84,7 @@ export default function App() {
             <View style={{ flex: 1, display: tab === 'queue' ? 'flex' : 'none' }}>
               <QueueScreen active={tab === 'queue'} onChanged={setPending} />
             </View>
+            <NetworkWatch online={online} showStrip={showTabBar} onFlushed={refreshPending} />
             {showTabBar && <TabBar value={tab} onChange={setTab} queueCount={pending} />}
           </View>
         </ToastProvider>

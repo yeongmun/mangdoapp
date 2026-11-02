@@ -3,7 +3,7 @@
 // 파일·네트워크만 다룬다. 근거: docs/superpowers/specs/2026-09-18-photo-upload-design.md 4장
 import { Directory, File, Paths, UploadType, type UploadResult } from 'expo-file-system';
 import { ACCESS_KEY, API_URL } from './config';
-import { applyResult, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQueueItem, type ShotTarget } from './photoQueue';
+import { applyResult, MAX_PHOTO_TRIES, nextRetry, parseQueue, pendingCount, retryAll, type PhotoQueueItem, type ShotTarget } from './photoQueue';
 import { extensionOf, mimeOf } from './photoShrink';
 
 /** 뷰어 화면에 머무는 동안 이 간격으로 다시 시도한다(설계 4.4). */
@@ -123,6 +123,8 @@ export function enqueuePhoto(input: {
   uploadUri: string;
   /** 촬영 항목(필수 사진) 대상이면 지정. 이때 drawingId·damageId는 '' */
   target?: ShotTarget;
+  /** 이만큼(ms) 기다렸다 보낸다 — 그 사이 「되돌리기」로 뺄 수 있다. 끝나면 저절로 보내기 시작한다 */
+  holdMs?: number;
 }): PhotoQueueItem | null {
   const item: PhotoQueueItem = {
     id: newItemId(),
@@ -135,11 +137,50 @@ export function enqueuePhoto(input: {
     lastTriedAt: 0,
   };
   if (input.target) item.target = input.target;
+  if (input.holdMs) item.holdUntil = item.addedAt + input.holdMs;
   if (!writeQueue([...readQueue(), item])) {
     removeFile(input.uploadUri);
     return null;
   }
+  emit();
+  if (input.holdMs) setTimeout(() => void flushPhotoQueue(() => undefined), input.holdMs + 200);
   return item;
+}
+
+/** 「되돌리기」: 아직 안 보낸 항목을 대기열에서 빼고 보관 사본을 지운다. 이미 보내기 시작했으면 false */
+export function removeQueuedPhoto(id: string): boolean {
+  if (status.uploadingId === id) return false;
+  const queue = readQueue();
+  const item = queue.find((x) => x.id === id);
+  if (!item) return false;
+  if (!writeQueue(queue.filter((x) => x.id !== id))) return false;
+  removeFile(item.uri);
+  emit();
+  return true;
+}
+
+// ── 화면이 보는 전송 상태(2026-11-02, 카톡·MYBOX 레퍼런스: 사진 칸에 올라가는 중/실패, 「올리는 중 2/5」)
+export interface UploadStatus {
+  /** 지금 올리고 있는 대기열 항목 id */
+  uploadingId: string | null;
+  /** 이번 보내기에서 끝낸 수 / 이번 보내기 시작 때 보낼 수(보내는 중이 아니면 0/0) */
+  done: number;
+  total: number;
+  /** 대기열이 바뀔 때마다 오른다 — 화면이 다시 읽을 때를 안다 */
+  version: number;
+}
+let status: UploadStatus = { uploadingId: null, done: 0, total: 0, version: 0 };
+const listeners = new Set<(s: UploadStatus) => void>();
+function emit(patch: Partial<UploadStatus> = {}): void {
+  status = { ...status, ...patch, version: status.version + 1 };
+  for (const l of listeners) l(status);
+}
+export function uploadStatus(): UploadStatus {
+  return status;
+}
+export function subscribeUploadStatus(listener: (s: UploadStatus) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 type Attempt =
@@ -210,10 +251,14 @@ let flushing = false;
 export async function flushPhotoQueue(notify: (notice: UploadNotice) => void): Promise<void> {
   if (flushing) return;
   flushing = true;
+  const startCount = readQueue().filter((x) => nextRetry([x], Date.now()) !== null).length;
+  emit({ done: 0, total: startCount });
   try {
     for (;;) {
       const item = nextRetry(readQueue(), Date.now());
       if (!item) return;
+      // 보내는 사이 새로 찍은 사진이 들어오면 분모도 늘린다
+      emit({ uploadingId: item.id, total: Math.max(status.total, status.done + 1) });
       // 방어적 이중 조치: uploadOne이 던지더라도(현재는 fetch·json 파싱 실패를 모두 안에서
       // 잡아 던지지 않지만, 앞으로 바뀔 수 있다) 이 루프의 바깥 try/finally가 flushing을 풀어
       // 주지만, 여기서도 잡아 'retry'로 넘겨 이 항목만 다음 차례로 미루고 나머지 항목·다음
@@ -229,6 +274,7 @@ export async function flushPhotoQueue(notify: (notice: UploadNotice) => void): P
       // 이번 회차는 여기서 멈추고, 다음 계기(60초 타이머 등)에 다시 시도한다. 성공한 업로드는
       // 서버에 이미 있으므로 다음 회차에 다시 올리더라도 같은 번호로 덮어쓸 뿐이다.
       const saved = writeQueue(applyResult(readQueue(), item.id, attempt.outcome, Date.now()));
+      emit({ uploadingId: null, done: status.done + 1 });
       if (!saved) {
         notify({ id: item.id, ok: false, damageId: item.damageId, reason: '전송 대기열을 저장하지 못했습니다', willRetry: true });
         return;
@@ -248,6 +294,7 @@ export async function flushPhotoQueue(notify: (notice: UploadNotice) => void): P
     }
   } finally {
     flushing = false;
+    emit({ uploadingId: null, done: 0, total: 0 });
   }
 }
 
@@ -269,4 +316,20 @@ export function pendingPhotoCountFor(drawingId: string): number {
 /** 배지를 눌렀을 때. 10번 실패해 멈춘 항목까지 되돌린다 — 이어서 flushPhotoQueue를 부른다. */
 export function retryPendingPhotos(): void {
   writeQueue(retryAll(readQueue()));
+  emit();
+}
+
+/** 촬영 항목별 대기열 상태 — 사진 칸의 작은 표시(올라가는 중·대기·실패)에 쓴다 */
+export type ShotUploadState = 'waiting' | 'uploading' | 'failed' | 'stopped';
+export function shotUploadStates(): Map<string, ShotUploadState> {
+  const out = new Map<string, ShotUploadState>();
+  for (const item of readQueue()) {
+    const shotId = item.target?.shotId;
+    if (!shotId) continue;
+    out.set(
+      shotId,
+      status.uploadingId === item.id ? 'uploading' : item.tries >= MAX_PHOTO_TRIES ? 'stopped' : item.tries > 0 ? 'failed' : 'waiting',
+    );
+  }
+  return out;
 }

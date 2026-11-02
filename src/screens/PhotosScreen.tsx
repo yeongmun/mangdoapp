@@ -1,5 +1,6 @@
 // 하단 메뉴 「찍은 사진」(2026-11-01). 이 폰에 받아 둔 촬영 목록(shots/*.json)에서 찍은 사진을 날짜별로 모아
-// 3열로 보여 준다. 사진을 누르면 그 구조물 화면으로 간다. 프로젝트 목록 없이 읽으므로 오프라인에서도 보인다.
+// 3열로 보여 준다. 사진을 누르면 크게 보기(PhotoViewer — 넘기기·확대·아래로 끌어 닫기, 2026-11-02),
+// 거기서 [구조물로 가기]. 프로젝트 목록 없이 읽으므로 오프라인에서도 보인다.
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { SectionList, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -8,6 +9,7 @@ import { shotThumbSource } from '../api';
 import { PressScale, ZoomImage } from '../components/motion';
 import { recentPhotos, type RecentPhoto } from '../homeSummary';
 import { listShotsLocal } from '../shotsLocal';
+import { PhotoViewer } from './PhotoViewer';
 import { colors, font, space } from '../theme';
 
 const COLUMNS = 3;
@@ -23,6 +25,8 @@ export function PhotosScreen({ active, onOpenStructure }: { active: boolean; onO
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [photos, setPhotos] = useState<RecentPhoto[]>([]);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const indexOf = useMemo(() => new Map(photos.map((p, i) => [`${p.projectId}-${p.shot.id}`, i])), [photos]);
   // 탭에 들어올 때마다 기기 파일을 다시 읽는다(방금 찍은 사진 반영)
   useEffect(() => {
     if (!active) return;
@@ -82,9 +86,9 @@ export function PhotosScreen({ active, onOpenStructure }: { active: boolean; onO
                   <PressScale
                     key={`${p.projectId}-${p.shot.id}`}
                     to={0.95}
-                    onPress={() => onOpenStructure(p.projectId)}
+                    onPress={() => setViewerIndex(indexOf.get(`${p.projectId}-${p.shot.id}`) ?? 0)}
                     accessibilityRole="button"
-                    accessibilityLabel={`${p.projectName} ${p.shot.member} ${p.shot.label}${p.localUri ? ', 아직 안 올라감' : ''}, 구조물로 가기`}
+                    accessibilityLabel={`${p.projectName} ${p.shot.member} ${p.shot.label}${p.localUri ? ', 아직 안 올라감' : ''}, 크게 보기`}
                     style={[styles.cell, { width: size, height: size }]}
                   >
                     {source ? <ZoomImage source={source} style={StyleSheet.absoluteFill} /> : null}
@@ -98,6 +102,9 @@ export function PhotosScreen({ active, onOpenStructure }: { active: boolean; onO
             </View>
           )}
         />
+      )}
+      {viewerIndex !== null && (
+        <PhotoViewer photos={photos} startIndex={viewerIndex} onClose={() => setViewerIndex(null)} onOpenStructure={onOpenStructure} />
       )}
     </View>
   );
