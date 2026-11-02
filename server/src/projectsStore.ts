@@ -25,6 +25,16 @@ export interface ProjectRecord {
   inspectionType?: InspectionType;
   facilityType?: FacilityType;
   taskType?: TaskType;
+  /** 구조물 위치(하위만, 2026-11-02) — 앱이 그 자리에서 사진을 찍을 때 폰 GPS로 기록한다. 홈 「근처 구조물」에 쓴다 */
+  location?: ProjectLocation;
+}
+
+export interface ProjectLocation {
+  lat: number;
+  lng: number;
+  /** 미터. 작을수록 정확 — 더 정확한 값이 오면 덮어쓴다 */
+  accuracy: number;
+  at: string;
 }
 
 export type ProjectRuleCode = 'name' | 'memo' | 'parent' | 'depth' | 'duplicate' | 'notEmpty' | 'type';
@@ -101,6 +111,29 @@ function validateTaskType(value: unknown, parentId: string | null): TaskType | u
   return value as TaskType;
 }
 
+export function validateLocation(value: unknown, parentId: string | null): ProjectLocation {
+  const v = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  const lat = v.lat, lng = v.lng, accuracy = v.accuracy, at = v.at;
+  const num = (x: unknown) => typeof x === 'number' && Number.isFinite(x);
+  if (!num(lat) || !num(lng) || Math.abs(lat as number) > 90 || Math.abs(lng as number) > 180) {
+    throw new ProjectRuleError('type', '위치 값이 올바르지 않습니다.');
+  }
+  if (parentId === null) throw new ProjectRuleError('type', '위치는 구조물(하위 프로젝트)에만 둘 수 있습니다.');
+  return {
+    lat: lat as number,
+    lng: lng as number,
+    accuracy: num(accuracy) && (accuracy as number) >= 0 ? (accuracy as number) : 1000,
+    at: typeof at === 'string' && at !== '' ? at : new Date().toISOString(),
+  };
+}
+
+/** 새 위치를 받아들일지 — 없으면 받고, 있으면 더 정확하거나(≤ accuracy) 1시간 넘게 지난 뒤면 바꾼다 */
+export function shouldReplaceLocation(current: ProjectLocation | undefined, next: ProjectLocation): boolean {
+  if (!current) return true;
+  if (next.accuracy <= current.accuracy) return true;
+  return Date.parse(next.at) - Date.parse(current.at) > 60 * 60 * 1000;
+}
+
 function validateFacilityType(value: unknown, parentId: string | null): FacilityType | undefined {
   if (value === undefined) return undefined;
   if (!FACILITY_TYPES.includes(value as FacilityType)) {
@@ -155,7 +188,7 @@ export class ProjectsStore {
   // inspectionType/facilityType/taskType은 null이면 지운다.
   update(
     id: string,
-    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown },
+    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown },
   ): Promise<ProjectRecord | null> {
     return this.serialize(async () => {
       const records = await this.readAll();
@@ -182,6 +215,13 @@ export class ProjectsStore {
       if ('taskType' in patch) {
         if (patch.taskType === null) delete next.taskType;
         else next.taskType = validateTaskType(patch.taskType, current.parentId);
+      }
+      if ('location' in patch) {
+        if (patch.location === null) delete next.location;
+        else {
+          const loc = validateLocation(patch.location, current.parentId);
+          if (shouldReplaceLocation(current.location, loc)) next.location = loc;
+        }
       }
       records[index] = next;
       await writeJsonFileAtomic(this.filePath, records);

@@ -71,6 +71,8 @@ export interface Project {
   taskType?: string;
   /** 시설물 종류 — 하위(구조물)에만. 서버 FACILITY_TYPES와 같은 값 */
   facilityType?: string;
+  /** 구조물 위치(하위만) — 그 자리에서 사진을 찍을 때 폰 GPS로 기록(2026-11-02). 홈 「근처 구조물」에 쓴다 */
+  location?: { lat: number; lng: number; accuracy: number; at: string };
 }
 
 export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
@@ -79,7 +81,7 @@ export const FACILITY_TYPES = ['교량', '터널', '옹벽', '절토사면', '�
 // 점검 종류·시설물 종류만 고친다. null은 지우기. 응답은 서버가 트리 계산을 거친 Project 하나.
 export async function updateProject(
   projectId: string,
-  patch: { inspectionType?: string | null; facilityType?: string | null },
+  patch: { inspectionType?: string | null; facilityType?: string | null; location?: { lat: number; lng: number; accuracy: number; at: string } | null },
 ): Promise<Project> {
   let res: Response;
   try {

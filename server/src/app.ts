@@ -648,12 +648,13 @@ export function createApp(deps: AppDeps) {
     const body = (req.body ?? {}) as Record<string, unknown>;
     // ProjectsStore.update는 준 키만 바꾼다 — req.body에 실제로 있던 키만 넘긴다(항상 undefined를
     // 넣으면 "그 키를 지워라"로 오해할 수 있다).
-    const patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown } = {};
+    const patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown } = {};
     if ('name' in body) patch.name = body.name;
     if ('memo' in body) patch.memo = body.memo;
     if ('inspectionType' in body) patch.inspectionType = body.inspectionType;
     if ('facilityType' in body) patch.facilityType = body.facilityType;
     if ('taskType' in body) patch.taskType = body.taskType;
+    if ('location' in body) patch.location = body.location;
     try {
       const updated = await deps.projects.update(id, patch);
       if (!updated) {

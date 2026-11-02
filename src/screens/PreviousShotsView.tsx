@@ -10,6 +10,7 @@ import { PreviousShotCard } from '../components/ShotCard';
 import { AllDoneCard, NextShotButton, ShotProgressCard, TakenHeader } from '../components/ShotProgress';
 import { useCelebrate } from '../useCelebrate';
 import { Skeleton } from '../components/motion';
+import { CameraScreen } from './CameraScreen';
 import { ShotDetailModal } from './ShotDetailModal';
 import { refFileFor, writeShotsLocal } from '../shotsLocal';
 import { useShots } from '../useShots';
@@ -23,7 +24,7 @@ interface Props {
 }
 
 export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }: Props) {
-  const { state, setState, error, busyId, refresh, isTaken, takenThumb, shoot, uploadStates } = useShots(project, onPhotoQueued);
+  const { state, setState, error, busyId, refresh, isTaken, takenThumb, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates } = useShots(project, onPhotoQueued);
   const [showTrash, setShowTrash] = useState(false);
   const [takenOpen, setTakenOpen] = useState(false);
   const [changingGroup, setChangingGroup] = useState<string | null>(null);
@@ -43,7 +44,7 @@ export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }:
   useEffect(() => {
     if (!autoShoot || autoDone.current || state.list === null || next === null) return;
     autoDone.current = true;
-    void shoot(next);
+    shoot(next);
   }, [autoShoot, state.list, next, shoot]);
 
   const thumbOf = useCallback(
@@ -221,7 +222,7 @@ export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }:
             refThumb={thumbOf(shot)}
             upload={uploadStates.get(shot.id)}
             disabled={busyId !== null || showTrash}
-            onPress={() => void shoot(shot)}
+            onPress={() => shoot(shot)}
             onPressImage={() => {
               const i = activeShots.findIndex((s) => s.id === shot.id);
               if (i >= 0) setDetailIndex(i);
@@ -231,7 +232,7 @@ export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }:
         contentContainerStyle={styles.list}
       />
       {!showTrash && (
-        <NextShotButton nextLabel={next ? `${next.member} ${next.label}` : null} disabled={busyId !== null} onPress={() => next && void shoot(next)} />
+        <NextShotButton nextLabel={next ? `${next.member} ${next.label}` : null} disabled={busyId !== null} onPress={() => next && shoot(next)} />
       )}
       {detailIndex !== null && (
         <ShotDetailModal
@@ -242,7 +243,21 @@ export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }:
           takenThumb={takenThumb}
           isTaken={isTaken}
           onClose={() => setDetailIndex(null)}
-          onShoot={(s) => void shoot(s)}
+          onShoot={(s) => shoot(s)}
+        />
+      )}
+      {cameraShotId !== null && (
+        <CameraScreen
+          shots={activeShots}
+          startShotId={cameraShotId}
+          mode="previous"
+          isTaken={isTaken}
+          takenThumb={takenThumb}
+          refSource={(s) => (state.refs[s.id] ? { uri: state.refs[s.id] } : shotRefRequest(s) ?? thumbOf(s))}
+          refThumbSource={thumbOf}
+          uploadStates={uploadStates}
+          onCapture={(s, r, inCamera) => commitPhoto(s, r, inCamera)}
+          onClose={closeCamera}
         />
       )}
     </View>

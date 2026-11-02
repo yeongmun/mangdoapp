@@ -74,26 +74,41 @@ function removeQuietly(uri: string): void {
   }
 }
 
+/** 폰 기본 카메라(ImagePicker)로 한 장 찍어 저장한다 — 뷰어(손상 사진)가 쓴다. 촬영 항목은 앱 안 카메라(CameraScreen)가 찍고 savePhotoFromUri로 저장 */
 export async function takePhotoAndSave(): Promise<PhotoResult> {
+  // 1. 카메라 권한.
+  const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!cameraPermission.granted) return { ok: false, reason: '카메라 권한이 없습니다' };
+
+  // 2. 촬영. 크롭 없이 원본 화질 그대로 받는다(조사 1장).
+  let result: ImagePicker.ImagePickerResult;
   try {
-    // 1. 카메라 권한.
-    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!cameraPermission.granted) return { ok: false, reason: '카메라 권한이 없습니다' };
+    result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+  } catch (err) {
+    return { ok: false, reason: `사진을 저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  if (result.canceled) return { ok: false, reason: '취소' };
+  const asset = result.assets[0];
+  if (!asset) return { ok: false, reason: '취소' };
+  return savePhotoFromUri(asset.uri, asset.width, asset.height);
+}
 
-    // 2. 촬영. 크롭 없이 원본 화질 그대로 받는다(조사 1장).
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
-    if (result.canceled) return { ok: false, reason: '취소' };
-    const asset = result.assets[0];
-    if (!asset) return { ok: false, reason: '취소' };
-
+/**
+ * 이미 찍힌 사진 파일(앱 안 카메라의 takePictureAsync 결과 등)을 앨범에 저장하고 서버용 축소 사본을 만든다
+ * (2026-11-02). 위 takePhotoAndSave의 3~7단계와 같다.
+ */
+export async function savePhotoFromUri(sourceUri: string, width: number, height: number): Promise<PhotoResult> {
+  try {
     // 3. 우리 규칙의 파일명으로 캐시에 복사한다. 실패하면(이미 있음·쓰기 불가 등) 원본 uri로 진행한다.
     const ourName = photoFileName(new Date());
-    let uri = asset.uri;
+    let uri = sourceUri;
     try {
       const sourceFile = new File(uri);
       const destFile = new File(Paths.cache, ourName);
       await sourceFile.copy(destFile, { overwrite: true });
       uri = destFile.uri;
+      // 원래 캐시 파일(카메라·피커 출력)은 이제 필요 없다 — 한 장마다 원본 하나씩 쌓이지 않게
+      removeQuietly(sourceUri);
     } catch {
       // 원본 uri 그대로 진행 — 아래 앨범 저장은 그래도 될 수 있다.
     }
@@ -109,7 +124,7 @@ export async function takePhotoAndSave(): Promise<PhotoResult> {
     // 6. 서버로 보낼 사본은 **줄여서** 만든다(2026-09-18 설계 2장): 긴 변 1600px, JPEG 75%. 앨범에는
     // 원본이 그대로 남고, 서버에는 이 축소본만 간다(4~5MB → 300~500KB, HEIC도 JPEG가 된다).
     // 줄이기가 실패하면 원본을 그대로 보낸다 — 사진을 잃는 것보다 낫다.
-    const uploadSource = await shrinkForUpload(uri, asset.width, asset.height);
+    const uploadSource = await shrinkForUpload(uri, width, height);
     // 7. 그 사본을 문서 폴더에 둔다(설계 4.3). 앨범 파일은 권한 때문에, 캐시 사본은 시스템이 지울 수
     // 있어 나중에 다시 읽기 어렵다. 실패해도 촬영 자체는 성공이다 — uploadUri만 null로 돌려주고
     // 호출부가 전송을 건너뛴다.

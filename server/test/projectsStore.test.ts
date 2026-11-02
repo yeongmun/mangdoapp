@@ -250,3 +250,27 @@ describe('과업구분(taskType)', () => {
     await expect(store.create({ name: 'Z', parentId: top.id, taskType: '정기안전점검' }, T)).rejects.toMatchObject({ code: 'type' });
   });
 });
+
+describe('구조물 위치(location, 2026-11-02)', () => {
+  it('구조물에만 둘 수 있고, 더 정확한 값만 덮어쓴다', async () => {
+    const top = await store.create({ name: 'OO용역' }, '2026-11-02T00:00:00.000Z');
+    const child = await store.create({ name: 'A교', parentId: top.id }, '2026-11-02T00:00:01.000Z');
+    await expect(store.update(top.id, { location: { lat: 35.1, lng: 129.0, accuracy: 10, at: '2026-11-02T01:00:00.000Z' } })).rejects.toBeInstanceOf(ProjectRuleError);
+    await expect(store.update(child.id, { location: { lat: 'x', lng: 1 } })).rejects.toBeInstanceOf(ProjectRuleError);
+
+    const first = await store.update(child.id, { location: { lat: 35.1, lng: 129.0, accuracy: 30, at: '2026-11-02T01:00:00.000Z' } });
+    expect(first?.location).toEqual({ lat: 35.1, lng: 129.0, accuracy: 30, at: '2026-11-02T01:00:00.000Z' });
+    // 덜 정확하고 바로 뒤에 온 값은 무시
+    const worse = await store.update(child.id, { location: { lat: 35.2, lng: 129.1, accuracy: 80, at: '2026-11-02T01:10:00.000Z' } });
+    expect(worse?.location?.lat).toBe(35.1);
+    // 더 정확하면 바꿈
+    const better = await store.update(child.id, { location: { lat: 35.3, lng: 129.2, accuracy: 8, at: '2026-11-02T01:20:00.000Z' } });
+    expect(better?.location?.lat).toBe(35.3);
+    // 덜 정확해도 1시간 넘게 지났으면 바꿈(구조물이 옮겨진 게 아니라 옛 값이 틀렸을 수 있다)
+    const later = await store.update(child.id, { location: { lat: 35.4, lng: 129.3, accuracy: 50, at: '2026-11-02T03:00:00.000Z' } });
+    expect(later?.location?.lat).toBe(35.4);
+    // null이면 지움
+    const cleared = await store.update(child.id, { location: null });
+    expect(cleared?.location).toBeUndefined();
+  });
+});

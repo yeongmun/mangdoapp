@@ -8,6 +8,7 @@ import type { Project, Shot } from '../api';
 import { ShotTile } from '../components/ShotCard';
 import { AllDoneCard, NextShotButton, ShotProgressCard, TakenHeader } from '../components/ShotProgress';
 import { useCelebrate } from '../useCelebrate';
+import { CameraScreen } from './CameraScreen';
 import { Skeleton } from '../components/motion';
 import { useShots } from '../useShots';
 import { colors, font, space } from '../theme';
@@ -21,7 +22,7 @@ interface Props {
 }
 
 export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false }: Props) {
-  const { state, error, busyId, isTaken, takenThumb, shoot, uploadStates } = useShots(project, onPhotoQueued);
+  const { state, error, busyId, isTaken, takenThumb, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates } = useShots(project, onPhotoQueued);
   const [takenOpen, setTakenOpen] = useState(false);
 
   const required = useMemo(() => (state.list?.shots ?? []).filter((s) => s.kind === 'required'), [state.list]);
@@ -48,7 +49,7 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false }:
   useEffect(() => {
     if (!autoShoot || autoDone.current || state.list === null || next === null) return;
     autoDone.current = true;
-    void shoot(next);
+    shoot(next);
   }, [autoShoot, state.list, next, shoot]);
 
   if (!project.facilityType) {
@@ -97,7 +98,7 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false }:
                     thumb={takenThumb(shot)}
                     upload={uploadStates.get(shot.id)}
                     disabled={busyId !== null}
-                    onPress={() => void shoot(shot)}
+                    onPress={() => shoot(shot)}
                   />
                 </View>
               ))}
@@ -107,7 +108,19 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false }:
         }}
         contentContainerStyle={styles.list}
       />
-      <NextShotButton nextLabel={next ? `${next.member} ${next.label}` : null} disabled={busyId !== null} onPress={() => next && void shoot(next)} />
+      <NextShotButton nextLabel={next ? `${next.member} ${next.label}` : null} disabled={busyId !== null} onPress={() => next && shoot(next)} />
+      {cameraShotId !== null && (
+        <CameraScreen
+          shots={required}
+          startShotId={cameraShotId}
+          mode="required"
+          isTaken={isTaken}
+          takenThumb={takenThumb}
+          uploadStates={uploadStates}
+          onCapture={(s, r, inCamera) => commitPhoto(s, r, inCamera)}
+          onClose={closeCamera}
+        />
+      )}
     </View>
   );
 }

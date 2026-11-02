@@ -28,6 +28,8 @@ import {
 } from '../api';
 import { BottomSheet } from '../components/BottomSheet';
 import { IconButton } from '../components/IconButton';
+import { NearbyCard } from '../components/NearbyCard';
+import { flushStructureLocations } from '../structureLocation';
 import { AnimatedBar, FadeSlideIn, PressScale, Skeleton, ZoomImage } from '../components/motion';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { useToast } from '../components/Toast';
@@ -308,6 +310,8 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
     const nextProjects = projectsResult.value;
     setProjects(nextProjects);
     setError(null);
+    // 오프라인에서 찍어 기기에만 적힌 구조물 위치를 서버로
+    void flushStructureLocations();
     // 함수형 갱신으로 최신 location을 받는다 — load는 마운트 시 한 번 만들어져 재사용되므로
     // (onRefresh·confirmDelete의 .then(load)) 클로저에 갇힌 옛 location을 읽으면 안 된다.
     setLocation((prev) => {
@@ -757,6 +761,17 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
             )}
           </Text>
         </View>
+      )}
+      {!viewingHidden && !q && (
+        <NearbyCard
+          projects={projects}
+          active={active && atTop}
+          onOpen={goTo}
+          onShoot={(id) => {
+            setAutoShootFor(id);
+            goTo(id);
+          }}
+        />
       )}
       {!viewingHidden && !q && hero !== null && (
         <PressScale

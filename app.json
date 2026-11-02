@@ -42,6 +42,20 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "현장 사진을 찍기 위해 카메라를 씁니다.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "가까운 구조물을 찾고 사진 찍은 자리를 기록하기 위해 위치를 씁니다.",
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
         "expo-media-library",
         {
           "savePhotosPermission": "찍은 사진을 앨범에 저장합니다.",
