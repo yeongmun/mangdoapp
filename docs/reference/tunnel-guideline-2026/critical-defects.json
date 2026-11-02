@@ -1,0 +1,234 @@
+{
+ "meta": {
+  "source": "세부지침 해설서(터널편) 2026.2, 2.1.4 중대한 결함 등의 정도 (+ 2.4.2 각 항목 '주')",
+  "thresholdSemantics": "\"d 이하\" = 등급 d 또는 e (a가 최상). 안전등급 \"D 이하\" = D 또는 E",
+  "tableIds": "터널편 2.4.2 평가기준표는 번호가 없어 condition-criteria.json criteria[].id(예 2.4.2-가-1)로 참조"
+ },
+ "adjustabilityRule": {
+  "text": "터널 시설물의 구조안전에 중대한 영향을 미치는 것으로 인정되는 결함으로 대통령령으로 정하는 중대한 결함의 적용 범위는 다음과 같다.  다만, 시설물의 전반적인 상태 및 환경 여건에 따라 책임기술자가 조정할 수 있다.",
+  "summary": "전 항목 책임기술자 조정 가능. 교량편과 달리 '조정 불가' 항목 없음.",
+  "nonAdjustableItems": []
+ },
+ "criticalDefects": [
+  {
+   "no": 1,
+   "name": "터널지반의 부등침하",
+   "criteria": [
+    "2.5 안전성평가 / 안전등급"
+   ],
+   "threshold": "안전등급 D 이하",
+   "criterionText": "터널지반의 부등침하 정도가 안전등급 기준이 “D” 이하로 판정 할 수 있는 경우",
+   "nonAdjustable": false,
+   "note": "기준 대상이 부재 등급(소문자)이 아니라 안전등급(대문자) — 명확한 산정 표 지정 없음"
+  },
+  {
+   "no": 2,
+   "name": "철근콘크리트의 염해 또는 탄산화에 따른 내력손실",
+   "criteria": [
+    "2.4.2-가-4"
+   ],
+   "evaluationItems": [
+    "탄산화 잔여깊이",
+    "전염화물 이온량",
+    "철근노출"
+   ],
+   "threshold": "(a) 탄산화 잔여 깊이 또는 전염화물 이온량 d 이고 철근노출 e 포함, 또는 (b) 탄산화 잔여 깊이 또는 전염화물 이온량 e",
+   "criterionText": "2.4.2절의 상태평가항목 및 기준의 재질열화에서 콘크리트 탄산화 잔여 깊이 또는 콘크리트 전염화물 이온량 등에 대한 상태평가기준이 “d” 이고, 철근노출에 대한 상태평가기준이 “e”를 포함하는 경우",
+   "alternativeCriterionText": "탄산화 잔여 깊이 또는 전염화물 이온량 등에 대한 상태평가기준이 “e” 판정인 경우",
+   "nonAdjustable": false,
+   "machine": {
+    "anyOf": [
+     {
+      "allOf": [
+       {
+        "item": [
+         "탄산화 잔여깊이",
+         "전염화물 이온량"
+        ],
+        "grade": "d"
+       },
+       {
+        "item": "철근노출",
+        "grade": "e"
+       }
+      ]
+     },
+     {
+      "item": [
+       "탄산화 잔여깊이",
+       "전염화물 이온량"
+      ],
+      "grade": "e"
+     }
+    ]
+   }
+  },
+  {
+   "no": 3,
+   "name": "균열 심화 및 탈락",
+   "criteria": [
+    "2.4.2-가-1",
+    "2.4.2-가-3",
+    "2.4.2-나"
+   ],
+   "evaluationItems": [
+    "균열",
+    "파손 및 손상"
+   ],
+   "threshold": "진행성 균열 d 이하, 또는 고정 균열 면적율 20% 이상으로 e, 또는 파손 및 손상 면적율 20% 이상으로 d 이하",
+   "criterionText": "2.4.2절의 상태평가항목 및 기준의 균열에서 진행성 균열에 대한 평가기준이 “d” 이하인 경우, 고정 균열은 면적율이 20%이상으로 평가기준이 “e”인 경우 / 2.4.2절의 상태평가항목 및 기준의 파손 및 손상에서 면적율이 20%이상으로 상태평가기준이 “d” 이하인 경우",
+   "nonAdjustable": false,
+   "machine": {
+    "anyOf": [
+     {
+      "item": "균열",
+      "progressive": true,
+      "grade": [
+       "d",
+       "e"
+      ]
+     },
+     {
+      "item": "균열",
+      "progressive": false,
+      "areaRatio_pct_min": 20,
+      "grade": "e"
+     },
+     {
+      "item": "파손 및 손상",
+      "areaRatio_pct_min": 20,
+      "grade": [
+       "d",
+       "e"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "no": 4,
+   "name": "라이닝부위 심한 누수 및 변형",
+   "criteria": [
+    "2.4.2-가-2",
+    "2.5 안전등급"
+   ],
+   "evaluationItems": [
+    "누수",
+    "터널 변형"
+   ],
+   "threshold": "누수 d 이하 + (토립자 유출로 구조적 결함 유발 가능 또는 고드름·측빙으로 차량통행 현저한 지장), 또는 변형 정도 안전등급 D 이하",
+   "criterionText": "2.4.2절의 상태평가항목 및 기준의 누수에서 평가기준이 “d” 이하이며, 토립자가 함께 유출되어 구조적 결함을 유발시킬 수 있거나 고드름 및 측빙 등으로 차량통행에 현저한 지장을 주는 경우 / 터널의 변형정도가 안전등급 기준이 “D” 이하로 판정 할 수 있는 경우",
+   "nonAdjustable": false,
+   "machine": {
+    "anyOf": [
+     {
+      "allOf": [
+       {
+        "item": "누수",
+        "grade": [
+         "d",
+         "e"
+        ]
+       },
+       {
+        "anyOf": [
+         "soilOutflow",
+         "icicleOrSideIceObstructingTraffic"
+        ]
+       }
+      ]
+     },
+     {
+      "safetyGrade": [
+       "D",
+       "E"
+      ],
+      "cause": "변형"
+     }
+    ]
+   }
+  },
+  {
+   "no": 5,
+   "name": "시공이음부 천단 반원형 균열의 박락",
+   "criteria": [],
+   "threshold": "균열폭 1mm 이상 + 타음 시 움직임 확인 (책임기술자 판단)",
+   "criterionText": "시공이음부에 천단의 반원형 균열의 폭이 1mm이상이며, 타음시 움직임이 확인된 경우 책임기술자는 해당 결함의 박락위험성을 고려하여 중대한 결함으로 판단할 수 있다.",
+   "nonAdjustable": false,
+   "machine": {
+    "allOf": [
+     {
+      "location": "시공이음부 천단",
+      "shape": "반원형 균열",
+      "crackWidth_mm_min": 1.0,
+      "minInclusive": true
+     },
+     {
+      "hammerMovement": true
+     }
+    ],
+    "judgement": "책임기술자 판단(할 수 있다)"
+   }
+  }
+ ],
+ "publicUseDefects": {
+  "adjustabilityText": "다만, 시설물의 전반적인 상태 및 환경 여건에 따라 책임기술자가 조정할 수 있다.",
+  "items": [
+   {
+    "no": 1,
+    "name": "추락방지시설",
+    "tables": [
+     "공중-1"
+    ],
+    "threshold": "d 이하",
+    "criterionText": "추락방지시설에 대한 평가기준이 “d” 이하인 경우",
+    "nonAdjustable": false
+   },
+   {
+    "no": 2,
+    "name": "도로포장",
+    "tables": [
+     "공중-2"
+    ],
+    "threshold": "d 이하",
+    "criterionText": "도로포장에 대한 평가기준이 “d” 이하인 경우",
+    "nonAdjustable": false
+   },
+   {
+    "no": 3,
+    "name": "도로부 신축이음부",
+    "tables": [
+     "공중-3"
+    ],
+    "threshold": "d 이하",
+    "criterionText": "도로부 신축이음부에 대한 평가기준이 “d” 이하인 경우",
+    "nonAdjustable": false
+   },
+   {
+    "no": 4,
+    "name": "환기구 등의 덮개",
+    "tables": [
+     "공중-4"
+    ],
+    "threshold": "d 이하",
+    "criterionText": "환기구 등의 덮개에 대한 평가기준이 “d” 이하인 경우",
+    "nonAdjustable": false
+   }
+  ],
+  "reporting": "중대한 결함 등이 발견된 경우 해당부위의 외관조사망도 및 사진대지를 작성하여 「법」제22조제2항에 따라 관리주체에게 통보 (2.2.2 카.)"
+ },
+ "notificationContents_commentary": [
+  "시설물의 명칭 및 소재지",
+  "관리주체의 상호, 명칭, 성명(관리주체가 법인인 경우에는 대표자의 성명을 말한다) 및 주소",
+  "안전점검등의 실시기간과 실시자",
+  "시설물의 상태별 등급과 중대한 결함의 내용",
+  "관리주체가 조치하여야 할 사항",
+  "그 밖에 안전관리에 필요한 사항"
+ ],
+ "effectOnConditionScore": "터널편 2.4.3에는 교량편처럼 중대한 결함 발생 시 최젓값 등급을 강제하는 규정이 없음.",
+ "sourceInconsistencies": [
+  "2.1.4 제목은 '중대한 결함 등의 정도', 목차는 '중대한 결함 등의 종류'.",
+  "2.1.4 해설 3 통보 내용 목록 원문 번호가 (1),(3),(4)… 로 변환에 (2) 누락처럼 보이나 본문에는 (2) 관리주체의 상호… 가 있음(정상).",
+  "1)·4)의 '안전등급 D 이하'는 상태평가(소문자) 기준표가 아니라 안전등급 — 어떤 평가로 판정하는지 미지정."
+ ]
+}

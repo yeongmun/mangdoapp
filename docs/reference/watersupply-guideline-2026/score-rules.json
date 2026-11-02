@@ -1,0 +1,1505 @@
+{
+ "meta": {
+  "source": "세부지침 해설서(상수도편) 2026.2 — 11.4.2 상태평가 결과 산정 방법, 11.5 안전성평가, 11.6 종합평가",
+  "note": "교량편의 결함도 점수 방식과 달리 평가점수(M)×영향계수(F)=상태평가지수(E) 방식이며 7단계 평가체계(상태평가 1~4단계, 종합평가 4~7단계)를 사용."
+ },
+ "stages_table_11_53": {
+  "caption": "[표 11.53] 상수도 시설물의 평가단계별 평가대상 부재 및 시설물 구분(예)",
+  "columns": [
+   "관로",
+   "수로터널",
+   "토목구조물",
+   "기전설비",
+   "건축구조물",
+   "수원지시설(댐)"
+  ],
+  "rows": [
+   {
+    "stage": 1,
+    "kind": "상태변화(결함, 손상)",
+    "evaluation": "상태평가",
+    "관로": "관로1, 관로2, …, 밸브실1, 밸브실2, … 등등 (세부구간 2-1, 2-2, …)",
+    "수로터널": "블록1, 블록2, …",
+    "토목구조물": "슬래브, 벽체, 기둥, 보, … 등등",
+    "기전설비": "펌프1,…, 전동기1,…, 베드1,…, 배관1,…, 권양와이어, 권양레일 등등",
+    "건축구조물": "건축물 적용",
+    "수원지시설(댐)": "댐 적용"
+   },
+   {
+    "stage": 2,
+    "kind": "개별부재",
+    "evaluation": "상태평가",
+    "관로": "세부구간 2-1, 세부구간 2-2, …",
+    "수로터널": "블록1, 블록2, …",
+    "토목구조물": "슬래브, 벽체, 기둥, 보 등",
+    "기전설비": "펌프, 전동기, 베드, 배관 등"
+   },
+   {
+    "stage": 3,
+    "kind": "복합부재",
+    "evaluation": "상태평가",
+    "관로": "구간1, 구간2, …",
+    "수로터널": "구간1, 구간2, …",
+    "토목구조물": "취수탑1,…, 흡수정1,…, 착수정1,…, 침전지1,…, 여과지1,…, 정수지1,… 등등",
+    "기전설비": "펌프설비1,…, 배관설비1,…, 권양기1,… 등등"
+   },
+   {
+    "stage": 4,
+    "kind": "개별시설물",
+    "evaluation": "상태평가·안전성평가·종합평가",
+    "관로": "계통1, 계통2, …",
+    "수로터널": "수로터널1, 수로터널2, …",
+    "토목구조물": "취수탑, 흡수정, 착수정, 침전지, 여과지, 정수지 등등",
+    "기전설비": "펌프설비, 배관설비, 기기설비 등등"
+   },
+   {
+    "stage": 5,
+    "kind": "복합시설물",
+    "evaluation": "종합평가",
+    "관로": "관로",
+    "수로터널": "수로터널",
+    "토목구조물": "취수시설, 취수장1,…, 정수장1,…, 가압장1,… 등등",
+    "기전설비": "취수장1,…, 정수장1,…, 가압장1,… 등등"
+   },
+   {
+    "stage": 6,
+    "kind": "통합시설물",
+    "evaluation": "종합평가",
+    "관로": "관로시설물(관로+수로터널)",
+    "토목구조물": "토목구조물",
+    "기전설비": "기전설비",
+    "건축구조물": "건축구조물",
+    "수원지시설(댐)": "수원지시설(댐)"
+   },
+   {
+    "stage": 7,
+    "kind": "종합시설물",
+    "evaluation": "종합평가",
+    "all": "상 수 도"
+   }
+  ],
+  "note": "책임기술자가 부재·시설물 특성에 따라 평가단계를 병합 또는 조정할 수 있음. 외관조사망도는 개별부재 단위 작성 원칙. 수로터널: 1·2단계 블록(일반적으로 40m), 3단계 구간(일반적으로 4개 블록) (11.4.2 라. 해설 2)."
+ },
+ "table_11_55_conditionIndex": {
+  "caption": "[표 11.55] 상태평가지수 범위에 따른 상태평가 기준 및 평가유형별 영향계수(F)",
+  "bands": [
+   {
+    "grade": "a",
+    "min": 4.5,
+    "max": 5.0,
+    "maxInclusive": true,
+    "text": "4.5 ≤ Ec ≤ 5.0"
+   },
+   {
+    "grade": "b",
+    "min": 3.5,
+    "max": 4.5,
+    "text": "3.5 ≤ Ec < 4.5"
+   },
+   {
+    "grade": "c",
+    "min": 2.5,
+    "max": 3.5,
+    "text": "2.5 ≤ Ec < 3.5"
+   },
+   {
+    "grade": "d",
+    "min": 1.5,
+    "max": 2.5,
+    "text": "1.5 ≤ Ec < 2.5"
+   },
+   {
+    "grade": "e",
+    "min": 1.0,
+    "max": 1.5,
+    "text": "1.0 ≤ Ec < 1.5"
+   }
+  ],
+  "score_M": {
+   "a": 5,
+   "b": 4,
+   "c": 3,
+   "d": 2,
+   "e": 1
+  },
+  "influenceFactor_F": {
+   "중요결함": {
+    "a": 1.0,
+    "b": 1.0,
+    "c": 1.0,
+    "d": 1.0,
+    "e": 1.0
+   },
+   "국부결함": {
+    "a": 1.0,
+    "b": 1.1,
+    "c": 1.2,
+    "d": 1.4,
+    "e": 2.0
+   },
+   "일반손상": {
+    "a": 1.0,
+    "b": 1.1,
+    "c": 1.3,
+    "d": 1.7,
+    "e": 3.0
+   }
+  },
+  "note": "국부결함 e(2.0×1=2.0)·일반손상 e(3.0×1=3.0)처럼 영향계수로 상향 조정되므로 E1 최솟값은 중요결함에서만 1.0까지 내려감."
+ },
+ "table_11_58_adjustment": {
+  "caption": "[표 11.58] 상태평가지수에 따른 조정계수(A)",
+  "A": {
+   "a": 1,
+   "b": 2,
+   "c": 3,
+   "d": 6,
+   "e": 6
+  },
+  "bandsText": {
+   "a": "5.0 ～ 4.5이상",
+   "b": "4.5미만～ 3.5이상",
+   "c": "3.5미만～ 2.5이상",
+   "d": "2.5미만～ 1.5이상",
+   "e": "1.5미만～ 1.0이상"
+  }
+ },
+ "formulas": {
+  "E1": {
+   "formula": "E1 = M × F",
+   "rounding": "소수점 이하 3째 자리에서 반올림(=소수 둘째 자리까지)",
+   "ref": "11.4.2 다. 2)"
+  },
+  "E2": {
+   "formula": "E2 = min(E1)",
+   "ref": "11.4.2 다. 2)"
+  },
+  "E3": {
+   "formula": "E3 = Σ(E2 × P) / ΣP,  P = A × W",
+   "vars": {
+    "A": "[표 11.58] 조정계수 (E2 등급별)",
+    "W": "중요도(weights.json)"
+   },
+   "ref": "11.4.2 다. 3)"
+  },
+  "E4": {
+   "formula": "E4 = Min + V1 × V2,  V1 = 0.3 × (Max − Min),  V2 = Σ(E3 × S) / (5 × ΣS)",
+   "vars": {
+    "S": "복합부재 규모 — 관로: 관 단면적×연장(㎥), 조절지: 가로×세로×높이; 수로터널: 단면적×연장; 토목구조물: 조사면적(㎡); 기전설비: 시설용량(㎥/분)",
+    "Max/Min": "복합부재 E3 중 최댓값/최솟값"
+   },
+   "note": "원문 식 \"V2 = ∑(E3 × S) / 5 ×∑S\"는 예시 계산상 Σ(E3×S)/(5×ΣS) 의미([표 11.69]에서 괄호 명시).",
+   "ref": "11.4.2 다. 4)"
+  },
+  "Es": {
+   "formula": "Es = L + 0.3(H − L) × ΣMi / (5 × (N − 2))  (N > 2);  Es = L + 0.3(H − L)  (N = 2)",
+   "vars": {
+    "N": "안전성평가 항목 수",
+    "L": "평가점수 최솟값",
+    "H": "평가점수 최댓값",
+    "Mi": "최대·최솟값을 1개씩 뺀 나머지 점수"
+   },
+   "note": "N=1인 경우는 원문에 없음(앱에서는 Es = 해당 점수로 처리 권장, 해석).",
+   "ref": "11.5.3 가."
+  },
+  "Et1": {
+   "formula": "Et = MIN(Ec, Es); 안전성평가 미실시 시 상태평가결과로 갈음",
+   "ref": "11.6.2 가. 1)"
+  },
+  "Et2": {
+   "formula": "Et2 = Σ(Et1 × P) / ΣP,  P = A × S (개별시설물 규모 ㎡·㎥)",
+   "note": "개별시설물 중요도는 동일하다고 보고 규모만 가중",
+   "ref": "11.6.2 나. 2)"
+  },
+  "Et3": {
+   "formula": "Et3 = Σ(Et2 × P) / ΣP,  P = A × S (복합시설물 규모 ㎥, ㎥/일)",
+   "note": "본문은 \"[표 11.78]의 종합평가지수에 따른 조정계수(A)\"라 적었으나 조정계수 표는 [표 11.79](참조 오기)",
+   "ref": "11.6.2 나. 3)"
+  },
+  "Et4": {
+   "formula": "Et4 = Σ(Et3 × P) / ΣP,  P = A × W ([표 11.86] 통합시설물 중요도)",
+   "note": "본문 \"복합시설물별 중요도(A)\"는 W의 오기. 결과는 대문자(안전등급).",
+   "ref": "11.6.2 나. 4)"
+  }
+ },
+ "table_11_74_safety": {
+  "caption": "[표 11.74] 부재 및 구조물의 안전성평가 기준",
+  "grades": [
+   {
+    "grade": "a",
+    "score": 5,
+    "text": "안전율(SF)이 1.0 이상이고 주부재에 손상이 없는 경우",
+    "machine": {
+     "metric": "SF",
+     "min": 1.0,
+     "mainMemberDamage": false
+    }
+   },
+   {
+    "grade": "b",
+    "score": 4,
+    "text": "안전율(SF)이 1.0 이상이고 주부재에 손상(단면손실)이 있는 경우",
+    "machine": {
+     "metric": "SF",
+     "min": 1.0,
+     "mainMemberDamage": true
+    }
+   },
+   {
+    "grade": "c",
+    "score": 3,
+    "text": "안전율(SF)이 1.0 미만 ～ 0.9이상",
+    "machine": {
+     "metric": "SF",
+     "min": 0.9,
+     "max": 1.0
+    }
+   },
+   {
+    "grade": "d",
+    "score": 2,
+    "text": "안전율(SF)이 0.9 미만 ～ 0.75이상",
+    "machine": {
+     "metric": "SF",
+     "min": 0.75,
+     "max": 0.9
+    }
+   },
+   {
+    "grade": "e",
+    "score": 1,
+    "text": "안전율(SF)이 0.75 미만",
+    "machine": {
+     "metric": "SF",
+     "max": 0.75
+    }
+   }
+  ],
+  "sfDefinitions": [
+   "강도설계법: SF = 설계강도/소요강도 = φMn/Mu",
+   "허용능력설계법(원문 표기, 허용응력설계법): SF = 허용응력/발생응력 = fa/f(d+l)"
+  ],
+  "appliesTo": "관로시설물(관로·수로터널)과 토목구조물 공통 (11.5.2 나.)"
+ },
+ "table_11_75_safetyIndex": {
+  "caption": "[표 11.75] 안전성평가지수(Es) 범위에 따른 안전성평가 기준",
+  "bands": [
+   {
+    "grade": "a",
+    "text": "4.5 ≤ Es ≤ 5.0"
+   },
+   {
+    "grade": "b",
+    "text": "3.5 ≤ Es 〈 4.5"
+   },
+   {
+    "grade": "c",
+    "text": "2.5 ≤ Es 〈 3.5"
+   },
+   {
+    "grade": "d",
+    "text": "1.5 ≤ Es 〈 2.5"
+   },
+   {
+    "grade": "e",
+    "text": "1.0 ≤ Es 〈 1.5"
+   }
+  ]
+ },
+ "equivalentSafetyFactor_11_5_1": {
+  "formula": "n' = (γD + γL·L/D) / (Φ(1 + L/D))",
+  "typical": "휨부재 약 1.5~2.0, 전단부재 1.7~2.5",
+  "judgement": [
+   "안전여유율 ≥ 등가안전율: 안전성 확보",
+   "등가안전율 미만이나 약 75% 이상: 안전성은 있으나 충분치 못함(주기 점검·과대하중 재하억제)",
+   "약 75% 미만: 사용제한 판단 또는 사용금지 요하는 안전성 결여"
+  ]
+ },
+ "pipeAllowable_commentary_11_5_1": {
+  "caption": "[해설 표 11.5.1] 수도용 도복장 강관의 구조 안전성 허용기준",
+  "rows": [
+   {
+    "구분": "내압",
+    "검토항목": "휨응력",
+    "작용하중": "정수압",
+    "허용기준": "140MPa (1,400kgf/㎠)",
+    "하중조건": "상시"
+   },
+   {
+    "구분": "내압",
+    "검토항목": "휨응력",
+    "작용하중": "동수압+수격압",
+    "허용기준": "210MPa (2,100kgf/㎠)",
+    "하중조건": "일시"
+   },
+   {
+    "구분": "외압",
+    "검토항목": "휨응력",
+    "작용하중": "토압+차량하중",
+    "허용기준": "140MPa (1,400kgf/㎠)",
+    "하중조건": "상시"
+   },
+   {
+    "구분": "외압",
+    "검토항목": "관체 변형량",
+    "작용하중": "토압+차량하중",
+    "허용기준": "관경의 5％미만",
+    "하중조건": "상시"
+   },
+   {
+    "구분": "외압",
+    "검토항목": "좌굴하중",
+    "작용하중": "토압+차량하중",
+    "허용기준": "허용하중",
+    "하중조건": "상시"
+   }
+  ]
+ },
+ "civilLoadCombinations_commentary": {
+  "U1": "1.4D + 1.4Hv",
+  "U2": "0.9D + 1.6αH·Hv + 1.6Hh",
+  "U3": "1.2D + 1.6L + 1.6αH·Hv + 1.6Hh",
+  "U4": "1.2D + 1.2F + 1.6L + 1.6αH·Hv + 1.6Hh",
+  "αH": 1.0,
+  "phi_design": {
+   "휨": 0.85,
+   "전단": 0.75,
+   "기둥(띠철근)": 0.65
+  },
+  "phi_analyticalEvaluation": {
+   "휨": 1.0,
+   "전단": 0.8,
+   "기둥(띠철근)": 0.8
+  }
+ },
+ "table_11_78_comprehensive": {
+  "caption": "[표 11.78] 종합평가지수에 따른 종합평가 기준",
+  "bands": [
+   {
+    "grade": "a 또는 A",
+    "text": "4.5 ≤ (E4~E7) ≤ 5.0"
+   },
+   {
+    "grade": "b 또는 B",
+    "text": "3.5 ≤ (E4~E7) 〈 4.5"
+   },
+   {
+    "grade": "c 또는 C",
+    "text": "2.5 ≤ (E4~E7) 〈 3.5"
+   },
+   {
+    "grade": "d 또는 D",
+    "text": "1.5 ≤ (E4~E7) 〈 2.5"
+   },
+   {
+    "grade": "e 또는 E",
+    "text": "1.0 ≤ (E4~E7) 〈 1.5"
+   }
+  ],
+  "case": "4~6단계 결과는 소문자, 7단계(종합시설물 = 안전등급)는 대문자"
+ },
+ "table_11_79_adjustment": {
+  "caption": "[표 11.79] 종합평가지수에 따른 조정계수(A)",
+  "A": {
+   "a": 1,
+   "b": 2,
+   "c": 3,
+   "d": 6,
+   "e": 6
+  }
+ },
+ "safetyGrades_appendixA_2_2_7": {
+  "A": "(우수) 문제점이 없는 최상의 상태",
+  "B": "(양호) 보조부재에 경미한 결함이 발생하였으나 기능 발휘에는 지장이 없으며 내구성 증진을 위하여 일부의 보수가 필요한 상태",
+  "C": "(보통) 주요부재에 경미한 결함 또는 보조부재에 광범위한 결함이 발생하였으나 전체적인 시설물의 안전에는 지장이 없으며, 주요부재에 내구성, 기능성 저하 방지를 위한 보수가 필요하거나 보조부재에 간단한 보강이 필요한 상태",
+  "D": "(미흡) 주요부재에 결함이 발생하여 긴급한 보수ㆍ보강이 필요하며 사용제한 여부를 결정하여야 하는 상태",
+  "E": "(불량) 주요부재에 발생한 심각한 결함으로 인하여 시설물의 안전에 위험이 있어 즉각 사용을 금지하고 보강 또는 개축을 하여야 하는 상태"
+ },
+ "publicUseExclusion": "공중이 이용하는 부위([표 11.49]~[표 11.52]) 결과는 상태평가지수에 반영하지 않음.",
+ "otherFacilities": "건축구조물은 제6장 건축물, 수원지시설(댐)은 제5장 댐 편 절차로 평가한 뒤 7단계에서 합산.",
+ "workedExamples": [
+  {
+   "table": "11.56",
+   "stage": 2,
+   "name": "관로 2-2",
+   "rows": [
+    {
+     "item": "경과년수",
+     "type": "일반손상",
+     "M": 3,
+     "F": 1.3,
+     "E1_computed": 3.9,
+     "E1_stated": 3.9,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "관내ㆍ외면 도장상태",
+     "type": "국부결함",
+     "M": 3,
+     "F": 1.2,
+     "E1_computed": 3.6,
+     "E1_stated": 3.6,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "관로부식",
+     "type": "중요결함",
+     "M": 4,
+     "F": 1.0,
+     "E1_computed": 4.0,
+     "E1_stated": 4.0,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "관체 변형률",
+     "type": "중요결함",
+     "M": 4,
+     "F": 1.0,
+     "E1_computed": 4.0,
+     "E1_stated": 4.0,
+     "match": true,
+     "F_matchesType": true
+    }
+   ],
+   "E2_computed": 3.6,
+   "E2_stated": 3.6,
+   "grade_computed": "b",
+   "grade_stated": "b",
+   "match": true
+  },
+  {
+   "table": "11.62",
+   "stage": 2,
+   "name": "블록3-1-2 (수로터널)",
+   "rows": [
+    {
+     "item": "콘크리트 균열",
+     "type": "일반손상",
+     "M": 4,
+     "F": 1.1,
+     "E1_computed": 4.4,
+     "E1_stated": 4.0,
+     "match": false,
+     "F_matchesType": true
+    },
+    {
+     "item": "콘크리트 균열",
+     "type": "일반손상",
+     "M": 3,
+     "F": 1.3,
+     "E1_computed": 3.9,
+     "E1_stated": 3.9,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "콘크리트 박리",
+     "type": "일반손상",
+     "M": 2,
+     "F": 1.7,
+     "E1_computed": 3.4,
+     "E1_stated": 3.4,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "콘크리트 염화물함량",
+     "type": "국부결함",
+     "M": 5,
+     "F": 1.0,
+     "E1_computed": 5.0,
+     "E1_stated": 5.0,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "콘크리트 탄산화깊이",
+     "type": "국부결함",
+     "M": 4,
+     "F": 1.1,
+     "E1_computed": 4.4,
+     "E1_stated": 4.4,
+     "match": true,
+     "F_matchesType": true
+    }
+   ],
+   "E2_computed": 3.4,
+   "E2_stated": 3.4,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": false
+  },
+  {
+   "table": "11.66",
+   "stage": 2,
+   "name": "벽체A-2-3 (토목구조물)",
+   "rows": [
+    {
+     "item": "침하",
+     "type": "중요결함",
+     "M": 4,
+     "F": 1.0,
+     "E1_computed": 4.0,
+     "E1_stated": 4.0,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "콘크리트 균열",
+     "type": "일반손상",
+     "M": 4,
+     "F": 1.1,
+     "E1_computed": 4.4,
+     "E1_stated": 4.4,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "콘크리트 박리",
+     "type": "일반손상",
+     "M": 3,
+     "F": 1.3,
+     "E1_computed": 3.9,
+     "E1_stated": 3.9,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "누수",
+     "type": "일반손상",
+     "M": 2,
+     "F": 1.7,
+     "E1_computed": 3.4,
+     "E1_stated": 3.4,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "콘크리트 파손",
+     "type": "일반손상",
+     "M": 3,
+     "F": 1.3,
+     "E1_computed": 3.9,
+     "E1_stated": 3.9,
+     "match": true,
+     "F_matchesType": true
+    }
+   ],
+   "E2_computed": 3.4,
+   "E2_stated": 3.4,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true
+  },
+  {
+   "table": "11.71",
+   "stage": 2,
+   "name": "B-펌프1호 (기전설비)",
+   "rows": [
+    {
+     "item": "펌프진동",
+     "type": "국부결함",
+     "M": 4,
+     "F": 1.1,
+     "E1_computed": 4.4,
+     "E1_stated": 4.4,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "펌프소음",
+     "type": "국부결함",
+     "M": 3,
+     "F": 1.2,
+     "E1_computed": 3.6,
+     "E1_stated": 3.6,
+     "match": true,
+     "F_matchesType": true
+    },
+    {
+     "item": "펌프베드",
+     "type": "일반손상",
+     "M": 3,
+     "F": 1.3,
+     "E1_computed": 3.9,
+     "E1_stated": 3.9,
+     "match": true,
+     "F_matchesType": true
+    }
+   ],
+   "E2_computed": 3.6,
+   "E2_stated": 3.6,
+   "grade_computed": "b",
+   "grade_stated": "b",
+   "match": true
+  },
+  {
+   "table": "11.59",
+   "stage": 3,
+   "name": "관로구간 2",
+   "formula": "E3 = Σ(E2×P)/ΣP, P = A×W",
+   "rows": [
+    {
+     "member": "관로 2-1",
+     "E2": 3.2,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 32.5,
+     "P": 97.5,
+     "E2xP": 312.0
+    },
+    {
+     "member": "관로 2-2",
+     "E2": 3.6,
+     "grade_stated": "b",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "W": 32.5,
+     "P": 65.0,
+     "E2xP": 234.0
+    },
+    {
+     "member": "밸브실 1",
+     "E2": 4.6,
+     "grade_stated": "a",
+     "grade_computed": "a",
+     "A_stated": 1,
+     "A_computed": 1,
+     "W": 5.0,
+     "P": 5.0,
+     "E2xP": 23.0
+    },
+    {
+     "member": "밸브실 2",
+     "E2": 3.9,
+     "grade_stated": "b",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "W": 5.0,
+     "P": 10.0,
+     "E2xP": 39.0
+    },
+    {
+     "member": "밸브실 3",
+     "E2": 2.8,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 5.0,
+     "P": 15.0,
+     "E2xP": 42.0
+    },
+    {
+     "member": "조절지 1",
+     "E2": 3.0,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 10.0,
+     "P": 30.0,
+     "E2xP": 90.0
+    },
+    {
+     "member": "조절지 2",
+     "E2": 2.3,
+     "grade_stated": "d",
+     "grade_computed": "d",
+     "A_stated": 6,
+     "A_computed": 6,
+     "W": 10.0,
+     "P": 60.0,
+     "E2xP": 138.0
+    }
+   ],
+   "sumP_computed": 282.5,
+   "sumP_stated": 282.5,
+   "sumE2P_computed": 878.0,
+   "sumE2P_stated": 878.0,
+   "E3_computed": 3.11,
+   "E3_stated": 3.11,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true
+  },
+  {
+   "table": "11.63",
+   "stage": 3,
+   "name": "터널구간 3-1",
+   "formula": "E3 = Σ(E2×P)/ΣP, P = A×W",
+   "rows": [
+    {
+     "member": "블록3-1-1",
+     "E2": 4.2,
+     "grade_stated": "b",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "W": 33.3333,
+     "P": 66.7,
+     "E2xP": 280.1
+    },
+    {
+     "member": "블록3-1-2",
+     "E2": 3.4,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 33.3333,
+     "P": 100.0,
+     "E2xP": 340.0
+    },
+    {
+     "member": "블록3-1-3",
+     "E2": 3.9,
+     "grade_stated": "b",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "W": 33.3333,
+     "P": 66.7,
+     "E2xP": 260.1
+    }
+   ],
+   "sumP_computed": 233.4,
+   "sumP_stated": 233.4,
+   "sumE2P_computed": 880.3,
+   "sumE2P_stated": 880.2,
+   "E3_computed": 3.77,
+   "E3_stated": 3.77,
+   "grade_computed": "b",
+   "grade_stated": "b",
+   "match": true
+  },
+  {
+   "table": "11.68",
+   "stage": 3,
+   "name": "A-2호침전지",
+   "formula": "E3 = Σ(E2×P)/ΣP, P = A×W",
+   "rows": [
+    {
+     "member": "바닥슬래브",
+     "E2": 3.7,
+     "grade_stated": "b",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "W": 20.0,
+     "P": 40.0,
+     "E2xP": 148.0
+    },
+    {
+     "member": "상부슬래브",
+     "E2": 3.1,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 10.0,
+     "P": 30.0,
+     "E2xP": 93.0
+    },
+    {
+     "member": "벽체",
+     "E2": 3.4,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 25.0,
+     "P": 75.0,
+     "E2xP": 255.0
+    },
+    {
+     "member": "기둥",
+     "E2": 4.7,
+     "grade_stated": "a",
+     "grade_computed": "a",
+     "A_stated": 1,
+     "A_computed": 1,
+     "W": 25.0,
+     "P": 25.0,
+     "E2xP": 117.5
+    },
+    {
+     "member": "보",
+     "E2": 4.8,
+     "grade_stated": "a",
+     "grade_computed": "a",
+     "A_stated": 1,
+     "A_computed": 1,
+     "W": 20.0,
+     "P": 20.0,
+     "E2xP": 96.0
+    }
+   ],
+   "sumP_computed": 190.0,
+   "sumP_stated": 190,
+   "sumE2P_computed": 709.5,
+   "sumE2P_stated": 709.5,
+   "E3_computed": 3.73,
+   "E3_stated": 3.73,
+   "grade_computed": "b",
+   "grade_stated": "b",
+   "match": true
+  },
+  {
+   "table": "11.72",
+   "stage": 3,
+   "name": "B-펌프설비1호",
+   "formula": "E3 = Σ(E2×P)/ΣP, P = A×W",
+   "rows": [
+    {
+     "member": "B-펌프1호",
+     "E2": 3.6,
+     "grade_stated": "b",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "W": 33.3333,
+     "P": 66.7,
+     "E2xP": 240.1
+    },
+    {
+     "member": "B-펌프1호 전기설비",
+     "E2": 4.7,
+     "grade_stated": "a",
+     "grade_computed": "a",
+     "A_stated": 1,
+     "A_computed": 1,
+     "W": 33.3333,
+     "P": 33.3,
+     "E2xP": 156.5
+    },
+    {
+     "member": "B-펌프1호 베드",
+     "E2": 2.9,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 33.3333,
+     "P": 100.0,
+     "E2xP": 290.0
+    }
+   ],
+   "sumP_computed": 200.0,
+   "sumP_stated": 200.0,
+   "sumE2P_computed": 686.6,
+   "sumE2P_stated": 686.6,
+   "E3_computed": 3.43,
+   "E3_stated": 3.43,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true
+  },
+  {
+   "table": "11.60",
+   "stage": 4,
+   "name": "○○계통(송수관로1)",
+   "formula": "E4 = Min + V1×V2, V1 = 0.3×(Max−Min), V2 = Σ(E3×S)/(5×ΣS)",
+   "rows": [
+    {
+     "member": "관로구간 1",
+     "E3": 3.69,
+     "S": 2035,
+     "E3xS_computed": 7509.2,
+     "E3xS_stated": 7509
+    },
+    {
+     "member": "관로구간 2",
+     "E3": 3.11,
+     "S": 2035,
+     "E3xS_computed": 6328.8,
+     "E3xS_stated": 6329
+    },
+    {
+     "member": "관로구간 3",
+     "E3": 3.92,
+     "S": 2148,
+     "E3xS_computed": 8420.2,
+     "E3xS_stated": 8420
+    }
+   ],
+   "Min": 3.11,
+   "Max": 3.92,
+   "V1_computed": 0.243,
+   "V2_computed": 0.716,
+   "sumS": 6218.0,
+   "sumE3S": 22258.2,
+   "E4_computed": 3.28,
+   "E4_stated": 3.28,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true
+  },
+  {
+   "table": "11.64",
+   "stage": 4,
+   "name": "수로터널 3",
+   "formula": "E4 = Min + V1×V2, V1 = 0.3×(Max−Min), V2 = Σ(E3×S)/(5×ΣS)",
+   "rows": [
+    {
+     "member": "터널구간 3-1",
+     "E3": 3.77,
+     "S": 1177.5,
+     "E3xS_computed": 4439.2,
+     "E3xS_stated": 4439.2
+    },
+    {
+     "member": "터널구간 3-2",
+     "E3": 3.42,
+     "S": 1275.6,
+     "E3xS_computed": 4362.6,
+     "E3xS_stated": 4362.6
+    },
+    {
+     "member": "터널구간 3-3",
+     "E3": 3.83,
+     "S": 1177.5,
+     "E3xS_computed": 4509.8,
+     "E3xS_stated": 4509.8
+    }
+   ],
+   "Min": 3.42,
+   "Max": 3.83,
+   "V1_computed": 0.123,
+   "V2_computed": 0.733,
+   "sumS": 3630.6,
+   "sumE3S": 13311.6,
+   "E4_computed": 3.51,
+   "E4_stated": 3.51,
+   "grade_computed": "b",
+   "grade_stated": "b",
+   "match": true,
+   "note": "원문 표기 \"4,439,2\", \"1,275,6\"은 소수점 오타. 근거 표번호 \"No. 3T-3-2\"가 두 번(3T-3-3 오기). S = 3.14×1.25²×L (L=240/260/240m, 합 740m)과 일치."
+  },
+  {
+   "table": "11.69",
+   "stage": 4,
+   "name": "A정수장 침전지",
+   "formula": "E4 = Min + V1×V2, V1 = 0.3×(Max−Min), V2 = Σ(E3×S)/(5×ΣS)",
+   "rows": [
+    {
+     "member": "A-1호 침전지",
+     "E3": 3.38,
+     "S": 654,
+     "E3xS_computed": 2210.5,
+     "E3xS_stated": 2210.5
+    },
+    {
+     "member": "A-2호 침전지",
+     "E3": 3.73,
+     "S": 654,
+     "E3xS_computed": 2439.4,
+     "E3xS_stated": 2439.4
+    },
+    {
+     "member": "A-3호 침전지",
+     "E3": 3.85,
+     "S": 654,
+     "E3xS_computed": 2517.9,
+     "E3xS_stated": 2517.9
+    },
+    {
+     "member": "A-4호 침전지",
+     "E3": 3.14,
+     "S": 654,
+     "E3xS_computed": 2053.6,
+     "E3xS_stated": 2053.6
+    }
+   ],
+   "Min": 3.14,
+   "Max": 3.85,
+   "V1_computed": 0.213,
+   "V2_computed": 0.705,
+   "sumS": 2616.0,
+   "sumE3S": 9221.4,
+   "E4_computed": 3.29,
+   "E4_stated": 3.29,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true,
+   "note": "S=654㎡ = 벽체(2×(3.5×12+3.5×30)) + 바닥(12×30) 조사면적과 일치."
+  },
+  {
+   "table": "11.73",
+   "stage": 4,
+   "name": "B취수장 펌프설비",
+   "formula": "E4 = Min + V1×V2, V1 = 0.3×(Max−Min), V2 = Σ(E3×S)/(5×ΣS)",
+   "rows": [
+    {
+     "member": "B-펌프설비1호",
+     "E3": 3.43,
+     "S": 7.5,
+     "E3xS_computed": 25.7,
+     "E3xS_stated": 25.7
+    },
+    {
+     "member": "B-펌프설비2호",
+     "E3": 4.02,
+     "S": 7.5,
+     "E3xS_computed": 30.2,
+     "E3xS_stated": 30.2
+    },
+    {
+     "member": "B-펌프설비3호",
+     "E3": 3.38,
+     "S": 7.5,
+     "E3xS_computed": 25.3,
+     "E3xS_stated": 25.4
+    },
+    {
+     "member": "B-펌프설비4호",
+     "E3": 4.57,
+     "S": 4.0,
+     "E3xS_computed": 18.3,
+     "E3xS_stated": 18.3
+    }
+   ],
+   "Min": 3.38,
+   "Max": 4.57,
+   "V1_computed": 0.357,
+   "V2_computed": 0.751,
+   "sumS": 26.5,
+   "sumE3S": 99.5,
+   "E4_computed": 3.65,
+   "E4_stated": 3.65,
+   "grade_computed": "b",
+   "grade_stated": "b",
+   "match": true,
+   "note": "원문 Σ(E3×S)=99.6은 반올림된 행 값의 합; 정확한 합은 99.505. V2·E4 결과는 동일."
+  },
+  {
+   "table": "11.76",
+   "name": "송수관로 1",
+   "rows": [
+    {
+     "item": "관로구간1-1",
+     "SF": 0.92,
+     "mainMemberDamage": false,
+     "grade_computed": "c",
+     "grade_stated": "c",
+     "score_computed": 3,
+     "score_stated": 3
+    },
+    {
+     "item": "관로구간1-2",
+     "SF": 1.06,
+     "mainMemberDamage": true,
+     "grade_computed": "b",
+     "grade_stated": "b",
+     "score_computed": 4,
+     "score_stated": 4
+    },
+    {
+     "item": "관로구간1-3",
+     "SF": 0.87,
+     "mainMemberDamage": false,
+     "grade_computed": "d",
+     "grade_stated": "d",
+     "score_computed": 2,
+     "score_stated": 2
+    }
+   ],
+   "Es_computed": 2.36,
+   "Es_stated": 2.36,
+   "grade_computed": "d",
+   "grade_stated": "D",
+   "match": true,
+   "note": "[표 11.76]은 결과를 대문자 \"D\"로, 같은 예를 옮긴 [표 11.80]은 소문자 \"d\"로 표기(개별시설물은 소문자 규정)."
+  },
+  {
+   "table": "11.77",
+   "name": "A정수장 침전지",
+   "rows": [
+    {
+     "item": "A-1호침전지",
+     "SF": 0.95,
+     "mainMemberDamage": false,
+     "grade_computed": "c",
+     "grade_stated": "c",
+     "score_computed": 3,
+     "score_stated": 3
+    },
+    {
+     "item": "A-2호침전지",
+     "SF": 1.03,
+     "mainMemberDamage": true,
+     "grade_computed": "b",
+     "grade_stated": "b",
+     "score_computed": 4,
+     "score_stated": 4
+    },
+    {
+     "item": "A-3호침전지",
+     "SF": 1.12,
+     "mainMemberDamage": false,
+     "grade_computed": "a",
+     "grade_stated": "a",
+     "score_computed": 5,
+     "score_stated": 5
+    },
+    {
+     "item": "A-4호침전지",
+     "SF": 0.86,
+     "mainMemberDamage": false,
+     "grade_computed": "d",
+     "grade_stated": "d",
+     "score_computed": 2,
+     "score_stated": 2
+    }
+   ],
+   "Es_computed": 2.63,
+   "Es_stated": 2.63,
+   "grade_computed": "c",
+   "grade_stated": "C",
+   "match": true,
+   "note": "[표 11.77]은 대문자 \"C\", [표 11.81]은 소문자 \"c\"."
+  },
+  {
+   "table": "11.80",
+   "stage": 4,
+   "name": "송수관로 1 종합평가",
+   "Ec4": 3.28,
+   "Es1": 2.36,
+   "Et1_computed": 2.36,
+   "Et1_stated": 2.36,
+   "grade_computed": "d",
+   "grade_stated": "d",
+   "match": true,
+   "formula": "Et = MIN(Ec, Es)"
+  },
+  {
+   "table": "11.81",
+   "stage": 4,
+   "name": "A정수장 침전지 종합평가",
+   "Ec4": 3.29,
+   "Es1": 2.63,
+   "Et1_computed": 2.63,
+   "Et1_stated": 2.63,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true,
+   "formula": "Et = MIN(Ec, Es)"
+  },
+  {
+   "table": "11.82",
+   "stage": 5,
+   "name": "관로(복합시설물)",
+   "formula": "Et = Σ(Et_prev×P)/ΣP, P = A×S",
+   "rows": [
+    {
+     "member": "도수관로",
+     "Et": 3.84,
+     "grade_stated": "b",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "S": 1766.3,
+     "P_computed": 3532.6,
+     "EtxP_computed": 13565.2
+    },
+    {
+     "member": "송수관로1",
+     "Et": 2.48,
+     "grade_stated": "d",
+     "grade_computed": "d",
+     "A_stated": 6,
+     "A_computed": 6,
+     "S": 6217.3,
+     "P_computed": 37303.8,
+     "EtxP_computed": 92513.4
+    },
+    {
+     "member": "송수관로2",
+     "Et": 3.01,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "S": 5652.0,
+     "P_computed": 16956.0,
+     "EtxP_computed": 51037.6
+    },
+    {
+     "member": "배수관로",
+     "Et": 2.96,
+     "grade_stated": "c",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "S": 2355.0,
+     "P_computed": 7065.0,
+     "EtxP_computed": 20912.4
+    }
+   ],
+   "sumP_computed": 64857.4,
+   "sumP_stated": 64857.4,
+   "sumEtP_computed": 178028.6,
+   "sumEtP_stated": 178028.6,
+   "Et_computed": 2.74,
+   "Et_stated": 2.74,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true,
+   "note": "송수관로1의 Et1=2.48은 [표 11.80](같은 송수관로1, Et1=2.36)과 다름 — 독립 예시로 보임. 배수관로는 11.1.3 해설 1에서 대상에서 제외되나 예시에 포함."
+  },
+  {
+   "table": "11.83",
+   "stage": 5,
+   "name": "A정수장(복합시설물)",
+   "formula": "Et = Σ(Et_prev×P)/ΣP, P = A×S",
+   "rows": [
+    {
+     "member": "착수정",
+     "Et": 3.75,
+     "grade_stated": "B",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "S": 600.0,
+     "P_computed": 1200.0,
+     "EtxP_computed": 4500.0
+    },
+    {
+     "member": "침전지",
+     "Et": 2.63,
+     "grade_stated": "C",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "S": 5040.0,
+     "P_computed": 15120.0,
+     "EtxP_computed": 39765.6
+    },
+    {
+     "member": "여과지",
+     "Et": 3.39,
+     "grade_stated": "C",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "S": 1080.0,
+     "P_computed": 3240.0,
+     "EtxP_computed": 10983.6
+    },
+    {
+     "member": "정수지",
+     "Et": 4.34,
+     "grade_stated": "B",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "S": 1400.0,
+     "P_computed": 2800.0,
+     "EtxP_computed": 12152.0
+    }
+   ],
+   "sumP_computed": 22360.0,
+   "sumP_stated": 22360.0,
+   "sumEtP_computed": 67401.2,
+   "sumEtP_stated": 67401.2,
+   "Et_computed": 3.01,
+   "Et_stated": 3.01,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true,
+   "note": "개별시설물 결과를 대문자(B, C)로 표기(규정은 소문자). 침전지 Et1=2.63은 [표 11.81]과 일치하나 규모 S=5,040㎡는 [표 11.69]의 2,616㎡와 다름."
+  },
+  {
+   "table": "11.84",
+   "stage": 6,
+   "name": "관로시설물(통합시설물)",
+   "formula": "Et = Σ(Et_prev×P)/ΣP, P = A×S",
+   "rows": [
+    {
+     "member": "관로",
+     "Et": 2.74,
+     "grade_stated": "C",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "S": 15990.6,
+     "P_computed": 47971.8,
+     "EtxP_computed": 131442.7
+    },
+    {
+     "member": "수로터널",
+     "Et": 4.03,
+     "grade_stated": "B",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "S": 10008.8,
+     "P_computed": 20017.6,
+     "EtxP_computed": 80670.9
+    }
+   ],
+   "sumP_computed": 67989.4,
+   "sumP_stated": 67989.4,
+   "sumEtP_computed": 212113.7,
+   "sumEtP_stated": 212113.6,
+   "Et_computed": 3.12,
+   "Et_stated": 3.12,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true,
+   "note": "규모 단위가 \"S, m3/분\"으로 적혀 있으나 값은 [표 11.82]의 ㎥ 합계(15,990.6)와 같음 → ㎥로 보임. \"L14,5km\" 오타."
+  },
+  {
+   "table": "11.85",
+   "stage": 6,
+   "name": "토목구조물(통합시설물)",
+   "formula": "Et = Σ(Et_prev×P)/ΣP, P = A×S",
+   "rows": [
+    {
+     "member": "A 취수시설물",
+     "Et": 4.05,
+     "grade_stated": "B",
+     "grade_computed": "b",
+     "A_stated": 2,
+     "A_computed": 2,
+     "S": 220,
+     "P_computed": 440.0,
+     "EtxP_computed": 1782.0
+    },
+    {
+     "member": "A 취수장",
+     "Et": 2.39,
+     "grade_stated": "D",
+     "grade_computed": "d",
+     "A_stated": 6,
+     "A_computed": 6,
+     "S": 220,
+     "P_computed": 1320.0,
+     "EtxP_computed": 3154.8
+    },
+    {
+     "member": "A 정수장",
+     "Et": 3.01,
+     "grade_stated": "C",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "S": 200,
+     "P_computed": 600.0,
+     "EtxP_computed": 1806.0
+    },
+    {
+     "member": "A 가압장",
+     "Et": 4.53,
+     "grade_stated": "A",
+     "grade_computed": "a",
+     "A_stated": 1,
+     "A_computed": 1,
+     "S": 120,
+     "P_computed": 120.0,
+     "EtxP_computed": 543.6
+    }
+   ],
+   "sumP_computed": 2480.0,
+   "sumP_stated": 2480,
+   "sumEtP_computed": 7286.4,
+   "sumEtP_stated": 7286.4,
+   "Et_computed": 2.94,
+   "Et_stated": 2.94,
+   "grade_computed": "c",
+   "grade_stated": "c",
+   "match": true,
+   "note": "규모 단위 \"㎡/일\"은 시설용량(㎥/일, 천 단위)으로 보임. 결과 행 \"종합평가지수(t3)\"는 Et3 오기."
+  },
+  {
+   "table": "11.87",
+   "stage": 7,
+   "name": "○○상수도(종합시설물)",
+   "formula": "Et = Σ(Et_prev×P)/ΣP, P = A×W",
+   "rows": [
+    {
+     "member": "관로시설물",
+     "Et": 3.12,
+     "grade_stated": "C",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 47,
+     "P_computed": 141.0,
+     "EtxP_computed": 439.9
+    },
+    {
+     "member": "토목구조물",
+     "Et": 2.94,
+     "grade_stated": "C",
+     "grade_computed": "c",
+     "A_stated": 3,
+     "A_computed": 3,
+     "W": 27,
+     "P_computed": 81.0,
+     "EtxP_computed": 238.1
+    },
+    {
+     "member": "기전 설비",
+     "Et": 4.78,
+     "grade_stated": "A",
+     "grade_computed": "a",
+     "A_stated": 1,
+     "A_computed": 1,
+     "W": 13,
+     "P_computed": 13.0,
+     "EtxP_computed": 62.1
+    },
+    {
+     "member": "건축구조물",
+     "Et": 4.35,
+     "grade_stated": "B",
+     "grade_computed": "b",
+     "A_stated": 1,
+     "A_computed": 2,
+     "W": 13,
+     "P_computed": 26.0,
+     "EtxP_computed": 113.1
+    }
+   ],
+   "sumP_computed": 261.0,
+   "sumP_stated": 248.0,
+   "sumEtP_computed": 853.3,
+   "sumEtP_stated": 796.7,
+   "Et_computed": 3.27,
+   "Et_stated": 3.21,
+   "grade_computed": "c",
+   "grade_stated": "C",
+   "match": false,
+   "note": "원문 오류: 건축구조물 Et3=4.35(B)인데 조정계수 A=1로 적용([표 11.79]상 B → A=2). 원문 계산(A=1)은 ΣP=248.0, Σ=796.7 → 3.21(C). 올바르게 A=2이면 P=26.0, ΣP=261.0, Σ=853.3 → 3.27(C) — 등급은 동일. W(47/27/13/13)는 [표 11.86]에서 수원지(25)를 빼고 35·20·10·10을 비례 재배분(÷0.75)한 값과 일치.",
+   "sourceArithmetic": {
+    "A_used_for_건축구조물": 1,
+    "sumP": 248.0,
+    "sum": 796.7,
+    "Et4": 3.21
+   }
+  }
+ ],
+ "sourceInconsistencies": [
+  "11.64: 원문 표기 \"4,439,2\", \"1,275,6\"은 소수점 오타. 근거 표번호 \"No. 3T-3-2\"가 두 번(3T-3-3 오기). S = 3.14×1.25²×L (L=240/260/240m, 합 740m)과 일치.",
+  "11.69: S=654㎡ = 벽체(2×(3.5×12+3.5×30)) + 바닥(12×30) 조사면적과 일치.",
+  "11.73: 원문 Σ(E3×S)=99.6은 반올림된 행 값의 합; 정확한 합은 99.505. V2·E4 결과는 동일.",
+  "11.76: [표 11.76]은 결과를 대문자 \"D\"로, 같은 예를 옮긴 [표 11.80]은 소문자 \"d\"로 표기(개별시설물은 소문자 규정).",
+  "11.77: [표 11.77]은 대문자 \"C\", [표 11.81]은 소문자 \"c\".",
+  "11.82: 송수관로1의 Et1=2.48은 [표 11.80](같은 송수관로1, Et1=2.36)과 다름 — 독립 예시로 보임. 배수관로는 11.1.3 해설 1에서 대상에서 제외되나 예시에 포함.",
+  "11.83: 개별시설물 결과를 대문자(B, C)로 표기(규정은 소문자). 침전지 Et1=2.63은 [표 11.81]과 일치하나 규모 S=5,040㎡는 [표 11.69]의 2,616㎡와 다름.",
+  "11.84: 규모 단위가 \"S, m3/분\"으로 적혀 있으나 값은 [표 11.82]의 ㎥ 합계(15,990.6)와 같음 → ㎥로 보임. \"L14,5km\" 오타.",
+  "11.85: 규모 단위 \"㎡/일\"은 시설용량(㎥/일, 천 단위)으로 보임. 결과 행 \"종합평가지수(t3)\"는 Et3 오기.",
+  "11.87: 원문 오류: 건축구조물 Et3=4.35(B)인데 조정계수 A=1로 적용([표 11.79]상 B → A=2). 원문 계산(A=1)은 ΣP=248.0, Σ=796.7 → 3.21(C). 올바르게 A=2이면 P=26.0, ΣP=261.0, Σ=853.3 → 3.27(C) — 등급은 동일. W(47/27/13/13)는 [표 11.86]에서 수원지(25)를 빼고 35·20·10·10을 비례 재배분(÷0.75)한 값과 일치.",
+  "[표 11.62] 1행(콘크리트 균열 b): M=4, F=1.1인데 E1을 4.0으로 기재(4×1.1=4.4). E2(최솟값 3.4)와 등급 c에는 영향 없음.",
+  "[표 11.59] 결과문 \"복합부재(관로구간 1-2)\"는 표 제목 \"관로구간 2\"와 다름.",
+  "[표 11.76]/[표 11.77]은 개별시설물 안전성평가 결과를 대문자(D, C)로 표기 — 11.5.3 나.는 소문자 규정."
+ ]
+}

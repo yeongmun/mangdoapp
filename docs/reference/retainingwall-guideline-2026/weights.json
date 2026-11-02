@@ -1,0 +1,1607 @@
+{
+ "meta": {
+  "source": "세부지침 해설서(옹벽편) 2026.2, 13.4.1 가. 1) 결함점수 및 결함지수 산정 기준 — [표 13.12] 앞의 (가)~(라) 재료형식별 표",
+  "note": "옹벽편에는 교량편 [표 1.31]/[표 1.32] 같은 \"부재별 가중치\" 표가 없다. 대신 재료형식별로 평가항목마다 a~e 결함점수를 주고(점수 크기가 사실상 가중치), 그 합을 만점으로 나눠 결함지수 F를 구한다. 이 파일은 그 결함점수표.",
+  "captionNote": "네 표에는 표 번호가 없고 (가) 콘크리트 옹벽 (나) 보강토 옹벽 (다) 석축 (라) 돌망태 옹벽 제목만 있음. 원문에서 [표 13.12] 캡션은 (라) 다음 \"2) 옹벽시설물의 상태평가 기준\" 등급표(A~E)에 붙어 있음 → 등급표는 score-rules.json"
+ },
+ "gradeColumnsBand": {
+  "a": "0≤f<0.15",
+  "b": "0.15≤f<0.30",
+  "c": "0.30≤f<0.55",
+  "d": "0.55≤f<0.75",
+  "e": "0.75≤f",
+  "note": "각 결함점수표 머리에 a~e와 함께 적힌 f 범위(원문 그대로). 항목 등급과 F 범위의 대응 표시로 보임"
+ },
+ "wallTypes": {
+  "콘크리트 옹벽": {
+   "items": [
+    {
+     "item": "침하",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 888
+    },
+    {
+     "item": "활동",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 889
+    },
+    {
+     "item": "배수공상태",
+     "scores": {
+      "a": 0,
+      "b": 3,
+      "c": 6,
+      "d": 9,
+      "e": 12
+     },
+     "max": 12,
+     "sourceLine": 890
+    },
+    {
+     "item": "계획선형오차(전도/경사)",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 891
+    },
+    {
+     "item": "파손 및 손상(재료분리)",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 892
+    },
+    {
+     "item": "균열",
+     "scores": {
+      "a": 0,
+      "b": 2,
+      "c": 4,
+      "d": 6,
+      "e": 8
+     },
+     "max": 8,
+     "sourceLine": 893
+    },
+    {
+     "item": "마모/침식",
+     "scores": {
+      "a": 0,
+      "b": 0,
+      "c": 1,
+      "d": 1,
+      "e": 1
+     },
+     "max": 1,
+     "sourceLine": 894
+    },
+    {
+     "item": "박리",
+     "scores": {
+      "a": 0,
+      "b": 0,
+      "c": 1,
+      "d": 1,
+      "e": 2
+     },
+     "max": 2,
+     "sourceLine": 895,
+     "group": "재료열화"
+    },
+    {
+     "item": "박락 및 층분리",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 896,
+     "group": "재료열화"
+    },
+    {
+     "item": "백태",
+     "scores": {
+      "a": 0,
+      "b": 0,
+      "c": 1,
+      "d": 1,
+      "e": 1
+     },
+     "max": 1,
+     "sourceLine": 897,
+     "group": "재료열화"
+    },
+    {
+     "item": "탄산화",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 4,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 898,
+     "group": "재료열화"
+    },
+    {
+     "item": "염화물",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 4,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 899,
+     "group": "재료열화"
+    },
+    {
+     "item": "철근노출",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 900,
+     "group": "재료열화"
+    },
+    {
+     "item": "세굴",
+     "scores": {
+      "a": 0,
+      "b": 4,
+      "c": 8,
+      "d": 12,
+      "e": 16
+     },
+     "max": 16,
+     "sourceLine": 901
+    }
+   ],
+   "surrounding": [
+    {
+     "item": "주변영향인자 > 배수시설",
+     "scores": {
+      "양호": 0,
+      "없거나 불량": 1
+     },
+     "max": 1
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 사면구배",
+     "scores": {
+      "적절": 0,
+      "부적절": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 낙석흔적",
+     "scores": {
+      "미발생": 0,
+      "발생": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 침출수",
+     "scores": {
+      "무": 0,
+      "유": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    }
+   ],
+   "defectIndex": {
+    "철근콘크리트 옹벽": {
+     "formula1": "F = Σ결함점수 / 76",
+     "formula2": "F = Σ결함점수 / 60",
+     "eq": [
+      "{EQ:rm {Sigma~ 결함점수} over76}",
+      "{EQ:rm {Sigma~ 결함점수} over 60}"
+     ]
+    },
+    "중력식 옹벽": {
+     "formula1": "F = Σ결함점수 / 64",
+     "formula2": "F = Σ결함점수 / 48",
+     "eq": [
+      "{EQ:rm {Sigma~ 결함점수} over 64}",
+      "{EQ:rm {Sigma~ 결함점수} over 48}"
+     ]
+    }
+   },
+   "notes": [
+    "※ 철근이 포함되지 않은 구조물은 철근노출, 염화물, 탄산화 항목 제외",
+    "※ 세굴 발생이 가능한 부위가 불투수 처리(아스콘, 콘크리트 포장 등)가 되었을 경우 ②번 산정식을 사용",
+    "※ 콘크리트 옹벽의 누수에 대한 평가는 철근콘크리트 옹벽에 한하여 실시하며, 평가단위당 균열폭 최대점을 기준으로 균열깊이 측정을 실시하여 균열깊이가 콘크리트 피복보다 클 경우에 결함점수를 한 단계 하향 조정함",
+    "※ 주변영향인자 평가항목 중 사면조사는 절·성토사면 및 사면 보호시설물에 해당하여 실시하며, 해당 시설물이 아닌 경우에는 평가식의 분모를 3점 감산하여 계산함",
+    "※ 수중옹벽의 경우, 평가항목 중  배수공상태 항목은 설계도서를 검토하여 불필요시 결함지수에서 제외하며, 평가식의 분모에서 그 점수만큼 감산하여 계산함"
+   ],
+   "denominatorCheck": {
+    "철근콘크리트 옹벽": {
+     "sumOfMaxScores": 76,
+     "formula1Denominator": 76,
+     "formula2Denominator": 60,
+     "matches": true,
+     "note": "만점 합 76 = ① 분모 76; ② = ① − 세굴 16 = 60"
+    },
+    "중력식 옹벽": {
+     "sumOfMaxScores": 64,
+     "formula1Denominator": 64,
+     "formula2Denominator": 48,
+     "matches": true,
+     "note": "만점 합 64 = ① 분모 64; ② = ① − 세굴 16 = 48"
+    }
+   }
+  },
+  "보강토 옹벽": {
+   "items": [
+    {
+     "item": "침하",
+     "scores": {
+      "a": 0,
+      "b": 0,
+      "c": 1,
+      "d": 1,
+      "e": 2
+     },
+     "max": 2,
+     "sourceLine": 916
+    },
+    {
+     "item": "계획선형오차(전도/경사)",
+     "scores": {
+      "a": 0,
+      "b": 0,
+      "c": 1,
+      "d": 1,
+      "e": 2
+     },
+     "max": 2,
+     "sourceLine": 917
+    },
+    {
+     "item": "활동",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 918
+    },
+    {
+     "item": "전면부 진행성 배부름",
+     "scores": {
+      "a": 0,
+      "b": 6,
+      "c": 12,
+      "d": 18,
+      "e": 24
+     },
+     "max": 24,
+     "sourceLine": 919
+    },
+    {
+     "item": "파손, 손상 및 균열",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 920
+    },
+    {
+     "item": "유실",
+     "scores": {
+      "a": 0,
+      "b": 2,
+      "c": 4,
+      "d": 6,
+      "e": 8
+     },
+     "max": 8,
+     "sourceLine": 921
+    },
+    {
+     "item": "이격",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 922
+    },
+    {
+     "item": "세굴",
+     "scores": {
+      "a": 0,
+      "b": 4,
+      "c": 8,
+      "d": 12,
+      "e": 16
+     },
+     "max": 16,
+     "sourceLine": 923
+    },
+    {
+     "item": "배수상태",
+     "scores": {
+      "a": 0,
+      "b": 3,
+      "c": 6,
+      "d": 9,
+      "e": 12
+     },
+     "max": 12,
+     "sourceLine": 924
+    }
+   ],
+   "surrounding": [
+    {
+     "item": "주변영향인자 > 사면조사 > 사면구배",
+     "scores": {
+      "적절": 0,
+      "부적절": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 낙석흔적",
+     "scores": {
+      "미발생": 0,
+      "발생": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 침출수",
+     "scores": {
+      "무": 0,
+      "유": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    }
+   ],
+   "defectIndex": {
+    "formula1": "F = Σ결함점수 / 79",
+    "formula2": "F = Σ결함점수 / 63",
+    "eq": [
+     "{EQ:rm {SIGMA ~결함점수} over {79}}",
+     "{EQ:rm {SIGMA ~결함점수} over {63}}"
+    ]
+   },
+   "notes": [
+    "※ 세굴 발생이 가능한 부위가 불투수 처리(아스콘, 콘크리트 포장 등)가 되었을 경우 ②번 산정식을 사용",
+    "※ 전면판에 발생한 균열은 파손으로 처리함",
+    "※ 주변영향인자 평가항목 중 사면조사는 절·성토사면 및 사면 보호시설물에 해당하여 실시하며, 해당 시설물이 아닌 경우에는 평가식의 분모를 3점 감산하여 계산함"
+   ],
+   "denominatorCheck": {
+    "sumOfMaxScores": 79,
+    "formula1Denominator": 79,
+    "formula2Denominator": 63,
+    "matches": true,
+    "note": "만점 합 79 = ① 분모 79; ② = ① − 세굴 16 = 63"
+   }
+  },
+  "석축": {
+   "items": [
+    {
+     "item": "침하",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 937
+    },
+    {
+     "item": "계획선형오차(전도/경사)",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 938
+    },
+    {
+     "item": "활동",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 939
+    },
+    {
+     "item": "전면부 진행성 배부름",
+     "scores": {
+      "a": 0,
+      "b": 2,
+      "c": 4,
+      "d": 6,
+      "e": 8
+     },
+     "max": 8,
+     "sourceLine": 940
+    },
+    {
+     "item": "배수공 상태",
+     "scores": {
+      "a": 0,
+      "b": 3,
+      "c": 6,
+      "d": 9,
+      "e": 12
+     },
+     "max": 12,
+     "sourceLine": 941
+    },
+    {
+     "item": "파손, 손상 및 균열",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 942
+    },
+    {
+     "item": "유실",
+     "scores": {
+      "a": 0,
+      "b": 2,
+      "c": 4,
+      "d": 6,
+      "e": 8
+     },
+     "max": 8,
+     "sourceLine": 943
+    },
+    {
+     "item": "이격",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 944
+    },
+    {
+     "item": "채움콘크리트상태",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 945
+    },
+    {
+     "item": "암석의 풍화도",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 2,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 946
+    },
+    {
+     "item": "세굴",
+     "scores": {
+      "a": 0,
+      "b": 4,
+      "c": 8,
+      "d": 12,
+      "e": 16
+     },
+     "max": 16,
+     "sourceLine": 947
+    }
+   ],
+   "surrounding": [
+    {
+     "item": "주변영향인자 > 배수시설",
+     "scores": {
+      "양호": 0,
+      "없거나 불량": 1
+     },
+     "max": 1
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 사면구배",
+     "scores": {
+      "적절": 0,
+      "부적절": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 낙석흔적",
+     "scores": {
+      "미발생": 0,
+      "발생": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 침출수",
+     "scores": {
+      "무": 0,
+      "유": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    }
+   ],
+   "defectIndex": {
+    "formula1": "F = Σ결함점수 / 76",
+    "formula2": "F = Σ결함점수 / 60",
+    "eq": [
+     "{EQ:rm {Sigma~ 결함점수} over 76}",
+     "{EQ:rm {Sigma~ 결함점수} over 60}"
+    ]
+   },
+   "notes": [
+    "※ 세굴 발생이 가능한 부위가 불투수 처리(아스콘, 콘크리트 포장 등)가 되었을 경우 ②번 산정식을 사용",
+    "※ 석괴에 발생한 균열은 파손으로 처리함",
+    "※ 주변영향인자 평가항목 중 사면조사는 절·성토사면 및 사면 보호시설물에 해당하여 실시하며, 해당 시설물이 아닌 경우에는 평가식의 분모를 3점 감산하여 계산함"
+   ],
+   "denominatorCheck": {
+    "sumOfMaxScores": 76,
+    "formula1Denominator": 76,
+    "formula2Denominator": 60,
+    "matches": true,
+    "note": "만점 합 76 = ① 분모 76; ② = ① − 세굴 16 = 60"
+   }
+  },
+  "돌망태 옹벽": {
+   "items": [
+    {
+     "item": "침하",
+     "scores": {
+      "a": 0,
+      "b": 0,
+      "c": 1,
+      "d": 1,
+      "e": 2
+     },
+     "max": 2,
+     "sourceLine": 961
+    },
+    {
+     "item": "활동",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 962
+    },
+    {
+     "item": "채움재 유실",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 963
+    },
+    {
+     "item": "wire mesh 파손 및 손상",
+     "scores": {
+      "a": 0,
+      "b": 2,
+      "c": 4,
+      "d": 6,
+      "e": 8
+     },
+     "max": 8,
+     "sourceLine": 964
+    },
+    {
+     "item": "진행성 변형 발생",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 965
+    },
+    {
+     "item": "결속철망 상태",
+     "scores": {
+      "a": 0,
+      "b": 1,
+      "c": 2,
+      "d": 3,
+      "e": 4
+     },
+     "max": 4,
+     "sourceLine": 966
+    },
+    {
+     "item": "세굴",
+     "scores": {
+      "a": 0,
+      "b": 4,
+      "c": 8,
+      "d": 12,
+      "e": 16
+     },
+     "max": 16,
+     "sourceLine": 967
+    }
+   ],
+   "surrounding": [
+    {
+     "item": "주변영향인자 > 배수시설",
+     "scores": {
+      "양호": 0,
+      "없거나 불량": 1
+     },
+     "max": 1
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 사면구배",
+     "scores": {
+      "적절": 0,
+      "부적절": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 낙석흔적",
+     "scores": {
+      "미발생": 0,
+      "발생": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    },
+    {
+     "item": "주변영향인자 > 사면조사 > 침출수",
+     "scores": {
+      "무": 0,
+      "유": 1
+     },
+     "max": 1,
+     "slopeOnly": true
+    }
+   ],
+   "defectIndex": {
+    "formula1": "F = Σ결함점수 / 46",
+    "formula2": "F = Σ결함점수 / 30",
+    "eq": [
+     "{EQ:rm {Sigma~ 결함점수} over46}",
+     "{EQ:rm {Sigma~ 결함점수} over30}"
+    ]
+   },
+   "notes": [
+    "※ 세굴 발생이 가능한 부위가 불투수 처리(아스콘, 콘크리트 포장 등)가 되었을 경우 ②번 산정식을 사용",
+    "※ 주변영향인자 평가항목 중 사면조사는 절·성토사면 및 사면 보호시설물에 해당하여 실시하며, 해당 시설물이 아닌 경우에는 평가식의 분모를 3점 감산하여 계산한다."
+   ],
+   "denominatorCheck": {
+    "sumOfMaxScores": 46,
+    "formula1Denominator": 46,
+    "formula2Denominator": 30,
+    "matches": true,
+    "note": "만점 합 46 = ① 분모 46; ② = ① − 세굴 16 = 30"
+   }
+  }
+ },
+ "denominatorRules": {
+  "formula1": "기본(세굴 항목 포함)",
+  "formula2": "세굴 발생이 가능한 부위가 불투수 처리(아스콘, 콘크리트 포장 등)된 경우 — 세굴 만점 16을 뺀 분모",
+  "noSlope": "사면조사 해당 없음(절·성토사면/사면 보호시설물 아님) → 분모 −3",
+  "underwaterWall": "수중옹벽: 배수공상태가 설계상 불필요하면 결함지수에서 제외하고 분모에서 그 점수(12)만큼 감산 — 콘크리트 옹벽 표 주석",
+  "noRebar": "철근이 없는 구조물(중력식): 철근노출·염화물·탄산화 제외 → 64/48",
+  "algorithm": "denom = (formula1 분모) − (불투수 처리 ? 16 : 0) − (사면 해당 없음 ? 3 : 0) − (수중옹벽·배수공 불필요 ? 12 : 0); F = Σscore / denom"
+ },
+ "crossCheckWithItemTables": [
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "침하",
+   "itemTable": "13.13",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "활동",
+   "itemTable": "13.15",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "배수공상태",
+   "itemTable": "13.26",
+   "table13_12": {
+    "a": 0,
+    "b": 3,
+    "c": 6,
+    "d": 9,
+    "e": 12
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 3,
+    "c": 6,
+    "d": 9,
+    "e": 12
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "계획선형오차(전도/경사)",
+   "itemTable": "13.14",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "파손 및 손상(재료분리)",
+   "itemTable": "13.16",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "균열",
+   "itemTable": "13.21",
+   "table13_12": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "마모/침식",
+   "itemTable": "13.18",
+   "table13_12": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 1
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 1
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "박리",
+   "itemTable": "13.20",
+   "table13_12": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "박락 및 층분리",
+   "itemTable": "13.19",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "백태",
+   "itemTable": "13.22",
+   "table13_12": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 1
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 1
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "탄산화",
+   "itemTable": "13.23",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 4,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 4,
+    "e": null
+   },
+   "match": false
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "염화물",
+   "itemTable": "13.24",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 4,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 4,
+    "e": null
+   },
+   "match": false
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "철근노출",
+   "itemTable": "13.25",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "콘크리트 옹벽",
+   "item": "세굴",
+   "itemTable": "13.17",
+   "table13_12": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "침하",
+   "itemTable": "13.27",
+   "table13_12": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "계획선형오차(전도/경사)",
+   "itemTable": "13.28",
+   "table13_12": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "활동",
+   "itemTable": "13.15",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "전면부 진행성 배부름",
+   "itemTable": "13.29",
+   "table13_12": {
+    "a": 0,
+    "b": 6,
+    "c": 12,
+    "d": 18,
+    "e": 24
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 6,
+    "c": 12,
+    "d": 18,
+    "e": 24
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "파손, 손상 및 균열",
+   "itemTable": "13.30",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "유실",
+   "itemTable": "13.32",
+   "table13_12": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "이격",
+   "itemTable": "13.31",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "세굴",
+   "itemTable": "13.17",
+   "table13_12": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "match": true
+  },
+  {
+   "wallType": "보강토 옹벽",
+   "item": "배수상태",
+   "itemTable": "13.33",
+   "table13_12": {
+    "a": 0,
+    "b": 3,
+    "c": 6,
+    "d": 9,
+    "e": 12
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 3,
+    "c": 6,
+    "d": 9,
+    "e": 12
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "침하",
+   "itemTable": "13.13",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "계획선형오차(전도/경사)",
+   "itemTable": "13.14",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "활동",
+   "itemTable": "13.15",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "전면부 진행성 배부름",
+   "itemTable": "13.29",
+   "table13_12": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "배수공 상태",
+   "itemTable": "13.26",
+   "table13_12": {
+    "a": 0,
+    "b": 3,
+    "c": 6,
+    "d": 9,
+    "e": 12
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 3,
+    "c": 6,
+    "d": 9,
+    "e": 12
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "파손, 손상 및 균열",
+   "itemTable": "13.30",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "유실",
+   "itemTable": "13.32",
+   "table13_12": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "이격",
+   "itemTable": "13.31",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "채움콘크리트상태",
+   "itemTable": "13.34",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "석축",
+   "item": "암석의 풍화도",
+   "itemTable": "13.35",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 2,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 0,
+    "c": 2,
+    "d": 2,
+    "e": 4
+   },
+   "match": false
+  },
+  {
+   "wallType": "석축",
+   "item": "세굴",
+   "itemTable": "13.17",
+   "table13_12": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "match": true
+  },
+  {
+   "wallType": "돌망태 옹벽",
+   "item": "침하",
+   "itemTable": "13.27",
+   "table13_12": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 0,
+    "c": 1,
+    "d": 1,
+    "e": 2
+   },
+   "match": true
+  },
+  {
+   "wallType": "돌망태 옹벽",
+   "item": "활동",
+   "itemTable": "13.15",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "돌망태 옹벽",
+   "item": "채움재 유실",
+   "itemTable": "13.36",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "돌망태 옹벽",
+   "item": "wire mesh 파손 및 손상",
+   "itemTable": "13.38",
+   "table13_12": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 2,
+    "c": 4,
+    "d": 6,
+    "e": 8
+   },
+   "match": true
+  },
+  {
+   "wallType": "돌망태 옹벽",
+   "item": "진행성 변형 발생",
+   "itemTable": "13.39",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "돌망태 옹벽",
+   "item": "결속철망 상태",
+   "itemTable": "13.37",
+   "table13_12": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 1,
+    "c": 2,
+    "d": 3,
+    "e": 4
+   },
+   "match": true
+  },
+  {
+   "wallType": "돌망태 옹벽",
+   "item": "세굴",
+   "itemTable": "13.17",
+   "table13_12": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "itemTableScores": {
+    "a": 0,
+    "b": 4,
+    "c": 8,
+    "d": 12,
+    "e": 16
+   },
+   "match": true
+  }
+ ],
+ "sourceInconsistencies": [
+  "콘크리트 옹벽 \"탄산화\": [표 13.12] 점수 [0, 1, 2, 4, 4] ≠ [표 13.23] 결함점수 [0, 1, 2, 4, None]",
+  "콘크리트 옹벽 \"염화물\": [표 13.12] 점수 [0, 1, 2, 4, 4] ≠ [표 13.24] 결함점수 [0, 1, 2, 4, None]",
+  "석축 \"암석의 풍화도\": [표 13.12] 점수 [0, 1, 2, 2, 4] ≠ [표 13.35] 결함점수 [0, 0, 2, 2, 4]",
+  "보강토 옹벽 결함점수표에는 주변영향인자 \"배수시설\" 행이 없고 배수상태(0~12)만 있음. 그런데 13.4.3 [평가결과 산정 절차-2] 예시 표 머리글은 주변영향인자 아래 \"배수 시설\"로 적고 12점을 넣음 → 배수상태 열로 보임."
+ ]
+}

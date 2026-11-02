@@ -1,152 +1,106 @@
-// 구조물 정보(교량) — 「구조물 정보」 시트의 입력값 ↔ 서버 facilityInfo(2026-11-03). 순수 모듈(vitest: server/test/facilityInfo.test.ts).
-// 값 목록은 서버 server/src/requiredShots.ts(DECK_TYPES·GIRDER_TYPES·PUBLIC_USE)와 같아야 한다.
-// 서버는 이 값으로 필수 사진을 경간·교대·교각·신축이음마다 펴고, 바닥판·거더 형식·하천 여부로 칸을 거른다.
+// 구조물 정보 — 「구조물 정보」 시트의 입력값 ↔ 서버 facilityInfo(2026-11-03). 순수 모듈(vitest: server/test/facilityInfo.test.ts).
+// 입력 항목은 시설물 종류마다 서버 config/requiredShots.json의 info에서 온다(GET /api/facility-info-fields, 촬영 목록 응답의 infoFields).
+// 서버는 이 값으로 필수 사진을 경간·교각·지(池)마다 펴고, 형식·유무로 칸을 거른다. 값 검사도 서버가 같은 항목으로 한 번 더 한다.
 
-export type DeckType = 'concrete' | 'steel' | 'none';
-export type GirderType = 'RC' | 'PSC' | 'steel' | 'none';
-export type PublicUse = '추락방지시설' | '도로포장' | '도로부신축이음부' | '환기구덮개';
+export type InfoType = 'count' | 'meter' | 'bool' | 'choice' | 'multi';
 
-export interface FacilityInfo {
-  spans?: number;
-  abutments?: number;
-  piers?: number;
-  joints?: number;
-  deck?: DeckType;
-  girder?: GirderType;
-  box?: boolean;
-  trussOrArch?: boolean;
-  cable?: boolean;
-  river?: boolean;
-  facilityClass?: 1 | 2 | 3;
-  publicUse?: PublicUse[];
-  length?: number;
-  maxSpan?: number;
+export interface InfoField {
+  key: string;
+  label: string;
+  type: InfoType;
+  options?: [string, string][];
+  default?: unknown;
+  required?: boolean;
+  max?: number;
+  summary?: boolean;
 }
 
-export const DECK_OPTIONS: readonly (readonly [DeckType, string])[] = [
-  ['concrete', '콘크리트'],
-  ['steel', '강바닥판'],
-  ['none', '없음'],
-];
-export const GIRDER_OPTIONS: readonly (readonly [GirderType, string])[] = [
-  ['RC', 'RC'],
-  ['PSC', 'PSC'],
-  ['steel', '강거더'],
-  ['none', '없음(슬래브)'],
-];
-export const CLASS_OPTIONS: readonly (readonly ['1' | '2' | '3', string])[] = [
-  ['1', '1종'],
-  ['2', '2종'],
-  ['3', '3종'],
-];
-export const PUBLIC_USE_OPTIONS: readonly (readonly [PublicUse, string])[] = [
-  ['추락방지시설', '추락방지시설(보도 난간)'],
-  ['도로포장', '도로포장'],
-  ['도로부신축이음부', '도로부 신축이음부'],
-  ['환기구덮개', '환기구·점검구 덮개'],
-];
-export const FLAG_OPTIONS: readonly (readonly ['box' | 'trussOrArch' | 'cable' | 'river', string])[] = [
-  ['box', '박스거더'],
-  ['trussOrArch', '트러스·아치'],
-  ['cable', '케이블(현수·사장)'],
-  ['river', '하천·해상'],
-];
+export type FacilityInfo = Record<string, number | boolean | string | string[]>;
 
-/** 시트의 입력 상태 — 숫자 칸은 글자 그대로 둔다(지우는 중인 빈칸을 0으로 바꾸지 않게) */
-export interface InfoForm {
-  spans: string;
-  abutments: string;
-  piers: string;
-  joints: string;
-  length: string;
-  maxSpan: string;
-  deck: DeckType;
-  girder: GirderType;
-  facilityClass: '1' | '2' | '3';
-  box: boolean;
-  trussOrArch: boolean;
-  cable: boolean;
-  river: boolean;
-  publicUse: PublicUse[];
+/** 시트 입력 상태 — 숫자 칸은 글자 그대로(지우는 중인 빈칸을 0으로 바꾸지 않게), choice는 값, bool·multi는 그대로 */
+export type InfoForm = Record<string, string | boolean | string[]>;
+
+/** 저장된 값으로(없으면 항목 기본값으로) 시트를 연다 */
+export function formFromInfo(fields: InfoField[], info: FacilityInfo | null | undefined): InfoForm {
+  const form: InfoForm = {};
+  for (const f of fields) {
+    const saved = info?.[f.key];
+    const value = info ? saved : (saved ?? f.default);
+    switch (f.type) {
+      case 'count':
+      case 'meter':
+        form[f.key] = typeof value === 'number' ? String(value) : '';
+        break;
+      case 'bool':
+        form[f.key] = value === true;
+        break;
+      case 'choice': {
+        const v = value === undefined || value === null ? '' : String(value);
+        form[f.key] = f.options?.some(([o]) => o === v) ? v : '';
+        break;
+      }
+      case 'multi':
+        form[f.key] = Array.isArray(value) ? value.filter((x): x is string => typeof x === 'string') : [];
+        break;
+    }
+  }
+  return form;
 }
 
-export const COUNT_FIELDS = [
-  ['spans', '경간 수'],
-  ['abutments', '교대 수'],
-  ['piers', '교각 수'],
-  ['joints', '신축이음 수'],
-] as const;
-export const METER_FIELDS = [
-  ['length', '연장(m)'],
-  ['maxSpan', '최대 경간장(m)'],
-] as const;
-
-/** 저장된 값(없으면 흔한 기본값: 교대 2, 신축이음 2, 콘크리트 바닥판·PSC 거더·2종)으로 시트를 연다 */
-export function formFromInfo(info: FacilityInfo | null | undefined): InfoForm {
-  const i = info ?? {};
-  const str = (n: number | undefined) => (n === undefined ? '' : String(n));
-  return {
-    spans: str(i.spans),
-    abutments: info ? str(i.abutments) : '2',
-    piers: str(i.piers),
-    joints: info ? str(i.joints) : '2',
-    length: str(i.length),
-    maxSpan: str(i.maxSpan),
-    deck: i.deck ?? 'concrete',
-    girder: i.girder ?? 'PSC',
-    facilityClass: i.facilityClass ? (String(i.facilityClass) as '1' | '2' | '3') : '2',
-    box: i.box ?? false,
-    trussOrArch: i.trussOrArch ?? false,
-    cable: i.cable ?? false,
-    river: i.river ?? false,
-    publicUse: i.publicUse ?? [],
-  };
-}
-
-/** 정수 칸: 빈칸은 undefined, 숫자가 아니면 NaN */
-function parseCount(text: string): number | undefined {
-  const t = text.trim();
-  if (t === '') return undefined;
-  return /^\d+$/.test(t) ? Number(t) : NaN;
-}
-
-function parseMeter(text: string): number | undefined {
-  const t = text.trim().replace(',', '.');
-  if (t === '') return undefined;
-  const n = Number(t);
-  return Number.isFinite(n) && n > 0 ? n : NaN;
-}
-
-/** 시트 입력 → 서버로 보낼 facilityInfo. 틀린 칸이 있으면 { error } */
-export function infoFromForm(form: InfoForm): { info: FacilityInfo } | { error: string } {
+/** 시트 입력 → 서버로 보낼 facilityInfo. 틀리거나 빠진 칸이 있으면 { error } */
+export function infoFromForm(fields: InfoField[], form: InfoForm): { info: FacilityInfo } | { error: string } {
   const info: FacilityInfo = {};
-  for (const [key, label] of COUNT_FIELDS) {
-    const n = parseCount(form[key]);
-    if (Number.isNaN(n)) return { error: `${label}는 0 이상 정수로 적어 주세요.` };
-    if (n !== undefined) info[key] = n;
+  for (const f of fields) {
+    const raw = form[f.key];
+    if (f.type === 'count' || f.type === 'meter') {
+      const t = typeof raw === 'string' ? raw.trim().replace(',', '.') : '';
+      if (t === '') {
+        if (f.required) return { error: `${f.label}을(를) 적어 주세요.` };
+        continue;
+      }
+      const n = Number(t);
+      const max = f.max ?? (f.type === 'count' ? 1000 : 100000);
+      if (f.type === 'count' && !/^\d+$/.test(t)) return { error: `${f.label}은(는) 0 이상 정수로 적어 주세요.` };
+      if (!Number.isFinite(n) || n < 0) return { error: `${f.label}은(는) 0 이상 숫자로 적어 주세요.` };
+      if (n > max) return { error: `${f.label}은(는) ${max} 이하로 적어 주세요.` };
+      info[f.key] = n;
+    } else if (f.type === 'bool') {
+      info[f.key] = raw === true;
+    } else if (f.type === 'choice') {
+      if (typeof raw === 'string' && raw !== '') info[f.key] = raw;
+      else if (f.required) return { error: `${f.label}을(를) 골라 주세요.` };
+    } else {
+      const list = Array.isArray(raw) ? raw : [];
+      if (f.required && list.length === 0) return { error: `${f.label}을(를) 하나 이상 골라 주세요.` };
+      info[f.key] = [...list];
+    }
   }
-  for (const [key, label] of METER_FIELDS) {
-    const n = parseMeter(form[key]);
-    if (Number.isNaN(n)) return { error: `${label}은 0보다 큰 숫자로 적어 주세요.` };
-    if (n !== undefined) info[key] = n;
-  }
-  if (info.spans === undefined) return { error: '경간 수를 적어 주세요. 경간마다 사진 칸이 생겨요.' };
-  info.deck = form.deck;
-  info.girder = form.girder;
-  info.facilityClass = Number(form.facilityClass) as 1 | 2 | 3;
-  for (const [key] of FLAG_OPTIONS) info[key] = form[key];
-  info.publicUse = [...form.publicUse];
   return { info };
 }
 
-/** 구조물 화면 알약에 보이는 짧은 요약. 없으면 null */
-export function infoSummary(info: FacilityInfo | null | undefined): string | null {
-  if (!info) return null;
+/** 「경간 수」→「경간」, 「연장(m)」→「연장」 */
+function shortLabel(label: string): string {
+  return label.replace(/\(.*?\)/g, '').replace(/\s*수$/, '').trim();
+}
+
+/** 구조물 화면 알약에 보이는 짧은 요약. 없으면 null. summary 항목이 있으면 그것만, 없으면 값 있는 앞 항목 3개 */
+export function infoSummary(fields: InfoField[], info: FacilityInfo | null | undefined): string | null {
+  if (!info || Object.keys(info).length === 0) return null;
+  const chosen = fields.some((f) => f.summary) ? fields.filter((f) => f.summary) : fields;
   const parts: string[] = [];
-  if (info.spans !== undefined) parts.push(`${info.spans}경간`);
-  if (info.piers !== undefined) parts.push(`교각 ${info.piers}`);
-  const girder = GIRDER_OPTIONS.find(([k]) => k === info.girder)?.[1];
-  if (girder && info.girder !== 'none') parts.push(girder);
-  if (info.river) parts.push('하천');
+  for (const f of chosen) {
+    const v = info[f.key];
+    if (v === undefined) continue;
+    if (f.type === 'count' && typeof v === 'number') parts.push(f.key === 'spans' ? `${v}경간` : `${shortLabel(f.label)} ${v}`);
+    else if (f.type === 'meter' && typeof v === 'number' && v > 0) parts.push(`${v}m`);
+    else if (f.type === 'choice') {
+      const label = f.options?.find(([o]) => o === String(v))?.[1];
+      if (label && String(v) !== 'none') parts.push(label);
+    } else if (f.type === 'multi' && Array.isArray(v) && v.length > 0) {
+      const first = f.options?.find(([o]) => o === v[0])?.[1];
+      if (first) parts.push(v.length > 1 ? `${shortLabel(first)} 외 ${v.length - 1}` : shortLabel(first));
+    }
+    if (parts.length >= 3) break;
+  }
   return parts.length > 0 ? parts.join(' · ') : '입력됨';
 }

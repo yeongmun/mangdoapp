@@ -8,7 +8,7 @@ import { mkdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { memberOfCaption, type PhotoBlock } from './hwpxPhotos.js';
 import { readJsonFile, writeFileAtomic, writeJsonFileAtomic } from './jsonFile.js';
-import { parseTemplateItem, type RequiredTemplateItem } from './requiredShots.js';
+import { parseFacilityTemplate, type FacilityTemplate } from './requiredShots.js';
 
 export type ShotKind = 'required' | 'previous';
 
@@ -118,7 +118,7 @@ function withHint(shot: Shot, hint: string | undefined): Shot {
 
 /** 설정 파일이 없거나 JSON이 깨져도 서버는 떠야 한다(리뷰 3) — 로그만 남기고 빈 목록으로 간다. 고치면 재시작.
  *  "_"로 시작하는 키(_설명 등)는 시설물 종류가 아니다. */
-export async function loadRequiredTemplate(configPath: string): Promise<Record<string, RequiredTemplateItem[]>> {
+export async function loadRequiredTemplate(configPath: string): Promise<Record<string, FacilityTemplate>> {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
@@ -126,10 +126,10 @@ export async function loadRequiredTemplate(configPath: string): Promise<Record<s
     console.error('[shots] 필수 사진 목록을 읽지 못했습니다 — 빈 목록으로 시작합니다:', configPath, err instanceof Error ? err.message : String(err));
     return {};
   }
-  const out: Record<string, RequiredTemplateItem[]> = {};
-  for (const [type, items] of Object.entries(parsed)) {
+  const out: Record<string, FacilityTemplate> = {};
+  for (const [type, value] of Object.entries(parsed)) {
     if (type.startsWith('_')) continue;
-    out[type] = (Array.isArray(items) ? items : []).map(parseTemplateItem).filter((i): i is RequiredTemplateItem => i !== null);
+    out[type] = parseFacilityTemplate(value);
   }
   return out;
 }

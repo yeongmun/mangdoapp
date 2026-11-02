@@ -1,0 +1,4545 @@
+{
+ "meta": {
+  "source": "시설물의 안전 및 유지관리 실시 세부지침(안전점검·진단 편) 해설서(하수처리장편) 2026.2, 12.4.1 상태평가 항목 및 기준",
+  "conventions": {
+   "machine": "min은 이상(포함), max는 미만(제외)이 기본. 예외는 minInclusive/maxInclusive 로 명시. equals=정확히 같음. minSymbolic/maxSymbolic은 규정값(R_spec 등) 기호식",
+   "units": "_mm=밀리미터, _pct=퍼센트(조사단위면적 대비 면적율, 또는 최대 허용처짐량 대비), _kg_m3=kg/m3, _cm, _dB, _rms_mm_s=RMS 진동속도 mm/s, _MOhm=MΩ, _ohm=Ω",
+   "grades": "셀 텍스트(text)는 원문 그대로(줄바꿈은 \" / \"), criteria는 ◦ 단위로 분리. 매트릭스 표(12.17, 12.18, 12.24)는 matrix에 원형을 두고 grades는 그로부터 유도(derivedFromMatrix)",
+   "scores": "평가점수 a=5, b=4, c=3, d=2, e=1 (공중이 이용하는 부위 표는 점수 없음)",
+   "notApplicable": "원문 셀이 \"-\"(해당 등급 없음)",
+   "orCoarseAggregateLoss": "\"…이상이거나 조골재 손실\" — 수치 조건 또는 조골재 손실이면 해당"
+  },
+  "evaluationTypesAndInfluence": {
+   "note": "평가유형별 영향계수(F)는 weights.json에도 있음. 상태평가지수 Ec1 = M(평가점수) × F",
+   "concrete_12_12": {
+    "table": "12.12",
+    "captionInSource": "[표 12.12] 콘크리트 구조물의 평가항목별 평가유형 및 영향계수",
+    "sourceLine": 760,
+    "rowsVerbatim": [
+     [
+      "구 분",
+      "평가유형",
+      "평가기준",
+      "평가점수",
+      "영향계수"
+     ],
+     [
+      "침하/부상",
+      "<c1r3>중요결함",
+      "<c1r3>a / b / c / d / e",
+      "<c1r3>5 / 4 / 3 / 2 / 1",
+      "<c1r3>1.0"
+     ],
+     [
+      "경     사"
+     ],
+     [
+      "활     동"
+     ],
+     [
+      "기 초 세 굴",
+      "<c1r3>국부결함",
+      "<c1r3>a / b / c / d / e",
+      "<c1r3>5 / 4 / 3 / 2 / 1",
+      "<c1r3>1.0 / 1.1 / 1.2 / 1.4 / 2.0"
+     ],
+     [
+      "콘크리트 탄산화깊이"
+     ],
+     [
+      "콘크리트 염화물함량"
+     ],
+     [
+      "콘크리트 균열",
+      "<c1r8>일반손상",
+      "<c1r8>a / b / c / d / e",
+      "<c1r8>5 / 4 / 3 / 2 / 1",
+      "<c1r8>1.0 / 1.1 / 1.3 / 1.7 / 3.0"
+     ],
+     [
+      "콘크리트 박리"
+     ],
+     [
+      "콘크리트 박락/층분리"
+     ],
+     [
+      "철 근 노 출"
+     ],
+     [
+      "누       수"
+     ],
+     [
+      "백       태"
+     ],
+     [
+      "콘크리트 파손"
+     ],
+     [
+      "신축이음 탈락/열화"
+     ]
+    ]
+   },
+   "steel_12_28": {
+    "table": "12.28",
+    "captionInSource": "[표 12.28] 강 구조물의 평가항목별 평가유형 및 영향계수",
+    "sourceLine": 920,
+    "rowsVerbatim": [
+     [
+      "손상 및 결함의 종류",
+      "평가유형",
+      "평가기준",
+      "평가점수",
+      "영향계수"
+     ],
+     [
+      "강재 변형/변위",
+      "중요결함",
+      "a / b / c / d / e",
+      "5 / 4 / 3 / 2 / 1",
+      "1.0"
+     ],
+     [
+      "강재 부식",
+      "<c1r2>국부결함",
+      "<c1r2>a / b / c / d / e",
+      "<c1r2>5 / 4 / 3 / 2 / 1",
+      "<c1r2>1.0 / 1.1 / 1.2 / 1.4 / 2.0"
+     ],
+     [
+      "강재 피로균열"
+     ],
+     [
+      "강재 도장손상",
+      "일반손상",
+      "a / b / c / d / e",
+      "5 / 4 / 3 / 2 / 1",
+      "1.0 / 1.1 / 1.3 / 1.7 / 3.0"
+     ]
+    ]
+   },
+   "mechElec_12_33": {
+    "table": "12.33",
+    "captionInSource": "[표 12.33] 기전설비의 평가항목별 평가유형 및 영향계수",
+    "sourceLine": 966,
+    "rowsVerbatim": [
+     [
+      "<c2r1>상태변화",
+      "평가유형",
+      "영향계수",
+      "평가기준",
+      "평가점수",
+      "비 고"
+     ],
+     [
+      "<c1r3>펌프 / 설비",
+      "펌프 진동크기",
+      "<c1r2>국부결함",
+      "<c1r2>1.0 / 1.1 / 1.2 / 1.4 / 2.0",
+      "<c1r2>a / b / c / d / e",
+      "<c1r2>5 / 4 / 3 / 2 / 1",
+      "<c1r2>"
+     ],
+     [
+      "펌프의 소음크기"
+     ],
+     [
+      "펌프베드 기초부",
+      "일반손상",
+      "1.0 / 1.1 / 1.3 / 1.7 / 3.0",
+      "a / b / c / d / e",
+      "5 / 4 / 3 / 2 / 1",
+      ""
+     ],
+     [
+      "<c1r2>장내 / 배관",
+      "관체손상 정도(누수상태)",
+      "중요결함",
+      "1.0",
+      "a / b / c / d / e",
+      "5 / 4 / 3 / 2 / 1",
+      ""
+     ],
+     [
+      "밸브의 손상정도",
+      "<c1r4>국부결함",
+      "<c1r4>1.0 / 1.1 / 1.2 / 1.4 / 2.0",
+      "<c1r4>a / b / c / d / e",
+      "<c1r4>5 / 4 / 3 / 2 / 1",
+      "<c1r4>"
+     ],
+     [
+      "<c1r3>전기 / 설비",
+      "절연열화"
+     ],
+     [
+      "접지불량"
+     ],
+     [
+      "전기설비의 불량 / (고저압펌프모터ㆍ기동반ㆍ제어반)"
+     ]
+    ]
+   },
+   "influenceFactor": {
+    "중요결함": [
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "국부결함": [
+     1.0,
+     1.1,
+     1.2,
+     1.4,
+     2.0
+    ],
+    "일반손상": [
+     1.0,
+     1.1,
+     1.3,
+     1.7,
+     3.0
+    ],
+    "order": "a,b,c,d,e"
+   }
+  },
+  "crackTableChoice": "수처리 구조물(물과 접하는 수밀 구조물)은 [표 12.18], 그 밖의 일반 구조물은 [표 12.17]을 쓴다(※ 콘크리트 구조기준(2012) 허용균열폭 수처리 0.15～0.25㎜ / 일반 0.3～0.4㎜ 고려).",
+  "crackAreaRatioFormula": {
+   "oneWay": "Σ균열발생면적/조사단위면적×100 = Σ균열길이(L)×0.25 / (A(m)×B(m)) ×100 (%) — 균열 1개당 폭 0.25m 점유",
+   "twoWay": "Σ균열발생면적(㎡)/(A(m)×B(m))×100 (%) — 최외측 균열을 경계로 (가로길이+0.25m)×(세로길이+0.25m)",
+   "ref": "12.4.1 【해설】 1. 콘크리트 균열 면적율 산정방법 (원문 {EQ:} 식)"
+  },
+  "rebarExposureAreaFormula": "철근노출면적율(%) = 철근노출면적/조사단위면적×100 = 철근노출길이(L)×0.25 / (A(m)×B(m)) ×100 ([표 12.23] 아래 {EQ:} 식)",
+  "individualMemberRule": "개별부재 상태평가지수 E2 = 손상·결함별 상태평가지수 E1(=M×F) 중 최솟값 → [표 12.48]로 등급(12.4.2 다. 2)). 교량처럼 \"등급 최젓값\"이 아니라 영향계수를 곱한 지수의 최솟값임",
+  "tableNumbersFoundInSource": [
+   "12.1",
+   "12.2",
+   "12.3",
+   "12.4",
+   "12.5",
+   "12.6",
+   "12.7",
+   "12.8",
+   "12.9",
+   "12.10",
+   "12.11",
+   "12.12",
+   "12.13",
+   "12.14",
+   "12.15",
+   "12.16",
+   "12.17",
+   "12.18",
+   "12.19",
+   "12.20",
+   "12.21",
+   "12.22",
+   "12.23",
+   "12.24",
+   "12.25",
+   "12.26",
+   "12.27",
+   "12.28",
+   "12.29",
+   "12.30",
+   "12.31",
+   "12.32",
+   "12.33",
+   "12.34",
+   "12.35",
+   "12.36",
+   "12.37",
+   "12.38",
+   "12.39",
+   "12.40",
+   "12.41",
+   "12.42",
+   "12.43",
+   "12.44",
+   "12.45",
+   "12.46",
+   "12.47",
+   "12.48",
+   "12.49",
+   "12.50",
+   "12.51",
+   "12.52",
+   "12.53",
+   "12.54",
+   "12.55",
+   "12.56",
+   "12.57",
+   "12.58",
+   "12.59",
+   "12.60",
+   "12.61",
+   "12.62",
+   "12.63",
+   "12.64",
+   "12.65",
+   "12.66",
+   "12.67",
+   "12.68"
+  ],
+  "tablesInThisFile": [
+   "12.13",
+   "12.14",
+   "12.15",
+   "12.16",
+   "12.17",
+   "12.18",
+   "12.19",
+   "12.20",
+   "12.21",
+   "12.22",
+   "12.23",
+   "12.24",
+   "12.25",
+   "12.26",
+   "12.27",
+   "12.29",
+   "12.30",
+   "12.31",
+   "12.32",
+   "12.34",
+   "12.35",
+   "12.36",
+   "12.37",
+   "12.38",
+   "12.39",
+   "12.40",
+   "12.41",
+   "12.42",
+   "12.43",
+   "12.44",
+   "12.45",
+   "12.12",
+   "12.28",
+   "12.33"
+  ],
+  "publicUseNote": "공중이 이용하는 부위 [표 12.42]~[표 12.45]는 평가점수 열이 없음. 결과는 전체 상태평가지수에 반영하지 않고 보고서/부록에 기재(12.4.1 마. 【해설】1). 외관조사망도는 원칙적으로 작성하지 않으나 d·e 판정 시 작성. 하수처리장 추락방지시설 = 난간, 점검로, 사다리 등받이울 등; 환기구 등의 덮개 = 맨홀 덮개, 점검구 덮개 등 수직갱 형태 점검구·입출구부; 도로포장·도로부 신축이음부는 도로법 제10조 도로에 해당할 때(원문 해설 4는 \"배수펌프장 내에 있는 도로포장\"이라 적음 — 배수펌프장편 문구 복사로 보임).",
+  "sourceInconsistencies": [
+   "[표 12.35] 펌프 진동: b ≤ 5.6, c ≤ 9, d 〉9, e 〉11 — d·e 범위가 겹침. 또 [해설 표 12.2.3] 진동평가 기준은 A ≤3.7, B ≤9.6, C ≤9, D ＞9, trip 11로 B 상한(9.6)이 C 상한(9)보다 큼(ISO 10816 류의 값이 섞인 것으로 보임).",
+   "[표 12.36] 펌프 소음: d 100 초과～120 이하, e 120 초과. 본문 12.2.1 【해설】(4)② 는 \"80dB 이하 a, 80∼90 b, 90∼100 c, 100∼115dB 이상 d, 115dB 이상 e\" — d/e 경계 115 vs 120 불일치. 표 값을 machine에 사용.",
+   "[표 12.54] 예시: 펌프진동 1.5mm/sec를 b, 펌프소음 85dB를 c로 평가 — [표 12.35](≤3.7 → a), [표 12.36](80 초과 90 이하 → b)과 맞지 않음. [표 12.55]도 같은 점수(4, 3)를 이어 씀.",
+   "[표 12.17]/[표 12.18] 열 머리글 \"면적율 20%이하\"/\"면적율 20%이상\"이 20%에서 겹침.",
+   "[표 12.19]/[표 12.20] d와 e의 수치 기준이 같음(부식 확인 여부로만 구분) — 원문 그대로.",
+   "[표 12.21] 박리 d 첫 줄 \"1.0㎜ 이상 ～ 25㎜ 미만이면서 면적율 10% 미만\"은 범위가 매우 넓음(교량편과 다름) — 원문 그대로 둠.",
+   "[표 12.18] 주 \"균열 면적율 산정방법은 제1장 교량 [표1.11] 참조\" 와 별도로 12.4.1 【해설】1에 산정식이 있음(두 식은 같은 취지).",
+   "[표 12.33] 비고 열과 \"펌프의 소음크기\"가 원문 병합 셀로 국부결함에 묶임 — 평가유형 국부결함, 영향계수 1.0/1.1/1.2/1.4/2.0.",
+   "[표 12.39] 캡션이 원문에 \"[표12.39]\"(띄어쓰기 없음)로 적힘."
+  ]
+ },
+ "tables": [
+  {
+   "table": "12.13",
+   "category": "콘크리트 구조물",
+   "item": "침하/부상",
+   "evaluationType": "중요결함",
+   "captionInSource": "[표 12.13] 침하/부상의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 780,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦침하/부상이 발생되지 않은 상태",
+      "criteria": [
+       {
+        "text": "침하/부상이 발생되지 않은 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦부분적으로 경미한 침하/부상이 발생한 상태이나 / 근본적인 보수는 필요하지 않은 상태",
+      "criteria": [
+       {
+        "text": "부분적으로 경미한 침하/부상이 발생한 상태이나 근본적인 보수는 필요하지 않은 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦침하/부상의 정도가 보통정도이나 / 지속적인 관찰로 진행성을 감시할 정도의 상태",
+      "criteria": [
+       {
+        "text": "침하/부상의 정도가 보통정도이나 지속적인 관찰로 진행성을 감시할 정도의 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦침하/부상의 정도가 심각하여 / 구조적인 안전에 심각한 영향을 미칠 수 있는 상태",
+      "criteria": [
+       {
+        "text": "침하/부상의 정도가 심각하여 구조적인 안전에 심각한 영향을 미칠 수 있는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦침하/부상의 정도가 아주 심하고 광범위하게 발생하여 / 구조적인 안전을 위협받고 있는 상태",
+      "criteria": [
+       {
+        "text": "침하/부상의 정도가 아주 심하고 광범위하게 발생하여 구조적인 안전을 위협받고 있는 상태"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.14",
+   "category": "콘크리트 구조물",
+   "item": "경사",
+   "evaluationType": "중요결함",
+   "captionInSource": "[표 12.14] 경사의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 788,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦경사가 발생되지 않은 상태",
+      "criteria": [
+       {
+        "text": "경사가 발생되지 않은 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦부분적으로 경미한 경사가 발생한 상태이나 / 근본적인 보수는 필요하지 않는 상태",
+      "criteria": [
+       {
+        "text": "부분적으로 경미한 경사가 발생한 상태이나 근본적인 보수는 필요하지 않는 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦경사의 정도가 보통정도이나 / 지속적인 관찰로 진행성을 감시할 정도의 상태",
+      "criteria": [
+       {
+        "text": "경사의 정도가 보통정도이나 지속적인 관찰로 진행성을 감시할 정도의 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦경사의 정도가 심각하여 / 구조적인 안정에 심각한 영향을 미칠 수 있는 상태",
+      "criteria": [
+       {
+        "text": "경사의 정도가 심각하여 구조적인 안정에 심각한 영향을 미칠 수 있는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦경사의 정도가 아주 심하고 광범위하게 발생하여 / 구조적인 안정이 위협받고 있는 위험한 상태",
+      "criteria": [
+       {
+        "text": "경사의 정도가 아주 심하고 광범위하게 발생하여 구조적인 안정이 위협받고 있는 위험한 상태"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.15",
+   "category": "콘크리트 구조물",
+   "item": "활동",
+   "evaluationType": "중요결함",
+   "captionInSource": "[표 12.15] 활동의 상태평가기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 796,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦활동이 발생되지 않은 상태",
+      "criteria": [
+       {
+        "text": "활동이 발생되지 않은 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦부분적으로 경미한 활동이 발생한 상태이나 / 근본적인 보수는 필요하지 않은 상태",
+      "criteria": [
+       {
+        "text": "부분적으로 경미한 활동이 발생한 상태이나 근본적인 보수는 필요하지 않은 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦활동의 정도가 보통정도이나 / 지속적인 관찰로 진행성을 감시할 정도의 상태",
+      "criteria": [
+       {
+        "text": "활동의 정도가 보통정도이나 지속적인 관찰로 진행성을 감시할 정도의 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦활동의 정도가 심각하여 / 구조적인 안전에 심각한 영향을 미칠 수 있는 상태",
+      "criteria": [
+       {
+        "text": "활동의 정도가 심각하여 구조적인 안전에 심각한 영향을 미칠 수 있는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦활동의 정도가 아주 심하고 광범위하게 발생하여 / 구조적인 안전이 위협받고 있는 위험한 상태",
+      "criteria": [
+       {
+        "text": "활동의 정도가 아주 심하고 광범위하게 발생하여 구조적인 안전이 위협받고 있는 위험한 상태"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.16",
+   "category": "콘크리트 구조물",
+   "item": "기초세굴",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.16] 기초세굴의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 807,
+   "footnotesAndFormulas": [
+    "주) 상태평가 결과가 \"e\"등급인 경우 12.1.4절의 중대한 결함으로 본다."
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦세굴이 없는 상태",
+      "criteria": [
+       {
+        "text": "세굴이 없는 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦세굴이 경미하게 발생된 상태",
+      "criteria": [
+       {
+        "text": "세굴이 경미하게 발생된 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦경미한 세굴이 여러 곳에 산재되어 있거나 / 세굴이 다소 심하게 발생된 상태",
+      "criteria": [
+       {
+        "text": "경미한 세굴이 여러 곳에 산재되어 있거나 세굴이 다소 심하게 발생된 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦세굴이 심하여 하단부가 크게 들어 나고 / 구조적인 안전에 영향을 미칠 수 있는 상태",
+      "criteria": [
+       {
+        "text": "세굴이 심하여 하단부가 크게 들어 나고 구조적인 안전에 영향을 미칠 수 있는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦세굴이 아주 심하여 / 구조적 안전이 심각하게 위협받고 있는 위험한 상태",
+      "criteria": [
+       {
+        "text": "세굴이 아주 심하여 구조적 안전이 심각하게 위협받고 있는 위험한 상태"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.17",
+   "category": "콘크리트 구조물",
+   "item": "콘크리트 균열(일반 구조물)",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.17] 일반 구조물 콘크리트 균열의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 815,
+   "items": [
+    "최대 균열폭 × 균열 면적율"
+   ],
+   "matrix": {
+    "rowHeader": "최대 균열폭",
+    "rows": [
+     "0.1㎜ 미만",
+     "0.1㎜ 이상～0.2㎜ 미만",
+     "0.2㎜ 이상～0.3㎜ 미만",
+     "0.3㎜ 이상～0.5㎜ 미만",
+     "0.5㎜ 이상"
+    ],
+    "rowMachine": [
+     {
+      "metric": "maxCrackWidth_mm",
+      "max": 0.1
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.1,
+      "max": 0.2
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.2,
+      "max": 0.3
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.3,
+      "max": 0.5
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.5
+     }
+    ],
+    "cols": [
+     "면적율 5%이하",
+     "면적율 20%이하",
+     "면적율 20%이상"
+    ],
+    "colMachine": [
+     {
+      "metric": "crackAreaRatio_pct",
+      "max": 5,
+      "maxInclusive": true
+     },
+     {
+      "metric": "crackAreaRatio_pct",
+      "min": 5,
+      "max": 20,
+      "minInclusive": false,
+      "maxInclusive": true
+     },
+     {
+      "metric": "crackAreaRatio_pct",
+      "min": 20,
+      "minInclusive": false
+     }
+    ],
+    "grades": [
+     [
+      "a",
+      "a",
+      "a"
+     ],
+     [
+      "a",
+      "a",
+      "b"
+     ],
+     [
+      "a",
+      "b",
+      "c"
+     ],
+     [
+      "b",
+      "c",
+      "d"
+     ],
+     [
+      "c",
+      "d",
+      "e"
+     ]
+    ],
+    "scores": [
+     [
+      5,
+      5,
+      5
+     ],
+     [
+      5,
+      5,
+      4
+     ],
+     [
+      5,
+      4,
+      3
+     ],
+     [
+      4,
+      3,
+      2
+     ],
+     [
+      3,
+      2,
+      1
+     ]
+    ],
+    "note": "원문 열 머리글 \"면적율 20%이하\"와 \"면적율 20%이상\"이 20%에서 겹침 → 20%는 가운데 열(≤20)로, 5%는 첫 열(≤5)로 해석"
+   },
+   "grades": {
+    "a": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "max": 0.1
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "max": 0.1
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "max": 0.1
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.1,
+          "max": 0.2
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.1,
+          "max": 0.2
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.2,
+          "max": 0.3
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "b": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.1,
+          "max": 0.2
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.2,
+          "max": 0.3
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.3,
+          "max": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "c": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.2,
+          "max": 0.3
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.3,
+          "max": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.5㎜ 이상, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.5㎜ 이상 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "d": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.3,
+          "max": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.5㎜ 이상, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.5㎜ 이상 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "e": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.5㎜ 이상, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.5㎜ 이상 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.18",
+   "category": "콘크리트 구조물",
+   "item": "콘크리트 균열(수처리 구조물)",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.18] 수처리 구조물 콘크리트 균열의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 824,
+   "footnotesAndFormulas": [
+    "※) 콘크리트 구조기준(2012)의 수처리 구조물 콘크리트 허용균열 폭 0.15～0.25㎜ 및 일반 콘크리트 구조물 허용균열 폭 0.3～0.4㎜ 등을 고려하여 콘크리트 균열 폭 및 면적율에 따라 상태평가 하도록 함",
+    "주) 균열 면적율 산정방법은 제1장 교량 [표1.11] 참조"
+   ],
+   "items": [
+    "최대 균열폭 × 균열 면적율"
+   ],
+   "matrix": {
+    "rowHeader": "최대 균열폭",
+    "rows": [
+     "0.1㎜ 미만",
+     "0.1㎜ 이상～0.2㎜ 미만",
+     "0.2㎜ 이상～0.3㎜ 미만",
+     "0.3㎜ 이상～0.5㎜ 미만",
+     "0.5㎜ 이상"
+    ],
+    "rowMachine": [
+     {
+      "metric": "maxCrackWidth_mm",
+      "max": 0.1
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.1,
+      "max": 0.2
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.2,
+      "max": 0.3
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.3,
+      "max": 0.5
+     },
+     {
+      "metric": "maxCrackWidth_mm",
+      "min": 0.5
+     }
+    ],
+    "cols": [
+     "면적율 5%이하",
+     "면적율 20%이하",
+     "면적율 20%이상"
+    ],
+    "colMachine": [
+     {
+      "metric": "crackAreaRatio_pct",
+      "max": 5,
+      "maxInclusive": true
+     },
+     {
+      "metric": "crackAreaRatio_pct",
+      "min": 5,
+      "max": 20,
+      "minInclusive": false,
+      "maxInclusive": true
+     },
+     {
+      "metric": "crackAreaRatio_pct",
+      "min": 20,
+      "minInclusive": false
+     }
+    ],
+    "grades": [
+     [
+      "a",
+      "a",
+      "b"
+     ],
+     [
+      "a",
+      "b",
+      "c"
+     ],
+     [
+      "b",
+      "c",
+      "d"
+     ],
+     [
+      "c",
+      "d",
+      "e"
+     ],
+     [
+      "d",
+      "e",
+      "e"
+     ]
+    ],
+    "scores": [
+     [
+      5,
+      5,
+      4
+     ],
+     [
+      5,
+      4,
+      3
+     ],
+     [
+      4,
+      3,
+      2
+     ],
+     [
+      3,
+      2,
+      1
+     ],
+     [
+      2,
+      1,
+      1
+     ]
+    ],
+    "note": "원문 열 머리글 \"면적율 20%이하\"와 \"면적율 20%이상\"이 20%에서 겹침 → 20%는 가운데 열(≤20)로, 5%는 첫 열(≤5)로 해석"
+   },
+   "grades": {
+    "a": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "max": 0.1
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "max": 0.1
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.1,
+          "max": 0.2
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "b": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "max": 0.1
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.1,
+          "max": 0.2
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.2,
+          "max": 0.3
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "c": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.1㎜ 이상～0.2㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.1,
+          "max": 0.2
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.2,
+          "max": 0.3
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.3,
+          "max": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "d": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.2㎜ 이상～0.3㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.2,
+          "max": 0.3
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.3,
+          "max": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.5㎜ 이상, 면적율 5%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.5㎜ 이상 이면서 면적율 5%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "max": 5,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "e": [
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.3㎜ 이상～0.5㎜ 미만 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.3,
+          "max": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.5㎜ 이상, 면적율 20%이하",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.5㎜ 이상 이면서 면적율 20%이하",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 5,
+          "max": 20,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "최대 균열폭 × 균열 면적율",
+      "text": "최대 균열폭 0.5㎜ 이상, 면적율 20%이상",
+      "criteria": [
+       {
+        "text": "최대 균열폭 0.5㎜ 이상 이면서 면적율 20%이상",
+        "machine": [
+         {
+          "metric": "maxCrackWidth_mm",
+          "min": 0.5
+         },
+         {
+          "metric": "crackAreaRatio_pct",
+          "min": 20,
+          "minInclusive": false
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.19",
+   "category": "콘크리트 구조물",
+   "item": "콘크리트 탄산화깊이",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.19] 탄산화 잔여 깊이의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 836,
+   "footnotesAndFormulas": [
+    "주1) 상태평가결과가 \"d\"이고 [표 12.23](철근노출)의 상태평가결과가 \"e\"이거나, 상태평가결과가 “e”이면 12.1.4절의 중대한 결함으로 본다.",
+    "주2) 제1장 교량[표 1.28] 해설을 따른다."
+   ],
+   "items": [
+    "탄산화 잔여 깊이",
+    "철근부식의 가능성"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "text": "◦30㎜이상",
+      "criteria": [
+       {
+        "text": "30㎜이상",
+        "machine": [
+         {
+          "metric": "carbonationRemaining_mm",
+          "min": 30
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "탄산화에 의한 부식이 발생할 우려 없음.",
+      "criteria": [
+       {
+        "text": "탄산화에 의한 부식이 발생할 우려 없음."
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "text": "◦10㎜이상 ～ 30㎜미만",
+      "criteria": [
+       {
+        "text": "10㎜이상 ～ 30㎜미만",
+        "machine": [
+         {
+          "metric": "carbonationRemaining_mm",
+          "min": 10,
+          "max": 30
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "향후 탄산화에 의한 부식이 발생할 가능성 / 있음",
+      "criteria": [
+       {
+        "text": "향후 탄산화에 의한 부식이 발생할 가능성 있음"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "text": "◦0㎜이상 ～ 10㎜미만",
+      "criteria": [
+       {
+        "text": "0㎜이상 ～ 10㎜미만",
+        "machine": [
+         {
+          "metric": "carbonationRemaining_mm",
+          "min": 0,
+          "max": 10
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "경우에 따라서 탄산화에 의한 부식이 / 발생할 가능성이 있음",
+      "criteria": [
+       {
+        "text": "경우에 따라서 탄산화에 의한 부식이 발생할 가능성이 있음"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "text": "◦0㎜ 미만",
+      "criteria": [
+       {
+        "text": "0㎜ 미만",
+        "machine": [
+         {
+          "metric": "carbonationRemaining_mm",
+          "max": 0
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "철근부식 발생 조건 만족",
+      "criteria": [
+       {
+        "text": "철근부식 발생 조건 만족"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "text": "◦0㎜ 미만",
+      "criteria": [
+       {
+        "text": "0㎜ 미만",
+        "machine": [
+         {
+          "metric": "carbonationRemaining_mm",
+          "max": 0
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "철근부식도 조사 등을 통해 철근부식 발생 확인",
+      "criteria": [
+       {
+        "text": "철근부식도 조사 등을 통해 철근부식 발생 확인",
+        "machine": [
+         {
+          "metric": "rebarCorrosionConfirmed",
+          "equals": true
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "notes": [
+    "d와 e의 수치 기준은 같음(0㎜ 미만 / 2.5kg/m3 이상) — e는 철근부식도 조사 등으로 철근부식 발생이 확인된 경우"
+   ]
+  },
+  {
+   "table": "12.20",
+   "category": "콘크리트 구조물",
+   "item": "콘크리트 염화물함량",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.20] 전염화물 이온량의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 844,
+   "footnotesAndFormulas": [
+    "주) 상태평가결과가 \"d\"이고 [표 12.23](철근노출)의 상태평가결과가 \"e\"이거나, 상태평가결과가 “e”이면 12.1.4절의 중대한 결함으로 본다.",
+    "※제1장 교량 [표 1.29] 참조"
+   ],
+   "items": [
+    "전염화물 이온량",
+    "철근부식의 가능성"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "전염화물 이온량",
+      "text": "◦염화물 ≤ 0.3kg/m3",
+      "criteria": [
+       {
+        "text": "염화물 ≤ 0.3kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "max": 0.3,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "염화물에 의한 부식이 발생할 우려 없음",
+      "criteria": [
+       {
+        "text": "염화물에 의한 부식이 발생할 우려 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "전염화물 이온량",
+      "text": "◦0.3kg/m3<염화물<1.2kg/m3",
+      "criteria": [
+       {
+        "text": "0.3kg/m3<염화물<1.2kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 0.3,
+          "max": 1.2,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "콘크리트 중의 염화물 이온농도가 높으나, / 부식이 발생할 가능성 적음.",
+      "criteria": [
+       {
+        "text": "콘크리트 중의 염화물 이온농도가 높으나, 부식이 발생할 가능성 적음."
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "전염화물 이온량",
+      "text": "◦1.2kg/m3≤염화물< 2.5kg/m3",
+      "criteria": [
+       {
+        "text": "1.2kg/m3≤염화물< 2.5kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 1.2,
+          "max": 2.5
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "향후 염화물에 의한 부식이 발생할 가능성 / 높음",
+      "criteria": [
+       {
+        "text": "향후 염화물에 의한 부식이 발생할 가능성 높음"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "전염화물 이온량",
+      "text": "◦염화물 ≥ 2.5kg/m3",
+      "criteria": [
+       {
+        "text": "염화물 ≥ 2.5kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 2.5
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "철근부식 발생 조건 만족",
+      "criteria": [
+       {
+        "text": "철근부식 발생 조건 만족"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "전염화물 이온량",
+      "text": "◦염화물 ≥ 2.5kg/m3",
+      "criteria": [
+       {
+        "text": "염화물 ≥ 2.5kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 2.5
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "item": "철근부식의 가능성",
+      "text": "철근부식도 조사 등을 통해 철근부식 발생 확인",
+      "criteria": [
+       {
+        "text": "철근부식도 조사 등을 통해 철근부식 발생 확인",
+        "machine": [
+         {
+          "metric": "rebarCorrosionConfirmed",
+          "equals": true
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "notes": [
+    "d와 e의 수치 기준은 같음(0㎜ 미만 / 2.5kg/m3 이상) — e는 철근부식도 조사 등으로 철근부식 발생이 확인된 경우"
+   ]
+  },
+  {
+   "table": "12.21",
+   "category": "콘크리트 구조물",
+   "item": "콘크리트 박리",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.21] 콘크리트 박리의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 852,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박리발생이 없음",
+      "criteria": [
+       {
+        "text": "박리발생이 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박리깊이 0.5㎜ 미만이면서 박리 면적율 10% 미만",
+      "criteria": [
+       {
+        "text": "박리깊이 0.5㎜ 미만이면서 박리 면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "scalingDepth_mm",
+          "max": 0.5
+         },
+         {
+          "metric": "scalingArea_pct",
+          "max": 10
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박리 깊이 0.5㎜ 이상 ～ 1.0㎜미만 이면서 박리면적율 10% 미만 / ◦박리 깊이 0.5㎜ 미만이면서 박리면적율 10% 이상",
+      "criteria": [
+       {
+        "text": "박리 깊이 0.5㎜ 이상 ～ 1.0㎜미만 이면서 박리면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "scalingDepth_mm",
+          "min": 0.5,
+          "max": 1.0
+         },
+         {
+          "metric": "scalingArea_pct",
+          "max": 10
+         }
+        ]
+       },
+       {
+        "text": "박리 깊이 0.5㎜ 미만이면서 박리면적율 10% 이상",
+        "machine": [
+         {
+          "metric": "scalingDepth_mm",
+          "max": 0.5
+         },
+         {
+          "metric": "scalingArea_pct",
+          "min": 10
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박리 깊이 1.0㎜ 이상 ～ 25㎜ 미만이면서 박리면적율 10% 미만 / ◦박리 깊이 0.5㎜ 이상 ～ 10㎜ 미만이면서 박리면적율 10% 이상",
+      "criteria": [
+       {
+        "text": "박리 깊이 1.0㎜ 이상 ～ 25㎜ 미만이면서 박리면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "scalingDepth_mm",
+          "min": 1.0,
+          "max": 25
+         },
+         {
+          "metric": "scalingArea_pct",
+          "max": 10
+         }
+        ]
+       },
+       {
+        "text": "박리 깊이 0.5㎜ 이상 ～ 10㎜ 미만이면서 박리면적율 10% 이상",
+        "machine": [
+         {
+          "metric": "scalingDepth_mm",
+          "min": 0.5,
+          "max": 10
+         },
+         {
+          "metric": "scalingArea_pct",
+          "min": 10
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박리 깊이 10㎜ 이상 ～ 25㎜ 미만이면서 박리면적율 10% 이상 / ◦박리 깊이 25㎜ 이상이거나 조골재 손실",
+      "criteria": [
+       {
+        "text": "박리 깊이 10㎜ 이상 ～ 25㎜ 미만이면서 박리면적율 10% 이상",
+        "machine": [
+         {
+          "metric": "scalingDepth_mm",
+          "min": 10,
+          "max": 25
+         },
+         {
+          "metric": "scalingArea_pct",
+          "min": 10
+         }
+        ]
+       },
+       {
+        "text": "박리 깊이 25㎜ 이상이거나 조골재 손실",
+        "machine": [
+         {
+          "metric": "scalingDepth_mm",
+          "min": 25,
+          "orCoarseAggregateLoss": true
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.22",
+   "category": "콘크리트 구조물",
+   "item": "콘크리트 박락/층분리",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.22] 콘크리트 박락/층분리의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 863,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박락/층분리의 발생이 없음",
+      "criteria": [
+       {
+        "text": "박락/층분리의 발생이 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박락/층분리 깊이 15㎜ 미만이면서 면적율 20% 미만",
+      "criteria": [
+       {
+        "text": "박락/층분리 깊이 15㎜ 미만이면서 면적율 20% 미만",
+        "machine": [
+         {
+          "metric": "spallDepth_mm",
+          "max": 15
+         },
+         {
+          "metric": "spallArea_pct",
+          "max": 20
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박락/층분리 깊이 15㎜ 이상～20㎜ 미만이면서 면적율 20% 미만 / ◦박락/층분리 깊이 15㎜ 미만이면서 면적율 20% 이상",
+      "criteria": [
+       {
+        "text": "박락/층분리 깊이 15㎜ 이상～20㎜ 미만이면서 면적율 20% 미만",
+        "machine": [
+         {
+          "metric": "spallDepth_mm",
+          "min": 15,
+          "max": 20
+         },
+         {
+          "metric": "spallArea_pct",
+          "max": 20
+         }
+        ]
+       },
+       {
+        "text": "박락/층분리 깊이 15㎜ 미만이면서 면적율 20% 이상",
+        "machine": [
+         {
+          "metric": "spallDepth_mm",
+          "max": 15
+         },
+         {
+          "metric": "spallArea_pct",
+          "min": 20
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박락/층분리 깊이 20㎜ 이상～25㎜ 미만이면서 면적율 20% 미만 / ◦박락/층분리 깊이 15㎜ 이상～20㎜ 미만이면서 면적율 20% 이상",
+      "criteria": [
+       {
+        "text": "박락/층분리 깊이 20㎜ 이상～25㎜ 미만이면서 면적율 20% 미만",
+        "machine": [
+         {
+          "metric": "spallDepth_mm",
+          "min": 20,
+          "max": 25
+         },
+         {
+          "metric": "spallArea_pct",
+          "max": 20
+         }
+        ]
+       },
+       {
+        "text": "박락/층분리 깊이 15㎜ 이상～20㎜ 미만이면서 면적율 20% 이상",
+        "machine": [
+         {
+          "metric": "spallDepth_mm",
+          "min": 15,
+          "max": 20
+         },
+         {
+          "metric": "spallArea_pct",
+          "min": 20
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦박락/층분리 깊이 20㎜ 이상～25㎜미만이면서 면적율 20% 이상 / ◦박락/층분리 깊이 25㎜ 이상이거나 조골재 손실",
+      "criteria": [
+       {
+        "text": "박락/층분리 깊이 20㎜ 이상～25㎜미만이면서 면적율 20% 이상",
+        "machine": [
+         {
+          "metric": "spallDepth_mm",
+          "min": 20,
+          "max": 25
+         },
+         {
+          "metric": "spallArea_pct",
+          "min": 20
+         }
+        ]
+       },
+       {
+        "text": "박락/층분리 깊이 25㎜ 이상이거나 조골재 손실",
+        "machine": [
+         {
+          "metric": "spallDepth_mm",
+          "min": 25,
+          "orCoarseAggregateLoss": true
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.23",
+   "category": "콘크리트 구조물",
+   "item": "철근노출",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.23] 철근노출면적의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 871,
+   "footnotesAndFormulas": [
+    "주) 상태평가 결과가 \"e\"이고, [표 12.19](탄산화) 또는 [표 12.20](염화물)의 상태평가 결과가",
+    "\"d\"이면 12.1.4절의 중대한 결함으로 본다.",
+    "{EQ:철근노출면적율(%)= {철근노출면적} over {조사단위면적} TIMES 100= {철근노출길이(L) TIMES 0.25} over {A(m) TIMES B(m)} TIMES 100=%}"
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦철근노출 없음",
+      "criteria": [
+       {
+        "text": "철근노출 없음",
+        "machine": [
+         {
+          "metric": "rebarExposureArea_pct",
+          "equals": 0
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦철근노출 면적율이 1% 미만",
+      "criteria": [
+       {
+        "text": "철근노출 면적율이 1% 미만",
+        "machine": [
+         {
+          "metric": "rebarExposureArea_pct",
+          "min": 0,
+          "max": 1,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦철근노출 면적율이 1% 이상 ～ 3% 미만",
+      "criteria": [
+       {
+        "text": "철근노출 면적율이 1% 이상 ～ 3% 미만",
+        "machine": [
+         {
+          "metric": "rebarExposureArea_pct",
+          "min": 1,
+          "max": 3
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦철근노출 면적율이 3% 이상 ～ 5% 미만",
+      "criteria": [
+       {
+        "text": "철근노출 면적율이 3% 이상 ～ 5% 미만",
+        "machine": [
+         {
+          "metric": "rebarExposureArea_pct",
+          "min": 3,
+          "max": 5
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦철근노출 면적율이 5% 이상",
+      "criteria": [
+       {
+        "text": "철근노출 면적율이 5% 이상",
+        "machine": [
+         {
+          "metric": "rebarExposureArea_pct",
+          "min": 5
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.24",
+   "category": "콘크리트 구조물",
+   "item": "콘크리트 파손",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.24] 콘크리트 파손의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 879,
+   "items": [
+    "파손 깊이 × 면적율"
+   ],
+   "matrix": {
+    "rowHeader": "깊이",
+    "rows": [
+     "없음",
+     "5㎜ 미만",
+     "5㎜ 이상～10㎜ 미만",
+     "10㎜ 이상～20㎜ 미만",
+     "20㎜ 이상"
+    ],
+    "rowMachine": [
+     {
+      "metric": "breakDepth_mm",
+      "equals": 0
+     },
+     {
+      "metric": "breakDepth_mm",
+      "min": 0,
+      "max": 5,
+      "minInclusive": false
+     },
+     {
+      "metric": "breakDepth_mm",
+      "min": 5,
+      "max": 10
+     },
+     {
+      "metric": "breakDepth_mm",
+      "min": 10,
+      "max": 20
+     },
+     {
+      "metric": "breakDepth_mm",
+      "min": 20
+     }
+    ],
+    "cols": [
+     "면적율 10% 미만",
+     "면적율 10% 이상"
+    ],
+    "colMachine": [
+     {
+      "metric": "breakArea_pct",
+      "max": 10
+     },
+     {
+      "metric": "breakArea_pct",
+      "min": 10
+     }
+    ],
+    "grades": [
+     [
+      "a",
+      null
+     ],
+     [
+      "b",
+      "c"
+     ],
+     [
+      "c",
+      "d"
+     ],
+     [
+      "d",
+      "e"
+     ],
+     [
+      "e",
+      "e"
+     ]
+    ],
+    "note": "첫 두 열(평가기준·평가점수)은 면적율 10% 미만 열과 같음. 원문 \"-\" = 해당 없음(깊이 없음이면 면적율 10% 이상이 성립하지 않음)"
+   },
+   "grades": {
+    "a": [
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 없음, 면적율 10% 미만",
+      "criteria": [
+       {
+        "text": "깊이 없음, 면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "equals": 0
+         },
+         {
+          "metric": "breakArea_pct",
+          "max": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "b": [
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 5㎜ 미만, 면적율 10% 미만",
+      "criteria": [
+       {
+        "text": "깊이 5㎜ 미만, 면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 0,
+          "max": 5,
+          "minInclusive": false
+         },
+         {
+          "metric": "breakArea_pct",
+          "max": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "c": [
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 5㎜ 미만, 면적율 10% 이상",
+      "criteria": [
+       {
+        "text": "깊이 5㎜ 미만, 면적율 10% 이상",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 0,
+          "max": 5,
+          "minInclusive": false
+         },
+         {
+          "metric": "breakArea_pct",
+          "min": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 5㎜ 이상～10㎜ 미만, 면적율 10% 미만",
+      "criteria": [
+       {
+        "text": "깊이 5㎜ 이상～10㎜ 미만, 면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 5,
+          "max": 10
+         },
+         {
+          "metric": "breakArea_pct",
+          "max": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "d": [
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 5㎜ 이상～10㎜ 미만, 면적율 10% 이상",
+      "criteria": [
+       {
+        "text": "깊이 5㎜ 이상～10㎜ 미만, 면적율 10% 이상",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 5,
+          "max": 10
+         },
+         {
+          "metric": "breakArea_pct",
+          "min": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 10㎜ 이상～20㎜ 미만, 면적율 10% 미만",
+      "criteria": [
+       {
+        "text": "깊이 10㎜ 이상～20㎜ 미만, 면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 10,
+          "max": 20
+         },
+         {
+          "metric": "breakArea_pct",
+          "max": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ],
+    "e": [
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 10㎜ 이상～20㎜ 미만, 면적율 10% 이상",
+      "criteria": [
+       {
+        "text": "깊이 10㎜ 이상～20㎜ 미만, 면적율 10% 이상",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 10,
+          "max": 20
+         },
+         {
+          "metric": "breakArea_pct",
+          "min": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 20㎜ 이상, 면적율 10% 미만",
+      "criteria": [
+       {
+        "text": "깊이 20㎜ 이상, 면적율 10% 미만",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 20
+         },
+         {
+          "metric": "breakArea_pct",
+          "max": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     },
+     {
+      "item": "파손 깊이 × 면적율",
+      "text": "깊이 20㎜ 이상, 면적율 10% 이상",
+      "criteria": [
+       {
+        "text": "깊이 20㎜ 이상, 면적율 10% 이상",
+        "machine": [
+         {
+          "metric": "breakDepth_mm",
+          "min": 20
+         },
+         {
+          "metric": "breakArea_pct",
+          "min": 10
+         }
+        ]
+       }
+      ],
+      "derivedFromMatrix": true
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.25",
+   "category": "콘크리트 구조물",
+   "item": "누수",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.25] 누수의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 890,
+   "footnotesAndFormulas": [
+    "※) 누수흔적이나 진행정도를 기준으로 콘크리트 부재와 신축이음 부위로 구분하여 평가하도록 함"
+   ],
+   "items": [
+    "콘크리트 부재",
+    "신축이음부위"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "콘크리트 부재",
+      "text": "◦누수가 없음",
+      "criteria": [
+       {
+        "text": "누수가 없음"
+       }
+      ]
+     },
+     {
+      "item": "신축이음부위",
+      "text": "◦누수가 없음",
+      "criteria": [
+       {
+        "text": "누수가 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "콘크리트 부재",
+      "text": "◦경미한 흔적 / (누수부위가 건조한 상태)",
+      "criteria": [
+       {
+        "text": "경미한 흔적 (누수부위가 건조한 상태)"
+       }
+      ]
+     },
+     {
+      "item": "신축이음부위",
+      "text": "◦누수 흔적이나 토사 등의 오염",
+      "criteria": [
+       {
+        "text": "누수 흔적이나 토사 등의 오염"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "콘크리트 부재",
+      "text": "◦현저한 흔적 / (누수부위가 습윤한 상태)",
+      "criteria": [
+       {
+        "text": "현저한 흔적 (누수부위가 습윤한 상태)"
+       }
+      ]
+     },
+     {
+      "item": "신축이음부위",
+      "text": "◦파손에 의한 누수발생",
+      "criteria": [
+       {
+        "text": "파손에 의한 누수발생"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "콘크리트 부재",
+      "text": "◦누수의 진행이 관찰가능 상태",
+      "criteria": [
+       {
+        "text": "누수의 진행이 관찰가능 상태"
+       }
+      ]
+     },
+     {
+      "item": "신축이음부위",
+      "text": "◦누수로 인한 신축이음 / 하부구조물의 부식발생",
+      "criteria": [
+       {
+        "text": "누수로 인한 신축이음 하부구조물의 부식발생"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "콘크리트 부재",
+      "text": "◦누수의 진행이 확연한 상태",
+      "criteria": [
+       {
+        "text": "누수의 진행이 확연한 상태"
+       }
+      ]
+     },
+     {
+      "item": "신축이음부위",
+      "text": "◦누수로 인한 신축이음 / 하부구조물의 부식심화",
+      "criteria": [
+       {
+        "text": "누수로 인한 신축이음 하부구조물의 부식심화"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.26",
+   "category": "콘크리트 구조물",
+   "item": "신축이음 탈락/열화",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.26] 신축이음 탈락 및 열화의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 899,
+   "footnotesAndFormulas": [
+    "※) 하수처리장의 신축이음 부재가 탈락하거나 열화가 크게 진행되는 경우에는 누수 등의 발생으로 여러 가지 문제를 야기할 수 있으므로 신축이음 탈락 및 열화 정도에 따라 평가하도록 함"
+   ],
+   "items": [
+    "부재의 탈락정도",
+    "부재의 열화정도"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "부재의 탈락정도",
+      "text": "◦없음",
+      "criteria": [
+       {
+        "text": "없음"
+       }
+      ]
+     },
+     {
+      "item": "부재의 열화정도",
+      "text": "◦없음",
+      "criteria": [
+       {
+        "text": "없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "부재의 탈락정도",
+      "text": "◦없음",
+      "criteria": [
+       {
+        "text": "없음"
+       }
+      ]
+     },
+     {
+      "item": "부재의 열화정도",
+      "text": "◦고무판 마모, 강재의 부식 / (녹) 발생 등의 경미한 열화",
+      "criteria": [
+       {
+        "text": "고무판 마모, 강재의 부식 (녹) 발생 등의 경미한 열화"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "부재의 탈락정도",
+      "text": "◦고정 장치의 이완으로 / 신축이음 본체 유동",
+      "criteria": [
+       {
+        "text": "고정 장치의 이완으로 신축이음 본체 유동"
+       }
+      ]
+     },
+     {
+      "item": "부재의 열화정도",
+      "text": "◦고무판 마모, 강재의 부식 / (녹) 발생 등의 열화심화",
+      "criteria": [
+       {
+        "text": "고무판 마모, 강재의 부식 (녹) 발생 등의 열화심화"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "부재의 탈락정도",
+      "text": "◦고정 장치의 파손으로 / 신축이음 본체 일부 탈락 및 손상",
+      "criteria": [
+       {
+        "text": "고정 장치의 파손으로 신축이음 본체 일부 탈락 및 손상"
+       }
+      ]
+     },
+     {
+      "item": "부재의 열화정도",
+      "text": "-",
+      "notApplicable": true
+     }
+    ],
+    "e": [
+     {
+      "item": "부재의 탈락정도",
+      "text": "◦신축이음 본체 파손",
+      "criteria": [
+       {
+        "text": "신축이음 본체 파손"
+       }
+      ]
+     },
+     {
+      "item": "부재의 열화정도",
+      "text": "-",
+      "notApplicable": true
+     }
+    ]
+   },
+   "notes": [
+    "부재의 열화정도 열은 d·e가 \"-\"(열화만으로는 c가 최저)"
+   ]
+  },
+  {
+   "table": "12.27",
+   "category": "콘크리트 구조물",
+   "item": "백태",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.27] 백태의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 908,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦백태가 없음",
+      "criteria": [
+       {
+        "text": "백태가 없음",
+        "machine": [
+         {
+          "metric": "efflorescenceArea_pct",
+          "equals": 0
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦백태 발생 면적율이 5% 미만",
+      "criteria": [
+       {
+        "text": "백태 발생 면적율이 5% 미만",
+        "machine": [
+         {
+          "metric": "efflorescenceArea_pct",
+          "min": 0,
+          "max": 5,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦백태 발생 면적율이 5% 이상 ～ 10% 미만",
+      "criteria": [
+       {
+        "text": "백태 발생 면적율이 5% 이상 ～ 10% 미만",
+        "machine": [
+         {
+          "metric": "efflorescenceArea_pct",
+          "min": 5,
+          "max": 10
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦백태 발생 면적율이 10% 이상 ～ 20% 미만",
+      "criteria": [
+       {
+        "text": "백태 발생 면적율이 10% 이상 ～ 20% 미만",
+        "machine": [
+         {
+          "metric": "efflorescenceArea_pct",
+          "min": 10,
+          "max": 20
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦백태 발생 면적율이 20% 이상",
+      "criteria": [
+       {
+        "text": "백태 발생 면적율이 20% 이상",
+        "machine": [
+         {
+          "metric": "efflorescenceArea_pct",
+          "min": 20
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.29",
+   "category": "강 구조물",
+   "item": "강재 부식",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.29] 강재 부식의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 927,
+   "footnotesAndFormulas": [
+    "※) 강재 부식의 진행이 심화되면 강 구조물의 내구성 저하뿐만 아니라 안전성에도 문제를 일으키게 되므로 부식정도에 따른 평가를 실시하도록 함"
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦부식발생이 전혀 없음",
+      "criteria": [
+       {
+        "text": "부식발생이 전혀 없음",
+        "machine": [
+         {
+          "metric": "steelCorrosionArea_pct",
+          "equals": 0
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦국부적으로 부식이 발생(부식발생 면적율 5% 미만)",
+      "criteria": [
+       {
+        "text": "국부적으로 부식이 발생(부식발생 면적율 5% 미만)",
+        "machine": [
+         {
+          "metric": "steelCorrosionArea_pct",
+          "min": 0,
+          "max": 5,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦부식이 다소발생(부식발생 면적율 5% 이상～15% 미만)",
+      "criteria": [
+       {
+        "text": "부식이 다소발생(부식발생 면적율 5% 이상～15% 미만)",
+        "machine": [
+         {
+          "metric": "steelCorrosionArea_pct",
+          "min": 5,
+          "max": 15
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦전반적으로 부식이 발생(부식발생 면적율 15% 이상～30% 미만)",
+      "criteria": [
+       {
+        "text": "전반적으로 부식이 발생(부식발생 면적율 15% 이상～30% 미만)",
+        "machine": [
+         {
+          "metric": "steelCorrosionArea_pct",
+          "min": 15,
+          "max": 30
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦부식발생이 심화(부식발생 면적율 30% 이상)",
+      "criteria": [
+       {
+        "text": "부식발생이 심화(부식발생 면적율 30% 이상)",
+        "machine": [
+         {
+          "metric": "steelCorrosionArea_pct",
+          "min": 30
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.30",
+   "category": "강 구조물",
+   "item": "강재 피로균열",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.30] 강재 피로균열의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 938,
+   "footnotesAndFormulas": [
+    "※) 과대하중, 진동 및 외부충격 등에 의해 발생된 피로균열로 인해 구조적 안전성에 심각한 문제를 야기할 수 있으므로 강재 피로균열에 대해 평가하도록 함"
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦전 부재에 걸쳐 균열발생이 없음",
+      "criteria": [
+       {
+        "text": "전 부재에 걸쳐 균열발생이 없음",
+        "machine": [
+         {
+          "metric": "fatigueCrack",
+          "equals": "none"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦보조부재에 국부적으로 미세 표면균열이 발생",
+      "criteria": [
+       {
+        "text": "보조부재에 국부적으로 미세 표면균열이 발생",
+        "machine": [
+         {
+          "metric": "fatigueCrack",
+          "equals": "secondaryMemberLocalSurface"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦주 부재에 국부적으로 미세 표면균열 발생",
+      "criteria": [
+       {
+        "text": "주 부재에 국부적으로 미세 표면균열 발생",
+        "machine": [
+         {
+          "metric": "fatigueCrack",
+          "equals": "mainMemberLocalSurface"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦주 부재에 균열길이 20㎜ 미만의 관통균열 발생",
+      "criteria": [
+       {
+        "text": "주 부재에 균열길이 20㎜ 미만의 관통균열 발생",
+        "machine": [
+         {
+          "metric": "fatigueCrack",
+          "equals": "mainMemberThrough"
+         },
+         {
+          "metric": "throughCrackLength_mm",
+          "max": 20
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦주 부재에 균열길이 20㎜ 이상의 관통균열 발생",
+      "criteria": [
+       {
+        "text": "주 부재에 균열길이 20㎜ 이상의 관통균열 발생",
+        "machine": [
+         {
+          "metric": "fatigueCrack",
+          "equals": "mainMemberThrough"
+         },
+         {
+          "metric": "throughCrackLength_mm",
+          "min": 20
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.31",
+   "category": "강 구조물",
+   "item": "강재 변형/변위",
+   "evaluationType": "중요결함",
+   "captionInSource": "[표 12.31] 강재 변형 및 변위의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 946,
+   "footnotesAndFormulas": [
+    "※) 강재의 경우, 과대하중이나 외부충격 등에 의해 변형 및 변위 등의 손상이 발생하며 이는 구조물의 안전성에 크게 영향을 미치게 되므로 강 구조물의 변형 및 변위 정도를 평가하도록 함"
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦변형이나 변위 등이 전혀 없음",
+      "criteria": [
+       {
+        "text": "변형이나 변위 등이 전혀 없음",
+        "machine": [
+         {
+          "metric": "deflectionOfAllowable_pct",
+          "equals": 0,
+          "note": "변형이나 변위 등이 전혀 없음"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦변형이나 변위가 없으나 미소한 처짐의 발생 / (최대 허용처짐량의 20% 미만)",
+      "criteria": [
+       {
+        "text": "변형이나 변위가 없으나 미소한 처짐의 발생 (최대 허용처짐량의 20% 미만)",
+        "machine": [
+         {
+          "metric": "deflectionOfAllowable_pct",
+          "max": 20
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦변형이나 변위가 미미하고 이로 인한 손상이 없으며, / 처짐이 다소 크게 발생(최대 허용처짐량의 20% 이상～50% 미만)",
+      "criteria": [
+       {
+        "text": "변형이나 변위가 미미하고 이로 인한 손상이 없으며, 처짐이 다소 크게 발생(최대 허용처짐량의 20% 이상～50% 미만)",
+        "machine": [
+         {
+          "metric": "deflectionOfAllowable_pct",
+          "min": 20,
+          "max": 50
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦변형이나 변위가 다소 크게 발생하였으나 이로 인한 손상은 없고 / 처짐이 크게 발생(최대 허용처짐량의 50% 이상～100% 미만)",
+      "criteria": [
+       {
+        "text": "변형이나 변위가 다소 크게 발생하였으나 이로 인한 손상은 없고 처짐이 크게 발생(최대 허용처짐량의 50% 이상～100% 미만)",
+        "machine": [
+         {
+          "metric": "deflectionOfAllowable_pct",
+          "min": 50,
+          "max": 100
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦변형이나 변위가 과대하고 이로 인해 손상이 발생",
+      "criteria": [
+       {
+        "text": "변형이나 변위가 과대하고 이로 인해 손상이 발생",
+        "machine": [
+         {
+          "metric": "deformationCausedDamage",
+          "equals": true
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.32",
+   "category": "강 구조물",
+   "item": "강재 도장손상",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.32] 강재의 도장상태에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 954,
+   "footnotesAndFormulas": [
+    "※) 강재부식 등의 방지를 목적으로 실시된 도장이 변색, 부풀림 및 탈락이 발생하는 경우 내구성 저하를 촉진하고 더불어 구조적 안전성에 영향을 미치는 손상을 유발할 우려가 있음"
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦도장면 상태가 매우 깨끗하고 결함이 전혀 없음",
+      "criteria": [
+       {
+        "text": "도장면 상태가 매우 깨끗하고 결함이 전혀 없음",
+        "machine": [
+         {
+          "metric": "coatingDamageArea_pct",
+          "equals": 0
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦도장면 상태가 전반적으로 깨끗하고 도장의 변색, 부풀림 및 / 탈락 등이 국부적으로 발생(전체면적의 10% 미만)",
+      "criteria": [
+       {
+        "text": "도장면 상태가 전반적으로 깨끗하고 도장의 변색, 부풀림 및 탈락 등이 국부적으로 발생(전체면적의 10% 미만)",
+        "machine": [
+         {
+          "metric": "coatingDamageArea_pct",
+          "min": 0,
+          "max": 10,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦도장면이 비교적 깨끗하고 도장의 변색, 부풀림 및 / 탈락 등이 다소 발생(전체면적의 10% 이상～25%미만)",
+      "criteria": [
+       {
+        "text": "도장면이 비교적 깨끗하고 도장의 변색, 부풀림 및 탈락 등이 다소 발생(전체면적의 10% 이상～25%미만)",
+        "machine": [
+         {
+          "metric": "coatingDamageArea_pct",
+          "min": 10,
+          "max": 25
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦도장면이 불량하고 도장의 변색, 부풀림 및 탈락 / 등이 크게 발생(전체면적의 25% 이상～50% 미만)",
+      "criteria": [
+       {
+        "text": "도장면이 불량하고 도장의 변색, 부풀림 및 탈락 등이 크게 발생(전체면적의 25% 이상～50% 미만)",
+        "machine": [
+         {
+          "metric": "coatingDamageArea_pct",
+          "min": 25,
+          "max": 50
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦도장면이 매우 불량하고 도장의 변색, 부풀림 및 탈락 / 등이 전반적으로 발생(전체면적의 50% 이상)",
+      "criteria": [
+       {
+        "text": "도장면이 매우 불량하고 도장의 변색, 부풀림 및 탈락 등이 전반적으로 발생(전체면적의 50% 이상)",
+        "machine": [
+         {
+          "metric": "coatingDamageArea_pct",
+          "min": 50
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.34",
+   "category": "기계·전기설비 > 펌프설비",
+   "item": "펌프베드 기초부",
+   "evaluationType": "일반손상",
+   "captionInSource": "[표 12.34] 펌프베드 기초부의 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 977,
+   "items": [
+    "상태"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태",
+      "text": "◦베드의 기초에 전혀 균열이 없는 최상의 상태",
+      "criteria": [
+       {
+        "text": "베드의 기초에 전혀 균열이 없는 최상의 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태",
+      "text": "◦베드의 기초에 균열이 없는 양호한 상태",
+      "criteria": [
+       {
+        "text": "베드의 기초에 균열이 없는 양호한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태",
+      "text": "◦베드의 기초에 미세균열이 부분적으로 발생한 보통의 상태",
+      "criteria": [
+       {
+        "text": "베드의 기초에 미세균열이 부분적으로 발생한 보통의 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태",
+      "text": "◦베드의 기초의 볼트주위에 균열이 발생한 상태",
+      "criteria": [
+       {
+        "text": "베드의 기초의 볼트주위에 균열이 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태",
+      "text": "◦펌프 고정이 불가능한 정도로 베드의 기초에 균열이 발생하여 보강 / 또는 교체 등이 필요한 상태",
+      "criteria": [
+       {
+        "text": "펌프 고정이 불가능한 정도로 베드의 기초에 균열이 발생하여 보강 또는 교체 등이 필요한 상태"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.35",
+   "category": "기계·전기설비 > 펌프설비",
+   "item": "펌프 진동크기",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.35] 펌프의 진동크기에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 988,
+   "items": [
+    "진동한계(RMS, ㎜/s)"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "진동한계(RMS, ㎜/s)",
+      "text": "진동한계 ≤ 3.7",
+      "criteria": [
+       {
+        "text": "진동한계 ≤ 3.7",
+        "machine": [
+         {
+          "metric": "pumpVibration_rms_mm_s",
+          "max": 3.7,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "진동한계(RMS, ㎜/s)",
+      "text": "진동한계 ≤ 5.6",
+      "criteria": [
+       {
+        "text": "진동한계 ≤ 5.6",
+        "machine": [
+         {
+          "metric": "pumpVibration_rms_mm_s",
+          "min": 3.7,
+          "max": 5.6,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "진동한계(RMS, ㎜/s)",
+      "text": "진동한계 ≤ 9",
+      "criteria": [
+       {
+        "text": "진동한계 ≤ 9",
+        "machine": [
+         {
+          "metric": "pumpVibration_rms_mm_s",
+          "min": 5.6,
+          "max": 9,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "진동한계(RMS, ㎜/s)",
+      "text": "진동한계 〉9",
+      "criteria": [
+       {
+        "text": "진동한계 〉9",
+        "machine": [
+         {
+          "metric": "pumpVibration_rms_mm_s",
+          "min": 9,
+          "max": 11,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "진동한계(RMS, ㎜/s)",
+      "text": "진동한계 〉11",
+      "criteria": [
+       {
+        "text": "진동한계 〉11",
+        "machine": [
+         {
+          "metric": "pumpVibration_rms_mm_s",
+          "min": 11,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "notes": [
+    "원문 d \"진동한계 〉9\", e \"진동한계 〉11\" — d와 e가 겹침. machine에서는 d를 9 초과~11 이하로 해석([해설 표 12.2.3]의 최대 정지(trip) 설정값 11과 대응)",
+    "[해설 표 12.2.3] 진동평가 기준의 B영역은 ≤ 9.6, 이 표의 b는 ≤ 5.6 — 서로 다름(아래 sourceInconsistencies)"
+   ]
+  },
+  {
+   "table": "12.36",
+   "category": "기계·전기설비 > 펌프설비",
+   "item": "펌프의 소음크기",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.36] 펌프의 소음크기에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 996,
+   "footnotesAndFormulas": [
+    "(나) 장내배관"
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦펌프1m에서 평균소음의 크기가 80dB 이하",
+      "criteria": [
+       {
+        "text": "펌프1m에서 평균소음의 크기가 80dB 이하",
+        "machine": [
+         {
+          "metric": "pumpNoise1m_dB",
+          "max": 80,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦펌프1m에서 평균소음의 크기가 80dB 초과, 90dB 이하",
+      "criteria": [
+       {
+        "text": "펌프1m에서 평균소음의 크기가 80dB 초과, 90dB 이하",
+        "machine": [
+         {
+          "metric": "pumpNoise1m_dB",
+          "min": 80,
+          "max": 90,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦펌프1m에서 평균소음의 크기가 90dB 초과, 100dB 이하",
+      "criteria": [
+       {
+        "text": "펌프1m에서 평균소음의 크기가 90dB 초과, 100dB 이하",
+        "machine": [
+         {
+          "metric": "pumpNoise1m_dB",
+          "min": 90,
+          "max": 100,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦펌프1m에서 평균소음의 크기가 100dB 초과, 120dB 이하",
+      "criteria": [
+       {
+        "text": "펌프1m에서 평균소음의 크기가 100dB 초과, 120dB 이하",
+        "machine": [
+         {
+          "metric": "pumpNoise1m_dB",
+          "min": 100,
+          "max": 120,
+          "minInclusive": false,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦펌프1m에서 평균소음의 크기가 120dB 초과",
+      "criteria": [
+       {
+        "text": "펌프1m에서 평균소음의 크기가 120dB 초과",
+        "machine": [
+         {
+          "metric": "pumpNoise1m_dB",
+          "min": 120,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.37",
+   "category": "기계·전기설비 > 장내배관",
+   "item": "관체손상 정도(누수상태)",
+   "evaluationType": "중요결함",
+   "captionInSource": "[표 12.37] 관체의 손상정도(누수상태)에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 1004,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦누수가 전혀 없음",
+      "criteria": [
+       {
+        "text": "누수가 전혀 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦누수가 없음",
+      "criteria": [
+       {
+        "text": "누수가 없음"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦누수는 없으나 누수의 우려가 보임",
+      "criteria": [
+       {
+        "text": "누수는 없으나 누수의 우려가 보임"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦누수의 진행이 관찰",
+      "criteria": [
+       {
+        "text": "누수의 진행이 관찰"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦누수의 진행이 확연함 (분출)",
+      "criteria": [
+       {
+        "text": "누수의 진행이 확연함 (분출)"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.38",
+   "category": "기계·전기설비 > 장내배관",
+   "item": "밸브의 손상정도",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.38] 밸브의 손상정도에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 1012,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦밸브의 작동이 원활하고 여타 손상이 전혀 없음",
+      "criteria": [
+       {
+        "text": "밸브의 작동이 원활하고 여타 손상이 전혀 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦밸브의 작동에 문제가 없고 발청부식 등의 손상이 경미하게 발생",
+      "criteria": [
+       {
+        "text": "밸브의 작동에 문제가 없고 발청부식 등의 손상이 경미하게 발생"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦밸브의 작동에 문제가 없고 축부에서 경미한 누수가 발생",
+      "criteria": [
+       {
+        "text": "밸브의 작동에 문제가 없고 축부에서 경미한 누수가 발생"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦밸브는 작동가능하나 고장으로 수리가 필요하거나  누수의 진행 관찰이 필요",
+      "criteria": [
+       {
+        "text": "밸브는 작동가능하나 고장으로 수리가 필요하거나 누수의 진행 관찰이 필요"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦밸브의 작동이 불가하거나 누수의 진행(분출)이 확연함",
+      "criteria": [
+       {
+        "text": "밸브의 작동이 불가하거나 누수의 진행(분출)이 확연함"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.39",
+   "category": "기계·전기설비 > 전기설비",
+   "item": "절연열화",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.39] 절연열화에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 1023,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦절연열화가 전혀 없는 상태",
+      "criteria": [
+       {
+        "text": "절연열화가 전혀 없는 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦절연열화가 매우 미미한 상태",
+      "criteria": [
+       {
+        "text": "절연열화가 매우 미미한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦절연열화가 경미한 상태(경년열화를 고려한 1㏁ 정도)",
+      "criteria": [
+       {
+        "text": "절연열화가 경미한 상태(경년열화를 고려한 1㏁ 정도)",
+        "machine": [
+         {
+          "metric": "insulationResistance_MOhm",
+          "approx": 1.0,
+          "note": "경년열화를 고려한 1㏁ 정도"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦절연열화가 심화된 상태 / (경년열화를 고려한 1㏁ 이하로서 규정된 절연저항치 정도)",
+      "criteria": [
+       {
+        "text": "절연열화가 심화된 상태 (경년열화를 고려한 1㏁ 이하로서 규정된 절연저항치 정도)",
+        "machine": [
+         {
+          "metric": "insulationResistance_MOhm",
+          "max": 1.0,
+          "maxInclusive": true,
+          "minSymbolic": "R_spec",
+          "note": "1㏁ 이하로서 규정된 절연저항치(해설 표 12.3.1) 정도"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦절연열화가 매우 위험하게 진행된 상태 / (규정된 절연저항치 미만)",
+      "criteria": [
+       {
+        "text": "절연열화가 매우 위험하게 진행된 상태 (규정된 절연저항치 미만)",
+        "machine": [
+         {
+          "metric": "insulationResistance_MOhm",
+          "maxSymbolic": "R_spec",
+          "note": "규정된 절연저항치 미만"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.40",
+   "category": "기계·전기설비 > 전기설비",
+   "item": "접지불량",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.40] 접지불량에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 1031,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦접지불량이 전혀 없음",
+      "criteria": [
+       {
+        "text": "접지불량이 전혀 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦접지불량이 매우 미미한 상태",
+      "criteria": [
+       {
+        "text": "접지불량이 매우 미미한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦접지불량이 경미한 상태 / (규정된 접지저항치 범위 내)",
+      "criteria": [
+       {
+        "text": "접지불량이 경미한 상태 (규정된 접지저항치 범위 내)",
+        "machine": [
+         {
+          "metric": "groundResistance_ohm",
+          "maxSymbolic": "R_spec",
+          "maxInclusive": true,
+          "note": "규정된 접지저항치(해설 표 12.3.2) 범위 내"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦접지불량이 심화된 상태 / (규정된 접지저항치의 120% 이하)",
+      "criteria": [
+       {
+        "text": "접지불량이 심화된 상태 (규정된 접지저항치의 120% 이하)",
+        "machine": [
+         {
+          "metric": "groundResistance_ohm",
+          "minSymbolic": "R_spec",
+          "minInclusive": false,
+          "maxSymbolic": "1.2*R_spec",
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦접지불량이 위험하게 진행된 상태 / (규정된 접지저항치의 120% 초과)",
+      "criteria": [
+       {
+        "text": "접지불량이 위험하게 진행된 상태 (규정된 접지저항치의 120% 초과)",
+        "machine": [
+         {
+          "metric": "groundResistance_ohm",
+          "minSymbolic": "1.2*R_spec",
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "table": "12.41",
+   "category": "기계·전기설비 > 전기설비",
+   "item": "전기설비의 불량(고저압펌프모터ㆍ기동반ㆍ제어반)",
+   "evaluationType": "국부결함",
+   "captionInSource": "[표 12.41] 전기설비의 불량에 따른 상태평가 기준",
+   "captionSource": "container text",
+   "gradeRange": "a-e",
+   "scores": {
+    "a": 5,
+    "b": 4,
+    "c": 3,
+    "d": 2,
+    "e": 1
+   },
+   "sourceLine": 1039,
+   "footnotesAndFormulas": [
+    "※) 고저압펌프모터ㆍ기동반ㆍ현장조작반 등"
+   ],
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦ 전기설비의 불량이 전혀 없는 상태",
+      "criteria": [
+       {
+        "text": "전기설비의 불량이 전혀 없는 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦ 전기설비의 불량이 매우 미미한 상태",
+      "criteria": [
+       {
+        "text": "전기설비의 불량이 매우 미미한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦ 전기설비의 불량이 경미한 상태 / (설비의 기동 및 운전에 지장이 없는 상태)",
+      "criteria": [
+       {
+        "text": "전기설비의 불량이 경미한 상태 (설비의 기동 및 운전에 지장이 없는 상태)"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦ 전기설비의 불량이 심화된 상태 / (설비의 기동 및 운전에 지장을 초래하는 상태)",
+      "criteria": [
+       {
+        "text": "전기설비의 불량이 심화된 상태 (설비의 기동 및 운전에 지장을 초래하는 상태)"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦ 전기설비의 불량이 극심한 상태 / (설비의 기동 및 운전이 불가능한 상태)",
+      "criteria": [
+       {
+        "text": "전기설비의 불량이 극심한 상태 (설비의 기동 및 운전이 불가능한 상태)"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "publicUse": [
+  {
+   "table": "12.42",
+   "member": "추락방지시설",
+   "captionInSource": "[표 12.42] 추락방지시설 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "scores": null,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦손상 및 결함 등이 없는 최상의 상태",
+      "criteria": [
+       {
+        "text": "손상 및 결함 등이 없는 최상의 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦추락방지시설에 경미한 결함 및 파손이 발생하였으나, 기능에는 문제가 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정해야 하는 상태",
+      "criteria": [
+       {
+        "text": "추락방지시설에 경미한 결함 및 파손이 발생하였으나, 기능에는 문제가 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정해야 하는 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦추락방지시설에 결함 및 파손으로 인하여 기능에 일부 문제가 발생하여 간단한 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "추락방지시설에 결함 및 파손으로 인하여 기능에 일부 문제가 발생하여 간단한 보수가 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦고정부 및 연결부 파손 등으로 인해 추락방지시설의 전도 및 이탈이 발생 할 수 있어 즉각적인 보수․보강이 필요한 상태",
+      "criteria": [
+       {
+        "text": "고정부 및 연결부 파손 등으로 인해 추락방지시설의 전도 및 이탈이 발생 할 수 있어 즉각적인 보수․보강이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦추락방지시설의 전반적 기능저하로 사용자의 안전에 위험이 있어 즉각 사용을 금지해야 하는 상태",
+      "criteria": [
+       {
+        "text": "추락방지시설의 전반적 기능저하로 사용자의 안전에 위험이 있어 즉각 사용을 금지해야 하는 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 1061
+  },
+  {
+   "table": "12.43",
+   "member": "도로포장",
+   "captionInSource": "[표 12.43] 도로포장 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "scores": null,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦포장상태가 최상으로 차량의 주행에 문제가 없는 상태",
+      "criteria": [
+       {
+        "text": "포장상태가 최상으로 차량의 주행에 문제가 없는 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦포장의 결함 및 파손이 미미하게 발생된 상태로 차량주행에 문제는 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태",
+      "criteria": [
+       {
+        "text": "포장의 결함 및 파손이 미미하게 발생된 상태로 차량주행에 문제는 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦포장 결함 및 파손이 차량에 직접적인 파손을 유발할 정도는 아니나 차량 운전자에게 불쾌감을 유발할 수 있어 간단한 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "포장 결함 및 파손이 차량에 직접적인 파손을 유발할 정도는 아니나 차량 운전자에게 불쾌감을 유발할 수 있어 간단한 보수가 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦깊이 8cm이상의 포트홀에 의해 차량에 심각한 손상이 발생할 수 있어 즉각적인 보수가 필요한 상태 / ◦배수불량으로 인한 주행차로 상시 물고임으로 통행차량의 안전성 저하가 우려되는 상태",
+      "criteria": [
+       {
+        "text": "깊이 8cm이상의 포트홀에 의해 차량에 심각한 손상이 발생할 수 있어 즉각적인 보수가 필요한 상태",
+        "machine": [
+         {
+          "metric": "potholeDepth_cm",
+          "min": 8
+         }
+        ]
+       },
+       {
+        "text": "배수불량으로 인한 주행차로 상시 물고임으로 통행차량의 안전성 저하가 우려되는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦도로포장 결함 및 파손 정도가 심각하고 차량주행이 불가하여 차량통행 제한 및 사용금지가 필요한 상태",
+      "criteria": [
+       {
+        "text": "도로포장 결함 및 파손 정도가 심각하고 차량주행이 불가하여 차량통행 제한 및 사용금지가 필요한 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 1070
+  },
+  {
+   "table": "12.44",
+   "member": "도로부 신축이음부",
+   "captionInSource": "[표 12.44] 도로부 신축이음부 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "scores": null,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦신축이음부에 손상이 없는 상태",
+      "criteria": [
+       {
+        "text": "신축이음부에 손상이 없는 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦신축이음 본체의 토사 및 이물질 퇴적, 고무판 노후, 후타재의 미세균열이 발생된 상태로 기능발휘에는 지장이 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태",
+      "criteria": [
+       {
+        "text": "신축이음 본체의 토사 및 이물질 퇴적, 고무판 노후, 후타재의 미세균열이 발생된 상태로 기능발휘에는 지장이 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦신축이음 본체의 유간사이 이물질로 기능불량, 고무판 마모, 국부적인 부식 등의 열화가 발생한 상태 또는 후타재의 균열이 50cm이하의 간격으로 발생하거나, 국부적인 박리, 박락, 파손이 발생하여 간단한 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "신축이음 본체의 유간사이 이물질로 기능불량, 고무판 마모, 국부적인 부식 등의 열화가 발생한 상태 또는 후타재의 균열이 50cm이하의 간격으로 발생하거나, 국부적인 박리, 박락, 파손이 발생하여 간단한 보수가 필요한 상태",
+        "machine": [
+         {
+          "metric": "jointHeaderCrackSpacing_cm",
+          "max": 50,
+          "maxInclusive": true,
+          "note": "후타재 균열이 50cm 이하 간격 (다른 조건과 \"또는\")"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦신축유간 밀착으로 인한 거동불량 또는 신축유간이 넓어 차량통행에 지장을 초래할 수 있어 교체가 필요한 상태 / ◦신축이음의 파손 상태가 심각하여 차량통행 시 충격이 발생하는 등 긴급한 보수·보강이 필요한 상태",
+      "criteria": [
+       {
+        "text": "신축유간 밀착으로 인한 거동불량 또는 신축유간이 넓어 차량통행에 지장을 초래할 수 있어 교체가 필요한 상태"
+       },
+       {
+        "text": "신축이음의 파손 상태가 심각하여 차량통행 시 충격이 발생하는 등 긴급한 보수·보강이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦신축이음부 본체 탈락으로 차량주행 시 파손을 유발하거나, 주행 중 사고의 원인이 될 수 있는 상태",
+      "criteria": [
+       {
+        "text": "신축이음부 본체 탈락으로 차량주행 시 파손을 유발하거나, 주행 중 사고의 원인이 될 수 있는 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 1079
+  },
+  {
+   "table": "12.45",
+   "member": "환기구 등의 덮개",
+   "captionInSource": "[표 12.45] 환기구 등의 덮개 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "scores": null,
+   "items": [
+    "상태평가 내용"
+   ],
+   "grades": {
+    "a": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦환기구 등의 덮개가 최상의 상태",
+      "criteria": [
+       {
+        "text": "환기구 등의 덮개가 최상의 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등이 발생하였으나, 기능 발휘에는 지장이 없고 기능성에 문제가 없는 상태 / ◦기능성에 문제가 없어 결함 및 파손에 대해 지속적 관찰이 필요한 상태",
+      "criteria": [
+       {
+        "text": "덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등이 발생하였으나, 기능 발휘에는 지장이 없고 기능성에 문제가 없는 상태"
+       },
+       {
+        "text": "기능성에 문제가 없어 결함 및 파손에 대해 지속적 관찰이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능에 일부 문제가 발생하여 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능에 일부 문제가 발생하여 보수가 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능이 상실되어 국부적인 교체 및 보강이 필요한 상태",
+      "criteria": [
+       {
+        "text": "덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능이 상실되어 국부적인 교체 및 보강이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "상태평가 내용",
+      "text": "◦결함 및 파손 정도가 심각하거나 덮개 등이 탈락된 상태",
+      "criteria": [
+       {
+        "text": "결함 및 파손 정도가 심각하거나 덮개 등이 탈락된 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 1088
+  }
+ ]
+}

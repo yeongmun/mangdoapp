@@ -1,58 +1,107 @@
-// 필수 사진 목록 펼치기(2026-11-03) — config/requiredShots.json의 항목을 점검 종류와 구조물 정보(경간·교대·교각 수,
-// 상부 형식 등)에 맞춰 실제 촬영 칸으로 편다. 순수 함수만. 저장·라우트는 shotsStore.ts·app.ts.
-// 근거: 세부지침 해설서(교량편) 2026.2 — [표 1.1] 점검 대상 부재, 1.2.1 부재별 점검부위, 부록 A 보고서 서두·부록.
+// 필수 사진 목록 펼치기(2026-11-03) — config/requiredShots.json의 시설물별 템플릿을 점검 종류와 구조물 정보(경간·교각 수,
+// 형식 등)에 맞춰 실제 촬영 칸으로 편다. 순수 함수만. 저장·라우트는 shotsStore.ts·app.ts.
+// 근거: 세부지침 해설서 2026.2(교량·터널·옹벽·상수도·하수처리장 편) — 대상 부재 표, 부재별 점검부위, 부록 A 보고서 서두·부록.
 //
-// 항목 필드(모두 선택, 없으면 옛 형식과 같다 — 늘 1장):
+// 시설물 하나 = { "info": [입력 항목…], "shots": [항목…] } (옛 형식 — 항목 배열만 — 도 읽는다: info 없음).
+// info 항목: { key, label, type: count|meter|bool|choice|multi, options?: [[값, 표시]], default?, required?, max?, summary? }
+//   → 앱 「구조물 정보」 시트가 이 목록대로 입력칸을 그린다(시설물마다 다름). 서버는 이것으로 값을 검사한다.
+// shots 항목(선택 필드는 없으면 옛 형식과 같다 — 늘 1장):
 //   levels    이 점검 종류에서만 (예: ["정밀안전점검","정밀안전진단"])
-//   levelWhen 점검 종류별 추가 조건 (예: 정기안전점검은 제3종만 → { "정기안전점검": { "facilityClass": 3 } })
-//   when      구조물 정보 조건 (예: { "girder": "PSC" }, { "river": true }, { "publicUse": "도로포장" })
-//   repeat    once | perSpan | perAbutment | perPier | perSupport | perJoint | perSide
-//   hint      앱 칸에 보이는 점검 포인트
+//   levelWhen 점검 종류별 추가 조건 (예: 정기안전점검은 제3종만 → { "정기안전점검": { "facilityClass": "3" } })
+//   when      구조물 정보 조건 (예: { "girder": "PSC" }, { "river": true }, multi 항목은 포함 여부 { "publicUse": "도로포장" })
+//   repeat    once | perSide | { "count": "<count 항목 key>", "prefix": "P" } | 교량용 이름(perSpan·perAbutment·perPier·perSupport·perJoint)
 
 import type { ShotTemplateItem } from './shotsStore.js';
 
-export const REPEATS = ['once', 'perSpan', 'perAbutment', 'perPier', 'perSupport', 'perJoint', 'perSide'] as const;
-export type Repeat = (typeof REPEATS)[number];
+// ── 입력 항목 ────────────────────────────────────────────────────────────────────
+export const INFO_TYPES = ['count', 'meter', 'bool', 'choice', 'multi'] as const;
+export type InfoType = (typeof INFO_TYPES)[number];
+
+export interface InfoField {
+  key: string;
+  label: string;
+  type: InfoType;
+  /** choice·multi만: [값, 표시] */
+  options?: [string, string][];
+  default?: unknown;
+  required?: boolean;
+  /** count·meter 최댓값 */
+  max?: number;
+  /** 구조물 화면 알약 요약에 넣을지 */
+  summary?: boolean;
+}
+
+export type FacilityInfo = Record<string, number | boolean | string | string[]>;
+
+// ── 템플릿 ──────────────────────────────────────────────────────────────────────
+export const NAMED_REPEATS = ['once', 'perSpan', 'perAbutment', 'perPier', 'perSupport', 'perJoint', 'perSide'] as const;
+export type NamedRepeat = (typeof NAMED_REPEATS)[number];
+export type Repeat = NamedRepeat | { count: string; prefix: string };
 
 export interface RequiredTemplateItem {
   member: string;
   label: string;
-  hint?: string;
   levels?: string[];
   levelWhen?: Record<string, Record<string, unknown>>;
   when?: Record<string, unknown>;
   repeat?: Repeat;
 }
 
-// ── 구조물 정보(교량) ────────────────────────────────────────────────────────────
-// 앱 「구조물 정보」 화면과 같은 값이어야 한다(src/facilityInfo.ts).
-export const DECK_TYPES = ['concrete', 'steel', 'none'] as const;
-export const GIRDER_TYPES = ['RC', 'PSC', 'steel', 'none'] as const;
-export const PUBLIC_USE = ['추락방지시설', '도로포장', '도로부신축이음부', '환기구덮개'] as const;
-
-export interface FacilityInfo {
-  spans?: number;
-  abutments?: number;
-  piers?: number;
-  joints?: number;
-  deck?: (typeof DECK_TYPES)[number];
-  girder?: (typeof GIRDER_TYPES)[number];
-  box?: boolean;
-  trussOrArch?: boolean;
-  cable?: boolean;
-  river?: boolean;
-  facilityClass?: 1 | 2 | 3;
-  publicUse?: (typeof PUBLIC_USE)[number][];
-  /** 연장(m) — 사진 펼치기에는 안 쓰고 비파괴 수량 계산용으로 함께 둔다 */
-  length?: number;
-  /** 최대 경간장(m) — 비파괴 수량 계산용 */
-  maxSpan?: number;
+export interface FacilityTemplate {
+  info: InfoField[];
+  shots: RequiredTemplateItem[];
 }
 
-const COUNT_KEYS = { spans: 300, abutments: 10, piers: 300, joints: 100 } as const;
-const METER_KEYS = { length: 20000, maxSpan: 2000 } as const;
-const BOOL_KEYS = ['box', 'trussOrArch', 'cable', 'river'] as const;
+function isPlainObject(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
 
+/** 설정 파일 한 항목을 읽는다. member·label이 없으면 버린다(null). 모르는 repeat은 once로. 근거 같은 기록용 키는 무시 */
+export function parseTemplateItem(raw: unknown): RequiredTemplateItem | null {
+  if (!isPlainObject(raw)) return null;
+  if (typeof raw.member !== 'string' || typeof raw.label !== 'string') return null;
+  const item: RequiredTemplateItem = { member: raw.member, label: raw.label };
+  if (Array.isArray(raw.levels)) item.levels = raw.levels.filter((x): x is string => typeof x === 'string');
+  if (isPlainObject(raw.when)) item.when = raw.when;
+  if (isPlainObject(raw.levelWhen)) item.levelWhen = raw.levelWhen as RequiredTemplateItem['levelWhen'];
+  const rep = raw.repeat;
+  if ((NAMED_REPEATS as readonly unknown[]).includes(rep)) item.repeat = rep as NamedRepeat;
+  else if (isPlainObject(rep) && typeof rep.count === 'string') item.repeat = { count: rep.count, prefix: typeof rep.prefix === 'string' ? rep.prefix : '' };
+  return item;
+}
+
+/** 입력 항목 정의 하나. 틀리면 버린다(null) — 설정 오타로 서버가 죽지 않게 */
+export function parseInfoField(raw: unknown): InfoField | null {
+  if (!isPlainObject(raw)) return null;
+  const { key, label, type } = raw;
+  if (typeof key !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(key) || typeof label !== 'string') return null;
+  if (!(INFO_TYPES as readonly unknown[]).includes(type)) return null;
+  const field: InfoField = { key, label, type: type as InfoType };
+  if (type === 'choice' || type === 'multi') {
+    if (!Array.isArray(raw.options)) return null;
+    field.options = raw.options
+      .filter((o): o is [unknown, unknown] => Array.isArray(o) && o.length >= 2)
+      .map(([v, l]) => [String(v), String(l)] as [string, string]);
+    if (field.options.length === 0) return null;
+  }
+  if (raw.default !== undefined && raw.default !== null) field.default = raw.default;
+  if (raw.required === true) field.required = true;
+  if (typeof raw.max === 'number' && raw.max > 0) field.max = raw.max;
+  if (raw.summary === true) field.summary = true;
+  return field;
+}
+
+/** 시설물 하나의 설정 — 옛 형식(항목 배열)이면 info 없이 */
+export function parseFacilityTemplate(raw: unknown): FacilityTemplate {
+  const shotsRaw = Array.isArray(raw) ? raw : isPlainObject(raw) && Array.isArray(raw.shots) ? raw.shots : [];
+  const infoRaw = isPlainObject(raw) && Array.isArray(raw.info) ? raw.info : [];
+  return {
+    info: infoRaw.map(parseInfoField).filter((f): f is InfoField => f !== null),
+    shots: shotsRaw.map(parseTemplateItem).filter((i): i is RequiredTemplateItem => i !== null),
+  };
+}
+
+// ── 구조물 정보 검사 ────────────────────────────────────────────────────────────
 export class FacilityInfoError extends Error {
   constructor(message: string) {
     super(message);
@@ -60,60 +109,58 @@ export class FacilityInfoError extends Error {
   }
 }
 
-/** 앱이 보낸 구조물 정보를 검사해 깨끗한 값만 돌려준다. 모르는 키는 거부(오타를 조용히 버리지 않게) */
-export function validateFacilityInfo(value: unknown): FacilityInfo {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new FacilityInfoError('구조물 정보 값이 올바르지 않습니다.');
-  const v = value as Record<string, unknown>;
+/** 앱이 보낸 구조물 정보를 그 시설물의 입력 항목으로 검사해 깨끗한 값만 돌려준다. 모르는 키는 거부, null은 버린다 */
+export function validateFacilityInfo(value: unknown, fields: InfoField[]): FacilityInfo {
+  if (!isPlainObject(value)) throw new FacilityInfoError('구조물 정보 값이 올바르지 않습니다.');
+  const byKey = new Map(fields.map((f) => [f.key, f]));
   const out: FacilityInfo = {};
-  for (const [key, raw] of Object.entries(v)) {
+  for (const [key, raw] of Object.entries(value)) {
     if (raw === null || raw === undefined) continue;
-    if (key in COUNT_KEYS) {
-      const max = COUNT_KEYS[key as keyof typeof COUNT_KEYS];
-      if (!Number.isInteger(raw) || (raw as number) < 0 || (raw as number) > max) throw new FacilityInfoError(`${key}는 0~${max} 사이 정수로 적어 주세요.`);
-      out[key as keyof typeof COUNT_KEYS] = raw as number;
-    } else if (key in METER_KEYS) {
-      const max = METER_KEYS[key as keyof typeof METER_KEYS];
-      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || raw > max) throw new FacilityInfoError(`${key}는 0보다 크고 ${max} 이하인 숫자로 적어 주세요.`);
-      out[key as keyof typeof METER_KEYS] = raw;
-    } else if ((BOOL_KEYS as readonly string[]).includes(key)) {
-      if (typeof raw !== 'boolean') throw new FacilityInfoError(`${key}는 참/거짓이어야 합니다.`);
-      out[key as (typeof BOOL_KEYS)[number]] = raw;
-    } else if (key === 'deck') {
-      if (!(DECK_TYPES as readonly unknown[]).includes(raw)) throw new FacilityInfoError('바닥판 형식 값이 올바르지 않습니다.');
-      out.deck = raw as FacilityInfo['deck'];
-    } else if (key === 'girder') {
-      if (!(GIRDER_TYPES as readonly unknown[]).includes(raw)) throw new FacilityInfoError('거더 형식 값이 올바르지 않습니다.');
-      out.girder = raw as FacilityInfo['girder'];
-    } else if (key === 'facilityClass') {
-      if (raw !== 1 && raw !== 2 && raw !== 3) throw new FacilityInfoError('시설물 종별은 1, 2, 3 중 하나입니다.');
-      out.facilityClass = raw;
-    } else if (key === 'publicUse') {
-      if (!Array.isArray(raw) || raw.some((x) => !(PUBLIC_USE as readonly unknown[]).includes(x))) throw new FacilityInfoError('공중이 이용하는 부위 값이 올바르지 않습니다.');
-      out.publicUse = [...new Set(raw)] as FacilityInfo['publicUse'];
-    } else {
-      throw new FacilityInfoError(`모르는 구조물 정보 항목입니다: ${key}`);
+    const f = byKey.get(key);
+    if (!f) throw new FacilityInfoError(`모르는 구조물 정보 항목입니다: ${key}`);
+    switch (f.type) {
+      case 'count': {
+        const max = f.max ?? 1000;
+        if (!Number.isInteger(raw) || (raw as number) < 0 || (raw as number) > max) throw new FacilityInfoError(`${f.label}은(는) 0~${max} 사이 정수로 적어 주세요.`);
+        out[key] = raw as number;
+        break;
+      }
+      case 'meter': {
+        const max = f.max ?? 100000;
+        if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0 || raw > max) throw new FacilityInfoError(`${f.label}은(는) 0~${max} 사이 숫자로 적어 주세요.`);
+        out[key] = raw;
+        break;
+      }
+      case 'bool':
+        if (typeof raw !== 'boolean') throw new FacilityInfoError(`${f.label} 값이 올바르지 않습니다.`);
+        out[key] = raw;
+        break;
+      case 'choice': {
+        // 옛 값(숫자 2 등)도 같은 글자면 받는다
+        const opt = f.options?.find(([v]) => v === String(raw));
+        if (!opt || typeof raw === 'object') throw new FacilityInfoError(`${f.label} 값이 올바르지 않습니다.`);
+        out[key] = opt[0];
+        break;
+      }
+      case 'multi': {
+        const allowed = new Set(f.options?.map(([v]) => v));
+        if (!Array.isArray(raw) || raw.some((x) => typeof x !== 'string' || !allowed.has(x))) throw new FacilityInfoError(`${f.label} 값이 올바르지 않습니다.`);
+        out[key] = [...new Set(raw as string[])];
+        break;
+      }
     }
+  }
+  for (const f of fields) {
+    if (f.required && out[f.key] === undefined) throw new FacilityInfoError(`${f.label}을(를) 적어 주세요.`);
   }
   return out;
 }
 
-// ── 템플릿 읽기 ──────────────────────────────────────────────────────────────────
-/** 설정 파일 한 항목을 읽는다. member·label이 없으면 버린다(null). 모르는 repeat은 once로 */
-export function parseTemplateItem(raw: unknown): RequiredTemplateItem | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const r = raw as Record<string, unknown>;
-  if (typeof r.member !== 'string' || typeof r.label !== 'string') return null;
-  const item: RequiredTemplateItem = { member: r.member, label: r.label };
-  if (typeof r.hint === 'string' && r.hint.trim() !== '') item.hint = r.hint.trim();
-  if (Array.isArray(r.levels)) item.levels = r.levels.filter((x): x is string => typeof x === 'string');
-  if (isPlainObject(r.when)) item.when = r.when;
-  if (isPlainObject(r.levelWhen)) item.levelWhen = r.levelWhen as RequiredTemplateItem['levelWhen'];
-  if ((REPEATS as readonly unknown[]).includes(r.repeat)) item.repeat = r.repeat as Repeat;
-  return item;
-}
-
-function isPlainObject(x: unknown): x is Record<string, unknown> {
-  return typeof x === 'object' && x !== null && !Array.isArray(x);
+/** 저장된 정보 중 이 시설물 항목에 있는 키만 — 시설물 종류를 바꾼 뒤 옛 키가 조건에 끼지 않게 */
+export function pickInfo(info: FacilityInfo | undefined, fields: InfoField[]): FacilityInfo | undefined {
+  if (!info) return undefined;
+  const keys = new Set(fields.map((f) => f.key));
+  return Object.fromEntries(Object.entries(info).filter(([k]) => keys.has(k)));
 }
 
 // ── 펼치기 ───────────────────────────────────────────────────────────────────────
@@ -124,41 +171,42 @@ export interface ExpandContext {
   info?: FacilityInfo;
 }
 
-/** 조건 하나가 맞는지. info가 없으면 맞지 않는 것으로 본다 */
+/** 조건이 다 맞는지. info가 없으면 맞지 않는 것으로 본다. 배열 값(multi)은 포함, 그 밖엔 같은 글자 */
 function conditionsMet(cond: Record<string, unknown>, info: FacilityInfo | undefined): boolean {
   if (!info) return false;
   return Object.entries(cond).every(([key, want]) => {
-    const have = (info as Record<string, unknown>)[key];
-    if (Array.isArray(have)) return have.includes(want);
-    return have === want;
+    const have = info[key];
+    if (Array.isArray(have)) return Array.isArray(want) ? want.some((w) => have.includes(String(w))) : have.includes(String(want));
+    if (Array.isArray(want)) return want.some((w) => String(w) === String(have));
+    if (typeof want === 'boolean') return have === want;
+    return have !== undefined && String(have) === String(want);
   });
 }
 
-/** 반복 단위별 위치 이름. 수를 모르면 null(→ 1장) */
+const NAMED_COUNT: Record<string, [string, string]> = {
+  perSpan: ['spans', 'S'],
+  perAbutment: ['abutments', 'A'],
+  perPier: ['piers', 'P'],
+  perJoint: ['joints', 'J'],
+};
+
+/** 반복 단위별 위치 이름. 수를 모르면 null(→ 1장), 0이면 빈 배열(→ 칸 없음) */
 export function positionsOf(repeat: Repeat, info: FacilityInfo | undefined): string[] | null {
   if (repeat === 'once') return [''];
   if (repeat === 'perSide') return ['좌측', '우측'];
-  if (!info) return null;
+  const num = (key: string) => (typeof info?.[key] === 'number' ? (info[key] as number) : undefined);
   const seq = (prefix: string, n: number | undefined) => (n === undefined ? null : Array.from({ length: n }, (_, i) => `${prefix}${i + 1}`));
-  switch (repeat) {
-    case 'perSpan':
-      return seq('S', info.spans);
-    case 'perAbutment':
-      return seq('A', info.abutments);
-    case 'perPier':
-      return seq('P', info.piers);
-    case 'perJoint':
-      return seq('J', info.joints);
-    case 'perSupport': {
-      if (info.abutments === undefined && info.piers === undefined) return null;
-      const a = info.abutments ?? 0;
-      const piers = seq('P', info.piers ?? 0) ?? [];
-      if (a === 0) return piers;
-      // 시점 교대 → 교각들 → 종점 교대 (현장에서 걷는 순서)
-      const rest = Array.from({ length: a - 1 }, (_, i) => `A${i + 2}`);
-      return ['A1', ...piers, ...rest];
-    }
+  if (typeof repeat === 'object') return seq(repeat.prefix, num(repeat.count));
+  if (repeat === 'perSupport') {
+    const a = num('abutments'), p = num('piers');
+    if (a === undefined && p === undefined) return null;
+    const piers = seq('P', p ?? 0) ?? [];
+    if (!a) return piers;
+    // 시점 교대 → 교각들 → 종점 교대 (현장에서 걷는 순서)
+    return ['A1', ...piers, ...Array.from({ length: a - 1 }, (_, i) => `A${i + 2}`)];
   }
+  const [key, prefix] = NAMED_COUNT[repeat];
+  return seq(prefix, num(key));
 }
 
 /**
@@ -176,7 +224,6 @@ export function expandRequired(template: RequiredTemplateItem[], ctx: ExpandCont
     const positions = positionsOf(item.repeat ?? 'once', ctx.info) ?? [''];
     for (const pos of positions) {
       const shot: ShotTemplateItem = { member: pos ? `${item.member}(${pos})` : item.member, label: item.label };
-      if (item.hint) shot.hint = item.hint;
       const key = `${shot.member}\u0000${shot.label}`;
       if (seen.has(key)) continue; // 같은 칸이 둘이면 mergeRequired가 id를 겹쳐 쓴다
       seen.add(key);
@@ -186,7 +233,8 @@ export function expandRequired(template: RequiredTemplateItem[], ctx: ExpandCont
   return out;
 }
 
-/** 이 템플릿이 구조물 정보를 필요로 하는지(조건·반복 항목이 있는지) — 앱이 「구조물 정보를 넣어 주세요」를 띄울지 */
-export function templateNeedsInfo(template: RequiredTemplateItem[]): boolean {
-  return template.some((i) => i.when !== undefined || i.levelWhen !== undefined || (i.repeat !== undefined && i.repeat !== 'once' && i.repeat !== 'perSide'));
+/** 구조물 정보를 넣어야 목록이 다 펴지는지(입력 항목이 있고, 조건·위치 반복 항목이 있는지) */
+export function templateNeedsInfo(template: FacilityTemplate): boolean {
+  if (template.info.length === 0) return false;
+  return template.shots.some((i) => i.when !== undefined || i.levelWhen !== undefined || (i.repeat !== undefined && i.repeat !== 'once' && i.repeat !== 'perSide'));
 }

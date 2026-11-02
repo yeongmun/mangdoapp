@@ -1,5 +1,5 @@
 import { ACCESS_KEY, API_URL } from './config';
-import type { FacilityInfo } from './facilityInfo';
+import type { FacilityInfo, InfoField } from './facilityInfo';
 
 export type DrawingStatus = 'pending' | 'inprogress' | 'success' | 'failed';
 
@@ -79,7 +79,7 @@ export interface Project {
 }
 
 export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
-export const FACILITY_TYPES = ['교량', '터널', '옹벽', '절토사면', '건축물', '기타'] as const;
+export const FACILITY_TYPES = ['교량', '터널', '옹벽', '상수도', '하수처리장', '절토사면', '건축물', '기타'] as const;
 
 // 점검 종류·시설물 종류만 고친다. null은 지우기. 응답은 서버가 트리 계산을 거친 Project 하나.
 export async function updateProject(
@@ -290,9 +290,23 @@ export interface ShotList {
   /** 상위 과업의 점검 종류 — 필수 목록을 이것으로 거른다 */
   inspectionType?: string | null;
   facilityInfo?: FacilityInfo | null;
+  /** 이 시설물 종류의 「구조물 정보」 입력 항목 */
+  infoFields?: InfoField[];
   /** 경간·교각 수 등이 있어야 다 펴지는데 아직 없다 → 「구조물 정보 넣기」 */
   needsFacilityInfo?: boolean;
   shots: Shot[];
+}
+
+// 시설물 종류별 「구조물 정보」 입력 항목. 한 번 받으면 앱이 켜져 있는 동안 기억한다(오프라인에서도 알약·시트가 보이게)
+let infoFieldsCache: Record<string, InfoField[]> | null = null;
+export function cachedFacilityInfoFields(): Record<string, InfoField[]> | null {
+  return infoFieldsCache;
+}
+export async function fetchFacilityInfoFields(): Promise<Record<string, InfoField[]>> {
+  const res = await fetch(`${API_URL}/api/facility-info-fields`, { headers: { 'x-access-key': ACCESS_KEY } });
+  if (!res.ok) throw new Error(`구조물 정보 항목을 불러오지 못했습니다 (${res.status}).`);
+  infoFieldsCache = (await res.json()) as Record<string, InfoField[]>;
+  return infoFieldsCache;
 }
 
 export async function fetchShots(projectId: string): Promise<ShotList> {

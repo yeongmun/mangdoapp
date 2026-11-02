@@ -25,6 +25,8 @@ import {
   updateProject,
   type Drawing,
   type Project,
+  cachedFacilityInfoFields,
+  fetchFacilityInfoFields,
 } from '../api';
 import { BottomSheet } from '../components/BottomSheet';
 import { IconButton } from '../components/IconButton';
@@ -39,7 +41,7 @@ import { nextShot, nextStructure, photoProgress, recentPhotos, taskTypeOf, taskT
 import { PreviousShotsView } from './PreviousShotsView';
 import { RequiredShotsView } from './RequiredShotsView';
 import { FacilityInfoSheet } from '../components/FacilityInfoSheet';
-import { infoSummary, type FacilityInfo } from '../facilityInfo';
+import { infoSummary, type FacilityInfo, type InfoField } from '../facilityInfo';
 import { readShotsLocal } from '../shotsLocal';
 import { readHiddenProjects, writeHiddenProjects } from '../hiddenProjects';
 import { colors, font, radius, space, TABLET_MIN_WIDTH, TOUCH_MIN } from '../theme';
@@ -178,6 +180,8 @@ function taskIcon(type: string | null): { short: string; color: string; backgrou
   return { short: '정밀', color: colors.tagWarmFg, backgroundColor: colors.tagWarmBg };
 }
 
+const NO_FIELDS: InfoField[] = [];
+
 export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, onPendingChange, navRequest = null, active = true }: Props) {
   const toast = useToast();
   // 노치·상태바·홈 표시줄·가로 모드 모서리를 피하는 여백. 고정값이면 아이폰 노치에 제목이 가린다.
@@ -250,6 +254,13 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
       writeHiddenProjects([...next]);
       return next;
     });
+  }, []);
+  // 시설물 종류별 「구조물 정보」 입력 항목(서버 config). 못 받으면 알약을 숨긴다 — 다음에 구조물을 열 때 다시 시도
+  const [infoFields, setInfoFields] = useState<Record<string, InfoField[]>>(() => cachedFacilityInfoFields() ?? {});
+  const loadInfoFields = useCallback(() => {
+    fetchFacilityInfoFields()
+      .then(setInfoFields)
+      .catch(() => undefined);
   }, []);
   const changeProjectType = useCallback(
     async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null; facilityInfo?: FacilityInfo | null }) => {
@@ -603,6 +614,11 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
   // `현장 가기 전 모두 받기`는 도면이 든 목록(프로젝트 안·미분류·평평한 목록)에만 — 머리글 오른쪽 아이콘(설계 5장).
   const showListDownload = scoped.length > 0 && (flat || location !== null);
   const structureTabs = currentProject?.depth === 1 ? currentProject : undefined;
+  // 구조물을 열 때 입력 항목을 (아직 없으면) 받는다
+  const structureId = structureTabs?.id;
+  useEffect(() => {
+    if (structureId && Object.keys(infoFields).length === 0) loadInfoFields();
+  }, [structureId, infoFields, loadInfoFields]);
   const emptyText = flat
     ? '업로드된 도면이 없습니다.\nPC의 업로드 페이지에서 DWG를 올려주세요.'
     : atTop
@@ -1015,16 +1031,16 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
         <Text style={styles.facilityValue}>{structureTabs.facilityType ?? '고르기'}</Text>
         <Feather name="chevron-down" size={16} color={colors.ink2} />
       </Pressable>
-      {structureTabs.facilityType === '교량' && (
+      {structureTabs.facilityType && (infoFields[structureTabs.facilityType]?.length ?? 0) > 0 && (
         <Pressable
           onPress={() => setSheet({ kind: 'info' })}
           disabled={savingType}
           accessibilityRole="button"
-          accessibilityLabel={`구조물 정보 ${infoSummary(structureTabs.facilityInfo) ?? '넣기'}`}
+          accessibilityLabel={`구조물 정보 ${infoSummary(infoFields[structureTabs.facilityType] ?? [], structureTabs.facilityInfo) ?? '넣기'}`}
           style={({ pressed }) => [styles.facilityPill, pressed && { opacity: 0.7 }]}
         >
           <Text style={styles.facilityLabel}>구조물 정보</Text>
-          <Text style={[styles.facilityValue, !structureTabs.facilityInfo && { color: colors.primaryText }]}>{infoSummary(structureTabs.facilityInfo) ?? '넣기'}</Text>
+          <Text style={[styles.facilityValue, !structureTabs.facilityInfo && { color: colors.primaryText }]}>{infoSummary(infoFields[structureTabs.facilityType] ?? [], structureTabs.facilityInfo) ?? '넣기'}</Text>
           <Feather name="chevron-down" size={16} color={colors.ink2} />
         </Pressable>
       )}
@@ -1117,6 +1133,7 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
 
       <FacilityInfoSheet
         visible={sheet?.kind === 'info'}
+        fields={(structureTabs?.facilityType && infoFields[structureTabs.facilityType]) || NO_FIELDS}
         info={structureTabs?.facilityInfo}
         saving={savingType}
         onClose={() => setSheet(null)}

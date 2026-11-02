@@ -36,7 +36,7 @@ import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 import { extractPhotoBlocks } from './hwpxPhotos.js';
 import { shotFileName, ShotRuleError, type Shot, type ShotsStore } from './shotsStore.js';
-import { expandRequired, templateNeedsInfo, type RequiredTemplateItem } from './requiredShots.js';
+import { expandRequired, FacilityInfoError, pickInfo, templateNeedsInfo, validateFacilityInfo, type FacilityTemplate } from './requiredShots.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -65,7 +65,7 @@ export interface AppDeps {
   projects: ProjectsStore;
   // 촬영 항목(필수 사진·전차 사진). requiredTemplate = 시설물 종류 → 필수 목록(config/requiredShots.json)
   shots: ShotsStore;
-  requiredTemplate: Record<string, RequiredTemplateItem[]>;
+  requiredTemplate: Record<string, FacilityTemplate>;
   // 오프라인 모드(설계 3.1): 도면 파생 파일(f2d 등) 캐시와 뷰어 꾸러미 캐시.
   offline: OfflineFilesStore;
   viewerBundle: ViewerBundle;
@@ -658,6 +658,31 @@ export function createApp(deps: AppDeps) {
     if ('location' in body) patch.location = body.location;
     if ('facilityInfo' in body) patch.facilityInfo = body.facilityInfo;
     try {
+      // 구조물 정보는 그 구조물 시설물 종류의 입력 항목(config/requiredShots.json info)으로 검사한다
+      if (patch.facilityInfo !== undefined && patch.facilityInfo !== null) {
+        const current = await deps.projects.get(id);
+        if (!current) {
+          res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+          return;
+        }
+        const type = typeof patch.facilityType === 'string' ? patch.facilityType : current.facilityType;
+        const fields = type ? (deps.requiredTemplate[type]?.info ?? []) : [];
+        if (current.parentId !== null && fields.length === 0) {
+          res.status(400).json({ error: '이 시설물 종류는 구조물 정보 항목이 없습니다.' });
+          return;
+        }
+        if (current.parentId !== null) {
+          try {
+            patch.facilityInfo = validateFacilityInfo(patch.facilityInfo, fields);
+          } catch (err) {
+            if (err instanceof FacilityInfoError) {
+              res.status(400).json({ error: err.message });
+              return;
+            }
+            throw err;
+          }
+        }
+      }
       const updated = await deps.projects.update(id, patch);
       if (!updated) {
         res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
@@ -782,6 +807,11 @@ export function createApp(deps: AppDeps) {
     return `/api/projects/${projectId}/shots/${shotId}/photo`;
   }
 
+  // 시설물 종류별 「구조물 정보」 입력 항목(앱 구조물 화면의 알약·시트가 쓴다). 항목이 없는 종류는 뺀다
+  api.get('/facility-info-fields', (_req, res) => {
+    res.json(Object.fromEntries(Object.entries(deps.requiredTemplate).filter(([, t]) => t.info.length > 0).map(([type, t]) => [type, t.info])));
+  });
+
   api.get('/projects/:id/shots', async (req, res) => {
     const project = await findShotProject(req, res);
     if (!project) return;
@@ -789,22 +819,22 @@ export function createApp(deps: AppDeps) {
     // 점검 종류는 상위(과업)에 있다. 구조물 정보(경간·교각 수…)에 맞춰 필수 목록을 편다(requiredShots.ts)
     const parent = project.parentId ? await deps.projects.get(project.parentId) : null;
     const inspectionType = parent?.inspectionType ?? project.inspectionType ?? null;
-    const template = facilityType !== null ? (deps.requiredTemplate[facilityType] ?? []) : [];
+    const template: FacilityTemplate = (facilityType !== null ? deps.requiredTemplate[facilityType] : undefined) ?? { info: [], shots: [] };
+    const info = pickInfo(project.facilityInfo, template.info);
     const shots =
       facilityType !== null
-        ? await deps.shots.ensureRequired(
-            project.id,
-            expandRequired(template, { inspectionType: inspectionType ?? undefined, info: project.facilityInfo }),
-          )
+        ? await deps.shots.ensureRequired(project.id, expandRequired(template.shots, { inspectionType: inspectionType ?? undefined, info }))
         : await deps.shots.list(project.id);
     res.json({
       projectId: project.id,
       projectName: project.name,
       facilityType,
       inspectionType,
-      facilityInfo: project.facilityInfo ?? null,
+      facilityInfo: info ?? null,
+      /** 시설물 종류별 「구조물 정보」 입력 항목 — 앱 시트가 이대로 그린다 */
+      infoFields: template.info,
       /** 템플릿에 조건·반복 항목이 있는데 구조물 정보가 없으면 true — 앱이 「구조물 정보 넣기」를 띄운다 */
-      needsFacilityInfo: project.facilityInfo === undefined && templateNeedsInfo(template),
+      needsFacilityInfo: (info === undefined || Object.keys(info).length === 0) && templateNeedsInfo(template),
       shots: shots.map((shot) => ({
         ...shot,
         url: shot.photo ? shotPhotoUrl(project.id, shot.id) : null,

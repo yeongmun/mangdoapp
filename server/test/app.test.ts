@@ -114,12 +114,19 @@ function setup(
   const projects = new ProjectsStore(join(dir, 'data', 'projects.json'));
   const shots = new ShotsStore(join(dir, 'data', 'shots'));
   const requiredTemplate = {
-    교량: [
-      { member: '전경', label: '상류측' },
-      { member: '교대', label: 'A1 전면' },
-      { member: '교각', label: '두부', repeat: 'perPier' as const, when: { girder: 'PSC' }, hint: '받침부 균열' },
-      { member: '장비', label: '사용장비', levels: ['정밀안전진단'] },
-    ],
+    교량: {
+      info: [
+        { key: 'piers', label: '교각 수', type: 'count' as const, max: 300 },
+        { key: 'girder', label: '거더', type: 'choice' as const, options: [['RC', 'RC'], ['PSC', 'PSC']] as [string, string][] },
+      ],
+      shots: [
+        { member: '전경', label: '상류측' },
+        { member: '교대', label: 'A1 전면' },
+        { member: '교각', label: '두부', repeat: 'perPier' as const, when: { girder: 'PSC' } },
+        { member: '장비', label: '사용장비', levels: ['정밀안전진단'] },
+      ],
+    },
+    터널: { info: [], shots: [{ member: '갱구', label: '시점' }] },
   };
   const trash = new DrawingTrash(
     {
@@ -1771,11 +1778,12 @@ describe('촬영 항목 API (/api/projects/:id/shots)', () => {
     expect(patched.body.facilityInfo).toEqual({ piers: 2, girder: 'PSC' });
     const after = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
     expect(after.needsFacilityInfo).toBe(false);
-    expect(after.shots.map((s: { member: string; number: string; hint?: string }) => [s.member, s.number, s.hint ?? null])).toEqual([
-      ['전경', '001', null],
-      ['교대', '002', null],
-      ['교각(P1)', '003', '받침부 균열'],
-      ['교각(P2)', '004', '받침부 균열'],
+    expect(after.infoFields.map((f: { key: string }) => f.key)).toEqual(['piers', 'girder']);
+    expect(after.shots.map((s: { member: string; number: string }) => [s.member, s.number])).toEqual([
+      ['전경', '001'],
+      ['교대', '002'],
+      ['교각(P1)', '003'],
+      ['교각(P2)', '004'],
     ]);
     // 교각 수를 줄이면 안 찍은 P2 칸은 사라진다
     await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 1, girder: 'PSC' } });
@@ -1790,6 +1798,13 @@ describe('촬영 항목 API (/api/projects/:id/shots)', () => {
     expect(onTop.status).toBe(400);
     const bad = await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: -3 } });
     expect(bad.status).toBe(400);
+    // 이 시설물(교량)에 없는 항목은 거부, 항목이 없는 시설물(터널)엔 못 넣는다
+    expect((await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { lining: ['tbm'] } })).status).toBe(400);
+    const tunnel = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'B터널', parentId: top.id, facilityType: '터널' })).body;
+    expect((await request(app).patch(`/api/projects/${tunnel.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 1 } })).status).toBe(400);
+    // 시설물별 입력 항목 목록(항목 없는 종류는 빠짐)
+    const fieldsRes = await request(app).get('/api/facility-info-fields').set('x-access-key', KEY);
+    expect(Object.keys(fieldsRes.body)).toEqual(['교량']);
     await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 1 } });
     const cleared = await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: null });
     expect(cleared.status).toBe(200);
