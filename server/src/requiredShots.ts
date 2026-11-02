@@ -45,6 +45,8 @@ export interface RequiredTemplateItem {
   levelWhen?: Record<string, Record<string, unknown>>;
   when?: Record<string, unknown>;
   repeat?: Repeat;
+  /** 예전 설명들 — 바꾸기 전에 만든 칸을 이 항목으로 옮긴다 */
+  aliases?: string[];
 }
 
 export interface FacilityTemplate {
@@ -61,6 +63,10 @@ export function parseTemplateItem(raw: unknown): RequiredTemplateItem | null {
   if (!isPlainObject(raw)) return null;
   if (typeof raw.member !== 'string' || typeof raw.label !== 'string') return null;
   const item: RequiredTemplateItem = { member: raw.member, label: raw.label };
+  if (Array.isArray(raw.aliases)) {
+    const aliases = raw.aliases.filter((x): x is string => typeof x === 'string' && x !== raw.label);
+    if (aliases.length > 0) item.aliases = aliases;
+  }
   if (Array.isArray(raw.levels)) item.levels = raw.levels.filter((x): x is string => typeof x === 'string');
   if (isPlainObject(raw.when)) item.when = raw.when;
   if (isPlainObject(raw.levelWhen)) item.levelWhen = raw.levelWhen as RequiredTemplateItem['levelWhen'];
@@ -224,6 +230,7 @@ export function expandRequired(template: RequiredTemplateItem[], ctx: ExpandCont
     const positions = positionsOf(item.repeat ?? 'once', ctx.info) ?? [''];
     for (const pos of positions) {
       const shot: ShotTemplateItem = { member: pos ? `${item.member}(${pos})` : item.member, label: item.label };
+      if (item.aliases) shot.aliases = item.aliases;
       const key = `${shot.member}\u0000${shot.label}`;
       if (seen.has(key)) continue; // 같은 칸이 둘이면 mergeRequired가 id를 겹쳐 쓴다
       seen.add(key);

@@ -54,6 +54,21 @@ describe('mergeRequired', () => {
     expect(new Set(out.map((s) => s.number)).size).toBe(3);
   });
 
+  it('설명을 바꾸면(aliases) 찍은 칸·안 찍은 칸 모두 새 설명으로 옮겨지고 칸이 둘이 되지 않는다 (11-03)', () => {
+    const existing: Shot[] = [
+      { id: 's_a', kind: 'required', member: '도로포장', label: '도로포장(포트홀·배수불량)', number: '001', photo: { file: '001.jpg', savedAt: 't' } },
+      { id: 's_b', kind: 'required', member: '배수', label: '배수구·집수정(퇴적·막힘)', number: '002' },
+    ];
+    const merged = mergeRequired(existing, [
+      { member: '도로포장', label: '도로포장', aliases: ['도로포장(포트홀·배수불량)'] },
+      { member: '배수', label: '배수구·집수정', aliases: ['배수구·집수정(퇴적·막힘)'] },
+    ]);
+    expect(merged.map((x) => [x.id, x.label, x.number])).toEqual([
+      ['s_a', '도로포장', '001'],
+      ['s_b', '배수구·집수정', '002'],
+    ]);
+  });
+
   it('previous 항목은 건드리지 않는다', () => {
     const prev: Shot = { id: 'p1', kind: 'previous', member: '교각', label: '사진 3', number: '001' };
     const out = mergeRequired([prev], [{ member: '전경', label: '상류측' }]);

@@ -39,6 +39,8 @@ export interface ShotTemplateItem {
   member: string;
   label: string;
   hint?: string;
+  /** 예전 설명 — 이 이름으로 이미 만든(찍은) 칸은 새 설명으로 옮긴다(이름을 바꿔도 칸이 둘이 되지 않게, 11-03) */
+  aliases?: string[];
 }
 
 export const THUMB_SUFFIX = '.thumb.jpg';
@@ -85,7 +87,8 @@ export function shotFileName(projectName: string, shot: Shot): string {
  * - 안 찍은 required 항목은 template 순서대로 다시 만든다. 같은 member+label이 이미 있으면 id·번호를 유지한다.
  * - 새 번호는 남은 항목의 최대 번호 다음부터.
  */
-export function mergeRequired(existing: Shot[], template: ShotTemplateItem[]): Shot[] {
+export function mergeRequired(existingRaw: Shot[], template: ShotTemplateItem[]): Shot[] {
+  const existing = renameAliased(existingRaw, template);
   const kept = existing.filter((s) => s.kind !== 'required' || s.photo !== undefined);
   const untakenRequired = existing.filter((s) => s.kind === 'required' && s.photo === undefined);
   const keyOf = (s: { member: string; label: string }) => `${s.member}\u0000${s.label}`;
@@ -107,6 +110,21 @@ export function mergeRequired(existing: Shot[], template: ShotTemplateItem[]): S
     out.push(withHint({ id: newShotId(), kind: 'required', member: item.member, label: item.label, number: pad3(next) }, item.hint));
   }
   return out;
+}
+
+/** 템플릿 항목의 예전 설명(aliases)으로 된 required 칸을 새 설명으로 바꾼다. 새 이름 칸이 이미 있으면 그대로 둔다 */
+export function renameAliased(existing: Shot[], template: ShotTemplateItem[]): Shot[] {
+  const rename = new Map<string, string>();
+  for (const item of template) for (const old of item.aliases ?? []) rename.set(`${item.member}\u0000${old}`, item.label);
+  if (rename.size === 0) return existing;
+  const present = new Set(existing.filter((s) => s.kind === 'required').map((s) => `${s.member}\u0000${s.label}`));
+  return existing.map((s) => {
+    if (s.kind !== 'required') return s;
+    const to = rename.get(`${s.member}\u0000${s.label}`);
+    if (to === undefined || present.has(`${s.member}\u0000${to}`)) return s;
+    present.add(`${s.member}\u0000${to}`);
+    return { ...s, label: to };
+  });
 }
 
 /** 안 찍은 칸의 점검 포인트는 템플릿을 따른다(템플릿에서 지우면 칸에서도 지운다) */
