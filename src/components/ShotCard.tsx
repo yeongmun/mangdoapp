@@ -47,9 +47,11 @@ interface TileProps {
   onPress: () => void;
   /** 대기열에 있으면 그 상태 */
   upload?: ShotUploadState;
+  /** 점검 포인트(필수 사진, 2026-11-03). 안 찍은 칸에만 보인다 */
+  hint?: string;
 }
 
-export function ShotTile({ member, label, number, taken, thumb, disabled = false, onPress, upload }: TileProps) {
+export function ShotTile({ member, label, number, taken, thumb, disabled = false, onPress, upload, hint }: TileProps) {
   return (
     <PressScale
       accessibilityRole="button"
@@ -77,6 +79,11 @@ export function ShotTile({ member, label, number, taken, thumb, disabled = false
         <Text style={styles.tileTitle} numberOfLines={2}>
           {label}
         </Text>
+        {hint && !taken ? (
+          <Text style={styles.tileHint} numberOfLines={2}>
+            {hint}
+          </Text>
+        ) : null}
       </View>
     </PressScale>
   );
@@ -149,6 +156,7 @@ const styles = StyleSheet.create({
   uploadText: { fontFamily: font.semibold, fontSize: 11, color: '#ffffff' },
   tileText: { paddingHorizontal: 6, paddingBottom: 4, gap: 1 },
   tileTitle: { fontFamily: font.bold, fontSize: 15.5, color: colors.foreground },
+  tileHint: { fontFamily: font.regular, fontSize: 12, color: colors.mutedForeground, lineHeight: 16, marginTop: 2 },
   // 전차 사진 큰 카드
   big: { backgroundColor: colors.card, borderRadius: radius.xl, padding: 10, gap: space.md, marginBottom: space.md },
   bigPhoto: { height: 180, borderRadius: 18, overflow: 'hidden', backgroundColor: '#9aa6b2', alignItems: 'center', justifyContent: 'center' },

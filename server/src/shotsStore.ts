@@ -8,6 +8,7 @@ import { mkdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { memberOfCaption, type PhotoBlock } from './hwpxPhotos.js';
 import { readJsonFile, writeFileAtomic, writeJsonFileAtomic } from './jsonFile.js';
+import { parseTemplateItem, type RequiredTemplateItem } from './requiredShots.js';
 
 export type ShotKind = 'required' | 'previous';
 
@@ -29,11 +30,15 @@ export interface Shot {
   ref?: { file: string };
   /** 페이지 휴지통. 복구하면 키를 지운다 */
   trashed?: true;
+  /** required만: 점검 포인트(세부지침 1.2.1). 앱 칸에 작게 보인다 */
+  hint?: string;
 }
 
+/** 펼친 뒤의 촬영 칸 하나(requiredShots.ts expandRequired의 결과) */
 export interface ShotTemplateItem {
   member: string;
   label: string;
+  hint?: string;
 }
 
 export const THUMB_SUFFIX = '.thumb.jpg';
@@ -95,17 +100,25 @@ export function mergeRequired(existing: Shot[], template: ShotTemplateItem[]): S
     if (keptKeys.has(keyOf(item))) continue;
     const reuse = reusable.get(keyOf(item));
     if (reuse) {
-      out.push(reuse);
+      out.push(withHint(reuse, item.hint));
       continue;
     }
     next += 1;
-    out.push({ id: newShotId(), kind: 'required', member: item.member, label: item.label, number: pad3(next) });
+    out.push(withHint({ id: newShotId(), kind: 'required', member: item.member, label: item.label, number: pad3(next) }, item.hint));
   }
   return out;
 }
 
-/** 설정 파일이 없거나 JSON이 깨져도 서버는 떠야 한다(리뷰 3) — 로그만 남기고 빈 목록으로 간다. 고치면 재시작. */
-export async function loadRequiredTemplate(configPath: string): Promise<Record<string, ShotTemplateItem[]>> {
+/** 안 찍은 칸의 점검 포인트는 템플릿을 따른다(템플릿에서 지우면 칸에서도 지운다) */
+function withHint(shot: Shot, hint: string | undefined): Shot {
+  const { hint: _old, ...rest } = shot;
+  void _old;
+  return hint ? { ...rest, hint } : rest;
+}
+
+/** 설정 파일이 없거나 JSON이 깨져도 서버는 떠야 한다(리뷰 3) — 로그만 남기고 빈 목록으로 간다. 고치면 재시작.
+ *  "_"로 시작하는 키(_설명 등)는 시설물 종류가 아니다. */
+export async function loadRequiredTemplate(configPath: string): Promise<Record<string, RequiredTemplateItem[]>> {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
@@ -113,11 +126,10 @@ export async function loadRequiredTemplate(configPath: string): Promise<Record<s
     console.error('[shots] 필수 사진 목록을 읽지 못했습니다 — 빈 목록으로 시작합니다:', configPath, err instanceof Error ? err.message : String(err));
     return {};
   }
-  const out: Record<string, ShotTemplateItem[]> = {};
+  const out: Record<string, RequiredTemplateItem[]> = {};
   for (const [type, items] of Object.entries(parsed)) {
-    out[type] = (Array.isArray(items) ? items : [])
-      .filter((i): i is ShotTemplateItem => typeof i?.member === 'string' && typeof i?.label === 'string')
-      .map((i) => ({ member: i.member, label: i.label }));
+    if (type.startsWith('_')) continue;
+    out[type] = (Array.isArray(items) ? items : []).map(parseTemplateItem).filter((i): i is RequiredTemplateItem => i !== null);
   }
   return out;
 }

@@ -1,4 +1,5 @@
 import { ACCESS_KEY, API_URL } from './config';
+import type { FacilityInfo } from './facilityInfo';
 
 export type DrawingStatus = 'pending' | 'inprogress' | 'success' | 'failed';
 
@@ -73,6 +74,8 @@ export interface Project {
   facilityType?: string;
   /** 구조물 위치(하위만) — 그 자리에서 사진을 찍을 때 폰 GPS로 기록(2026-11-02). 홈 「근처 구조물」에 쓴다 */
   location?: { lat: number; lng: number; accuracy: number; at: string };
+  /** 구조물 정보(하위만, 2026-11-03) — 경간·교대·교각 수, 형식. 서버가 필수 사진을 이 값으로 편다 */
+  facilityInfo?: FacilityInfo;
 }
 
 export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
@@ -81,7 +84,12 @@ export const FACILITY_TYPES = ['교량', '터널', '옹벽', '절토사면', '�
 // 점검 종류·시설물 종류만 고친다. null은 지우기. 응답은 서버가 트리 계산을 거친 Project 하나.
 export async function updateProject(
   projectId: string,
-  patch: { inspectionType?: string | null; facilityType?: string | null; location?: { lat: number; lng: number; accuracy: number; at: string } | null },
+  patch: {
+    inspectionType?: string | null;
+    facilityType?: string | null;
+    location?: { lat: number; lng: number; accuracy: number; at: string } | null;
+    facilityInfo?: FacilityInfo | null;
+  },
 ): Promise<Project> {
   let res: Response;
   try {
@@ -265,6 +273,8 @@ export interface Shot {
   photo?: { file: string; savedAt: string };
   url: string | null;
   thumbUrl: string | null;
+  /** required만: 점검 포인트(세부지침 1.2.1) */
+  hint?: string;
   /** previous(전차 사진)만: 보고서 페이지 id, 캡션, 참조 이미지 주소, 휴지통 */
   group?: string;
   caption?: string;
@@ -277,6 +287,11 @@ export interface ShotList {
   projectId: string;
   projectName: string;
   facilityType: string | null;
+  /** 상위 과업의 점검 종류 — 필수 목록을 이것으로 거른다 */
+  inspectionType?: string | null;
+  facilityInfo?: FacilityInfo | null;
+  /** 경간·교각 수 등이 있어야 다 펴지는데 아직 없다 → 「구조물 정보 넣기」 */
+  needsFacilityInfo?: boolean;
   shots: Shot[];
 }
 

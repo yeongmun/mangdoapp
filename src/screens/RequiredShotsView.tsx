@@ -3,7 +3,8 @@
 // 위는 진행 카드, 아래는 「다음 사진 찍기」 큰 버튼. 상태·촬영 로직은 [전차 사진] 탭과 공유(useShots).
 // 찍은 칸은 아래 「찍음 (N) ▾」 접힌 묶음으로 내려가고, 다 찍으면 「모두 찍었어요」(2026-11-02 구글 Tasks 레퍼런스).
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { Project, Shot } from '../api';
 import { ShotTile } from '../components/ShotCard';
 import { AllDoneCard, NextShotButton, ShotProgressCard, TakenHeader } from '../components/ShotProgress';
@@ -19,9 +20,11 @@ interface Props {
   onPhotoQueued?: () => void;
   /** 홈 「카메라 열기」로 들어왔으면 목록을 받자마자 다음 사진 카메라를 연다(한 번) */
   autoShoot?: boolean;
+  /** 「구조물 정보 넣기」 — 경간·교각 수를 넣으면 칸이 그만큼 펴진다(2026-11-03) */
+  onEditInfo?: () => void;
 }
 
-export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false }: Props) {
+export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, onEditInfo }: Props) {
   const { state, error, busyId, isTaken, takenThumb, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates } = useShots(project, onPhotoQueued);
   const [takenOpen, setTakenOpen] = useState(false);
 
@@ -78,7 +81,22 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false }:
       <FlatList
         data={rows}
         keyExtractor={(row) => row.key}
-        ListHeaderComponent={<ShotProgressCard taken={takenCount} total={required.length} caption={`${project.facilityType} · 필수 사진`} />}
+        ListHeaderComponent={
+          <>
+            {state.list?.needsFacilityInfo && onEditInfo ? (
+              <Pressable onPress={onEditInfo} accessibilityRole="button" style={({ pressed }) => [styles.infoBanner, pressed && { opacity: 0.8 }]}>
+                <Feather name="info" size={18} color={colors.primaryText} />
+                <Text style={styles.infoText}>경간·교각 수와 형식을 넣으면 위치마다 칸이 생겨요</Text>
+                <Text style={styles.infoAction}>넣기</Text>
+              </Pressable>
+            ) : null}
+            <ShotProgressCard
+              taken={takenCount}
+              total={required.length}
+              caption={`${project.facilityType}${state.list?.inspectionType ? ` · ${state.list.inspectionType}` : ''} · 필수 사진`}
+            />
+          </>
+        }
         renderItem={({ item: row }) => {
           if (row.kind === 'done') return <AllDoneCard total={required.length} celebrate={celebrate} />;
           if (row.kind === 'takenHead') {
@@ -93,6 +111,7 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false }:
                   <ShotTile
                     member={shot.member}
                     label={shot.label}
+                    hint={shot.hint}
                     number={shot.number}
                     taken={isTaken(shot)}
                     thumb={takenThumb(shot)}
@@ -130,6 +149,9 @@ const styles = StyleSheet.create({
   list: { paddingBottom: space.lg },
   columns: { flexDirection: 'row', gap: space.md },
   cell: { flex: 1, marginBottom: space.md },
+  infoBanner: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 52, paddingHorizontal: space.lg, borderRadius: 16, backgroundColor: colors.primarySoft, marginBottom: space.md },
+  infoText: { flex: 1, fontFamily: font.semibold, fontSize: 14, color: colors.primaryText, lineHeight: 20 },
+  infoAction: { fontFamily: font.bold, fontSize: 14, color: colors.primaryText, textDecorationLine: 'underline' },
   skeletonRow: { flexDirection: 'row', gap: space.md },
   skeletonTile: { flex: 1, height: 170, borderRadius: 22 },
   notice: { fontFamily: font.regular, fontSize: 15, color: colors.mutedForeground, lineHeight: 23, marginTop: space.xxl, textAlign: 'center' },

@@ -107,7 +107,7 @@ describe('loadRequiredTemplate', () => {
       await writeFile(join(dir, 'bad.json'), '{ "교량": [ { member: 전경 } ]');
       expect(await loadRequiredTemplate(join(dir, 'bad.json'))).toEqual({});
       await writeFile(join(dir, 'ok.json'), JSON.stringify({ _설명: 'x', 교량: [{ member: '전경', label: '상류측' }, { bad: 1 }] }));
-      expect(await loadRequiredTemplate(join(dir, 'ok.json'))).toEqual({ _설명: [], 교량: [{ member: '전경', label: '상류측' }] });
+      expect(await loadRequiredTemplate(join(dir, 'ok.json'))).toEqual({ 교량: [{ member: '전경', label: '상류측' }] }); // _로 시작하는 키는 시설물 종류가 아니다
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

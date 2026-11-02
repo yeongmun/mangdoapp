@@ -113,7 +113,14 @@ function setup(
   const photos = new PhotosStore(join(dir, 'data', 'photos'));
   const projects = new ProjectsStore(join(dir, 'data', 'projects.json'));
   const shots = new ShotsStore(join(dir, 'data', 'shots'));
-  const requiredTemplate = { 교량: [{ member: '전경', label: '상류측' }, { member: '교대', label: 'A1 전면' }] };
+  const requiredTemplate = {
+    교량: [
+      { member: '전경', label: '상류측' },
+      { member: '교대', label: 'A1 전면' },
+      { member: '교각', label: '두부', repeat: 'perPier' as const, when: { girder: 'PSC' }, hint: '받침부 균열' },
+      { member: '장비', label: '사용장비', levels: ['정밀안전진단'] },
+    ],
+  };
   const trash = new DrawingTrash(
     {
       trashDir: join(dir, 'data', 'trash'),
@@ -1745,10 +1752,48 @@ describe('촬영 항목 API (/api/projects/:id/shots)', () => {
     expect(res.body.shots.map((s: { member: string; number: string; kind: string }) => [s.kind, s.member, s.number])).toEqual([
       ['required', '전경', '001'],
       ['required', '교대', '002'],
+      ['required', '장비', '003'], // 점검 종류를 모르면 점검 종류로 거르지 않는다(빠뜨리지 않게)
     ]);
     // 두 번 불러도 같은 id
     const again = await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY);
     expect(again.body.shots[0].id).toBe(res.body.shots[0].id);
+  });
+
+  it('구조물 정보·점검 종류에 맞춰 필수 목록이 펴진다 (2026-11-03)', async () => {
+    const { app } = setup();
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '오봉대교', inspectionType: '정밀안전점검' })).body;
+    const child = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'A교', parentId: top.id, facilityType: '교량' })).body;
+    const before = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(before).toMatchObject({ inspectionType: '정밀안전점검', facilityInfo: null, needsFacilityInfo: true });
+    expect(before.shots.map((s: { member: string }) => s.member)).toEqual(['전경', '교대']); // 정밀점검이라 장비(진단만) 없음, 조건 항목 없음
+    const patched = await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 2, girder: 'PSC' } });
+    expect(patched.status).toBe(200);
+    expect(patched.body.facilityInfo).toEqual({ piers: 2, girder: 'PSC' });
+    const after = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(after.needsFacilityInfo).toBe(false);
+    expect(after.shots.map((s: { member: string; number: string; hint?: string }) => [s.member, s.number, s.hint ?? null])).toEqual([
+      ['전경', '001', null],
+      ['교대', '002', null],
+      ['교각(P1)', '003', '받침부 균열'],
+      ['교각(P2)', '004', '받침부 균열'],
+    ]);
+    // 교각 수를 줄이면 안 찍은 P2 칸은 사라진다
+    await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 1, girder: 'PSC' } });
+    const fewer = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(fewer.shots.map((s: { member: string }) => s.member)).toEqual(['전경', '교대', '교각(P1)']);
+  });
+
+  it('구조물 정보: 상위 프로젝트에는 못 넣고, 틀린 값은 400, null은 지운다', async () => {
+    const { app } = setup();
+    const { top, child } = await bridge(app);
+    const onTop = await request(app).patch(`/api/projects/${top.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 1 } });
+    expect(onTop.status).toBe(400);
+    const bad = await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: -3 } });
+    expect(bad.status).toBe(400);
+    await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 1 } });
+    const cleared = await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.facilityInfo).toBeUndefined();
   });
 
   it('시설물 종류가 없으면 빈 목록, 없는 프로젝트는 404', async () => {

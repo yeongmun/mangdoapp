@@ -1,0 +1,1016 @@
+{
+ "meta": {
+  "source": "세부지침 해설서(교량편) 2026.2, 1.4.1 라. 구조형식에 따른 부재별 가중치 [표 1.31], [표 1.32]",
+  "nullMeans": "원문 \"-\" (해당 부재 없음, 가중치 미배정)",
+  "memberNameNote": "재료시험 행의 평가항목은 원문 \"탄산화/염화물/월류(여유고)\" (세 항목 중 가장 불량한 결과에 가중치 7 적용)"
+ },
+ "table_1_31_general": {
+  "caption": "[표 1.31] 구조형식에 따른 일반교량의 부재별 가중치",
+  "columns": [
+   {
+    "id": "slab",
+    "group": "슬래브 교량",
+    "sub": null,
+    "variant": null
+   },
+   {
+    "id": "girder_general",
+    "group": "거더교량",
+    "sub": "일반 거더교",
+    "variant": "일반"
+   },
+   {
+    "id": "girder_general_no2nd",
+    "group": "거더교량",
+    "sub": "일반 거더교",
+    "variant": "2차부재 없음"
+   },
+   {
+    "id": "girder_general_nodeck",
+    "group": "거더교량",
+    "sub": "일반 거더교",
+    "variant": "바닥판 없음"
+   },
+   {
+    "id": "girder_integral_steeldeck",
+    "group": "거더교량",
+    "sub": "바닥판․거더 일체형",
+    "variant": "강 바닥판"
+   },
+   {
+    "id": "girder_integral_pscbox",
+    "group": "거더교량",
+    "sub": "바닥판․거더 일체형",
+    "variant": "PSC 박스"
+   },
+   {
+    "id": "girder_archtruss_concdeck",
+    "group": "거더교량",
+    "sub": "아치, 트러스",
+    "variant": "콘크리트 바닥판"
+   },
+   {
+    "id": "girder_archtruss_steeldeck",
+    "group": "거더교량",
+    "sub": "아치, 트러스",
+    "variant": "강 바닥판"
+   },
+   {
+    "id": "rahmen_nogirder",
+    "group": "라멘교",
+    "sub": "거더 없음",
+    "variant": null
+   },
+   {
+    "id": "rahmen_girder_1",
+    "group": "라멘교",
+    "sub": "거더있음(복개구조물)",
+    "variant": "[1] (원문 하위열 제목 없음)"
+   },
+   {
+    "id": "rahmen_girder_2",
+    "group": "라멘교",
+    "sub": "거더있음(복개구조물)",
+    "variant": "[2] (원문 하위열 제목 없음)"
+   }
+  ],
+  "rows": [
+   {
+    "group": "상부",
+    "member": "바닥판",
+    "weights": {
+     "slab": 34,
+     "girder_general": 18,
+     "girder_general_no2nd": 18,
+     "girder_general_nodeck": null,
+     "girder_integral_steeldeck": 20,
+     "girder_integral_pscbox": 20,
+     "girder_archtruss_concdeck": 15,
+     "girder_archtruss_steeldeck": 15,
+     "rahmen_nogirder": 34,
+     "rahmen_girder_1": 20,
+     "rahmen_girder_2": 21
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "상부",
+    "member": "주형",
+    "weights": {
+     "slab": null,
+     "girder_general": 20,
+     "girder_general_no2nd": 25,
+     "girder_general_nodeck": 37,
+     "girder_integral_steeldeck": 18,
+     "girder_integral_pscbox": 20,
+     "girder_archtruss_concdeck": 23,
+     "girder_archtruss_steeldeck": 23,
+     "rahmen_nogirder": null,
+     "rahmen_girder_1": 21,
+     "rahmen_girder_2": 23
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "상부",
+    "member": "2차부재",
+    "weights": {
+     "slab": null,
+     "girder_general": 5,
+     "girder_general_no2nd": null,
+     "girder_general_nodeck": 11,
+     "girder_integral_steeldeck": 5,
+     "girder_integral_pscbox": 3,
+     "girder_archtruss_concdeck": 5,
+     "girder_archtruss_steeldeck": 5,
+     "rahmen_nogirder": null,
+     "rahmen_girder_1": 5,
+     "rahmen_girder_2": null
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "하부",
+    "member": "교대/교각",
+    "weights": {
+     "slab": 24,
+     "girder_general": 16,
+     "girder_general_no2nd": 16,
+     "girder_general_nodeck": 22,
+     "girder_integral_steeldeck": 16,
+     "girder_integral_pscbox": 16,
+     "girder_archtruss_concdeck": 16,
+     "girder_archtruss_steeldeck": 16,
+     "rahmen_nogirder": 34,
+     "rahmen_girder_1": 22,
+     "rahmen_girder_2": 24
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "하부",
+    "member": "기초",
+    "weights": {
+     "slab": 21,
+     "girder_general": 21,
+     "girder_general_no2nd": 21,
+     "girder_general_nodeck": 21,
+     "girder_integral_steeldeck": 21,
+     "girder_integral_pscbox": 21,
+     "girder_archtruss_concdeck": 21,
+     "girder_archtruss_steeldeck": 21,
+     "rahmen_nogirder": 21,
+     "rahmen_girder_1": 21,
+     "rahmen_girder_2": 21
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "받침",
+    "member": "교량받침",
+    "weights": {
+     "slab": 10,
+     "girder_general": 9,
+     "girder_general_no2nd": 9,
+     "girder_general_nodeck": 14,
+     "girder_integral_steeldeck": 9,
+     "girder_integral_pscbox": 9,
+     "girder_archtruss_concdeck": 9,
+     "girder_archtruss_steeldeck": 9,
+     "rahmen_nogirder": 3,
+     "rahmen_girder_1": 3,
+     "rahmen_girder_2": 3
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "기타",
+    "member": "신축이음",
+    "weights": {
+     "slab": 10,
+     "girder_general": 9,
+     "girder_general_no2nd": 9,
+     "girder_general_nodeck": null,
+     "girder_integral_steeldeck": 9,
+     "girder_integral_pscbox": 9,
+     "girder_archtruss_concdeck": 9,
+     "girder_archtruss_steeldeck": 9,
+     "rahmen_nogirder": 3,
+     "rahmen_girder_1": 3,
+     "rahmen_girder_2": 3
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "기타",
+    "member": "교면포장",
+    "weights": {
+     "slab": 7,
+     "girder_general": 7,
+     "girder_general_no2nd": 7,
+     "girder_general_nodeck": null,
+     "girder_integral_steeldeck": 7,
+     "girder_integral_pscbox": 7,
+     "girder_archtruss_concdeck": 7,
+     "girder_archtruss_steeldeck": 7,
+     "rahmen_nogirder": 7,
+     "rahmen_girder_1": 7,
+     "rahmen_girder_2": 7
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "기타",
+    "member": "배수시설",
+    "weights": {
+     "slab": 3,
+     "girder_general": 3,
+     "girder_general_no2nd": 3,
+     "girder_general_nodeck": null,
+     "girder_integral_steeldeck": 3,
+     "girder_integral_pscbox": 3,
+     "girder_archtruss_concdeck": 3,
+     "girder_archtruss_steeldeck": 3,
+     "rahmen_nogirder": 3,
+     "rahmen_girder_1": 3,
+     "rahmen_girder_2": 3
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "기타",
+    "member": "난간/연석",
+    "weights": {
+     "slab": 2,
+     "girder_general": 2,
+     "girder_general_no2nd": 2,
+     "girder_general_nodeck": 6,
+     "girder_integral_steeldeck": 2,
+     "girder_integral_pscbox": 2,
+     "girder_archtruss_concdeck": 2,
+     "girder_archtruss_steeldeck": 2,
+     "rahmen_nogirder": 2,
+     "rahmen_girder_1": 2,
+     "rahmen_girder_2": 2
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "재료시험",
+    "member": "탄산화/염화물/월류(여유고)",
+    "weights": {
+     "slab": 7,
+     "girder_general": 7,
+     "girder_general_no2nd": 7,
+     "girder_general_nodeck": 7,
+     "girder_integral_steeldeck": 7,
+     "girder_integral_pscbox": 7,
+     "girder_archtruss_concdeck": 7,
+     "girder_archtruss_steeldeck": 7,
+     "rahmen_nogirder": 7,
+     "rahmen_girder_1": 7,
+     "rahmen_girder_2": 7
+    },
+    "mergedCellsInSource": [
+     [
+      "girder_integral_steeldeck",
+      "girder_integral_pscbox"
+     ],
+     [
+      "girder_archtruss_concdeck",
+      "girder_archtruss_steeldeck"
+     ]
+    ]
+   },
+   {
+    "group": "합계",
+    "member": "합계",
+    "weights": {
+     "slab": 118,
+     "girder_general": 117,
+     "girder_general_no2nd": 119,
+     "girder_general_nodeck": 118,
+     "girder_integral_steeldeck": 117,
+     "girder_integral_pscbox": 117,
+     "girder_archtruss_concdeck": 117,
+     "girder_archtruss_steeldeck": 117,
+     "rahmen_nogirder": 114,
+     "rahmen_girder_1": 114,
+     "rahmen_girder_2": 114
+    }
+   }
+  ],
+  "sumCheck": {
+   "slab": {
+    "computedSum": 118,
+    "statedTotal": 118,
+    "match": true
+   },
+   "girder_general": {
+    "computedSum": 117,
+    "statedTotal": 117,
+    "match": true
+   },
+   "girder_general_no2nd": {
+    "computedSum": 117,
+    "statedTotal": 119,
+    "match": false
+   },
+   "girder_general_nodeck": {
+    "computedSum": 118,
+    "statedTotal": 118,
+    "match": true
+   },
+   "girder_integral_steeldeck": {
+    "computedSum": 117,
+    "statedTotal": 117,
+    "match": true
+   },
+   "girder_integral_pscbox": {
+    "computedSum": 117,
+    "statedTotal": 117,
+    "match": true
+   },
+   "girder_archtruss_concdeck": {
+    "computedSum": 117,
+    "statedTotal": 117,
+    "match": true
+   },
+   "girder_archtruss_steeldeck": {
+    "computedSum": 117,
+    "statedTotal": 117,
+    "match": true
+   },
+   "rahmen_nogirder": {
+    "computedSum": 114,
+    "statedTotal": 114,
+    "match": true
+   },
+   "rahmen_girder_1": {
+    "computedSum": 114,
+    "statedTotal": 114,
+    "match": true
+   },
+   "rahmen_girder_2": {
+    "computedSum": 114,
+    "statedTotal": 114,
+    "match": true
+   }
+  }
+ },
+ "table_1_32_cable": {
+  "caption": "[표 1.32] 구조형식에 따른 케이블교량의 부재별 가중치",
+  "columns": [
+   {
+    "id": "suspension_general",
+    "type": "현수교",
+    "variant": "일반 거더형"
+   },
+   {
+    "id": "suspension_stiffened_psc",
+    "type": "현수교",
+    "variant": "보강형, PSC거더형"
+   },
+   {
+    "id": "cablestayed_general",
+    "type": "사장교",
+    "variant": "일반 거더형"
+   },
+   {
+    "id": "cablestayed_stiffened_psc",
+    "type": "사장교",
+    "variant": "보강형, PSC거더형"
+   },
+   {
+    "id": "extradosed_general",
+    "type": "엑스트라도즈드교",
+    "variant": "일반 거더형"
+   },
+   {
+    "id": "extradosed_psc",
+    "type": "엑스트라도즈드교",
+    "variant": "PSC거더형"
+   }
+  ],
+  "rows": [
+   {
+    "group": "상부",
+    "member": "케이블",
+    "weights": {
+     "suspension_general": 25,
+     "suspension_stiffened_psc": 25,
+     "cablestayed_general": 23,
+     "cablestayed_stiffened_psc": 23,
+     "extradosed_general": 20,
+     "extradosed_psc": 20
+    }
+   },
+   {
+    "group": "상부",
+    "member": "바닥판",
+    "weights": {
+     "suspension_general": 8,
+     "suspension_stiffened_psc": null,
+     "cablestayed_general": 9,
+     "cablestayed_stiffened_psc": null,
+     "extradosed_general": 10,
+     "extradosed_psc": null
+    }
+   },
+   {
+    "group": "상부",
+    "member": "거더",
+    "weights": {
+     "suspension_general": 8,
+     "suspension_stiffened_psc": 20,
+     "cablestayed_general": 9,
+     "cablestayed_stiffened_psc": 22,
+     "extradosed_general": 10,
+     "extradosed_psc": 25
+    }
+   },
+   {
+    "group": "상부",
+    "member": "2차부재",
+    "weights": {
+     "suspension_general": 4,
+     "suspension_stiffened_psc": null,
+     "cablestayed_general": 4,
+     "cablestayed_stiffened_psc": null,
+     "extradosed_general": 5,
+     "extradosed_psc": null
+    }
+   },
+   {
+    "group": "하부",
+    "member": "주탑",
+    "weights": {
+     "suspension_general": 13,
+     "suspension_stiffened_psc": 13,
+     "cablestayed_general": 13,
+     "cablestayed_stiffened_psc": 13,
+     "extradosed_general": 6,
+     "extradosed_psc": 6
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "하부",
+    "member": "보조주탑",
+    "weights": {
+     "suspension_general": 5,
+     "suspension_stiffened_psc": 5,
+     "cablestayed_general": 5,
+     "cablestayed_stiffened_psc": 5,
+     "extradosed_general": 12,
+     "extradosed_psc": 12
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "하부",
+    "member": "교대(앵커블럭)",
+    "weights": {
+     "suspension_general": 10,
+     "suspension_stiffened_psc": 10,
+     "cablestayed_general": 8,
+     "cablestayed_stiffened_psc": 8,
+     "extradosed_general": 8,
+     "extradosed_psc": 8
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "하부",
+    "member": "교각",
+    "weights": {
+     "suspension_general": null,
+     "suspension_stiffened_psc": null,
+     "cablestayed_general": 3,
+     "cablestayed_stiffened_psc": 3,
+     "extradosed_general": 3,
+     "extradosed_psc": 3
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "하부",
+    "member": "기초",
+    "weights": {
+     "suspension_general": 12,
+     "suspension_stiffened_psc": 12,
+     "cablestayed_general": 12,
+     "cablestayed_stiffened_psc": 12,
+     "extradosed_general": 12,
+     "extradosed_psc": 12
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "받침",
+    "member": "교량받침",
+    "weights": {
+     "suspension_general": 5,
+     "suspension_stiffened_psc": 5,
+     "cablestayed_general": 5,
+     "cablestayed_stiffened_psc": 5,
+     "extradosed_general": 5,
+     "extradosed_psc": 5
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "기타",
+    "member": "신축이음",
+    "weights": {
+     "suspension_general": 5,
+     "suspension_stiffened_psc": 5,
+     "cablestayed_general": 5,
+     "cablestayed_stiffened_psc": 5,
+     "extradosed_general": 5,
+     "extradosed_psc": 5
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "기타",
+    "member": "교면포장",
+    "weights": {
+     "suspension_general": 4,
+     "suspension_stiffened_psc": 4,
+     "cablestayed_general": 4,
+     "cablestayed_stiffened_psc": 4,
+     "extradosed_general": 4,
+     "extradosed_psc": 4
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "기타",
+    "member": "배수시설",
+    "weights": {
+     "suspension_general": 2,
+     "suspension_stiffened_psc": 2,
+     "cablestayed_general": 2,
+     "cablestayed_stiffened_psc": 2,
+     "extradosed_general": 2,
+     "extradosed_psc": 2
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "기타",
+    "member": "난간/연석",
+    "weights": {
+     "suspension_general": 2,
+     "suspension_stiffened_psc": 2,
+     "cablestayed_general": 2,
+     "cablestayed_stiffened_psc": 2,
+     "extradosed_general": 2,
+     "extradosed_psc": 2
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "재료시험",
+    "member": "탄산화/염화물/월류(여유고)",
+    "weights": {
+     "suspension_general": 7,
+     "suspension_stiffened_psc": 7,
+     "cablestayed_general": 7,
+     "cablestayed_stiffened_psc": 7,
+     "extradosed_general": 7,
+     "extradosed_psc": 7
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   },
+   {
+    "group": "합계",
+    "member": "합계",
+    "weights": {
+     "suspension_general": 110,
+     "suspension_stiffened_psc": 110,
+     "cablestayed_general": 111,
+     "cablestayed_stiffened_psc": 111,
+     "extradosed_general": 111,
+     "extradosed_psc": 111
+    },
+    "mergedCellsInSource": [
+     [
+      "suspension_general",
+      "suspension_stiffened_psc"
+     ],
+     [
+      "cablestayed_general",
+      "cablestayed_stiffened_psc"
+     ],
+     [
+      "extradosed_general",
+      "extradosed_psc"
+     ]
+    ],
+    "note": "원문에서 같은 교량형식의 두 변형(일반/보강형 등)에 하나의 값이 병합 기재됨"
+   }
+  ],
+  "sumCheck": {
+   "suspension_general": {
+    "computedSum": 110,
+    "statedTotal": 110,
+    "match": true
+   },
+   "suspension_stiffened_psc": {
+    "computedSum": 110,
+    "statedTotal": 110,
+    "match": true
+   },
+   "cablestayed_general": {
+    "computedSum": 111,
+    "statedTotal": 111,
+    "match": true
+   },
+   "cablestayed_stiffened_psc": {
+    "computedSum": 111,
+    "statedTotal": 111,
+    "match": true
+   },
+   "extradosed_general": {
+    "computedSum": 111,
+    "statedTotal": 111,
+    "match": true
+   },
+   "extradosed_psc": {
+    "computedSum": 111,
+    "statedTotal": 111,
+    "match": true
+   }
+  }
+ },
+ "redistributionRules": [
+  {
+   "id": "rahmen_no_bearing",
+   "appliesTo": "1.31",
+   "condition": "교량받침이 없는 라멘교",
+   "rule": "교량받침에 할당된 가중치를 바닥판, 거더, 교대/교각의 가중치에 균등하게 배분",
+   "sourceExample": {
+    "before": {
+     "rahmen_nogirder": {
+      "바닥판": 34,
+      "거더": null,
+      "교대/교각": 34,
+      "교량받침": 3
+     },
+     "rahmen_girder_1": {
+      "바닥판": 20,
+      "거더": 21,
+      "교대/교각": 22,
+      "교량받침": 3
+     },
+     "rahmen_girder_2": {
+      "바닥판": 21,
+      "거더": 23,
+      "교대/교각": 24,
+      "교량받침": 3
+     }
+    },
+    "after": {
+     "rahmen_nogirder": {
+      "바닥판": 36,
+      "거더": null,
+      "교대/교각": 35,
+      "교량받침": 0
+     },
+     "rahmen_girder_1": {
+      "바닥판": 21,
+      "거더": 22,
+      "교대/교각": 23,
+      "교량받침": 0
+     },
+     "rahmen_girder_2": {
+      "바닥판": 22,
+      "거더": 24,
+      "교대/교각": 25,
+      "교량받침": 0
+     }
+    },
+    "note": "거더 없는 라멘교는 3을 바닥판·교대/교각 2개 부재에 배분(원문 예: 바닥판 +2, 교대/교각 +1)"
+   }
+  },
+  {
+   "id": "archtruss_no_deck",
+   "appliesTo": "1.31",
+   "condition": "아치트러스에서 바닥판이 없는 경우",
+   "rule": "거더와 2차부재에 가중치를 균등하게 배분"
+  },
+  {
+   "id": "no_other_members",
+   "appliesTo": "1.31",
+   "condition": "기타시설물(신축이음, 교면포장, 배수시설, 난간/연석)이 없는 경우",
+   "rule": "기타시설물에 할당된 가중치는 바닥판의 가중치에 포함"
+  },
+  {
+   "id": "foundation_not_evaluated_general",
+   "appliesTo": "1.31",
+   "condition": "기초에 대한 평가가 수행되지 않았을 경우(지반에 묻혀 평가 불가 등)",
+   "rule": "기초에 할당된 가중치는 교대/교각의 가중치에 포함",
+   "sourceExample": "해설 예시(강거더교): 기초 Q등급 → 기초 가중치 0, 하부(교대/교각) 37 (=16+21)"
+  },
+  {
+   "id": "river_bridge_foundation_surcharge",
+   "appliesTo": "1.31",
+   "condition": "하천교량",
+   "rule": "기초의 가중치를 10% 할증할 수 있다(임의규정)",
+   "note": "할증 시 다른 부재 가중치 조정 방법은 원문에 없음. 해설 1: \"교량의 가중치 합은 구조형식별 합계를 기준으로 한다.\""
+  },
+  {
+   "id": "material_tests_weight",
+   "appliesTo": "1.31, 1.32",
+   "rule": "탄산화, 염화물 및 여유고는 셋 중 가장 불량한 상태의 결과(최저등급의 결함도지수)에 가중치 7을 적용"
+  },
+  {
+   "id": "no_concrete_deck_material",
+   "appliesTo": "1.31",
+   "condition": "상부구조의 바닥판이 없는 경우와 강재로 시공된 경우(\"바닥판 없음\", \"강바닥판\")",
+   "rule": "탄산화 및 염화물의 가중치는 하부구조에 포함시킨다(해설 3, 원문 그대로)"
+  },
+  {
+   "id": "covered_structure",
+   "appliesTo": "1.31",
+   "rule": "기둥·거더·슬래브로 구성된 복개구조물은 거더가 있는 라멘교에 준해 평가, 박스형 복개구조물은 터널 시설물 상태평가 기준으로 평가"
+  },
+  {
+   "id": "nonstandard_type",
+   "appliesTo": "1.31, 1.32",
+   "rule": "일반적인 구조형식에 포함되지 않은 경우 [표 1.31], [표 1.32]를 인용하여 부재별 가중치 세부내역 및 사유를 수록"
+  },
+  {
+   "id": "cable_no_extra_pier",
+   "appliesTo": "1.32",
+   "condition": "케이블교량 구간에 추가 설치된 교각이 없는 경우",
+   "rule": "교각의 가중치를 교대의 가중치에 포함"
+  },
+  {
+   "id": "cable_no_aux_pylon",
+   "appliesTo": "1.32",
+   "condition": "보조주탑이 없는 경우",
+   "rule": "보조주탑의 가중치를 주탑의 가중치에 포함"
+  },
+  {
+   "id": "foundation_not_evaluated_cable",
+   "appliesTo": "1.32",
+   "condition": "기초에 대한 평가가 수행되지 않았을 경우",
+   "rule": "기초 가중치를 주탑(보조주탑이 있으면 보조주탑)과 교대/교각/앵커블록의 가중치에 균등 분배"
+  },
+  {
+   "id": "cable_member_mapping",
+   "appliesTo": "1.32",
+   "rule": "일반거더형: 바닥판·거더는 일반교량 기준으로 평가. 보강형은 강거더, PSC 박스는 PSC 박스거더 기준. 보강형 내부 격벽은 강재 가로보 기준. 보조주탑은 콘크리트 교각(주탑) 기준."
+  },
+  {
+   "id": "cable_zone",
+   "appliesTo": "1.32",
+   "rule": "케이블교량 구간은 상부구조물 하중이 케이블부재에 의해 지지되는 구간까지(현수교: 거더가 행어케이블로 주케이블에 연결되는 구간)"
+  },
+  {
+   "id": "x_q_grades",
+   "appliesTo": "1.31, 1.32",
+   "rule": "\"X\"등급(부재 없음)과 \"Q\"등급(조사·평가 불가)은 결함도 점수 0으로 표기하고 평균값 산정에서 제외(해설 예시)"
+  }
+ ],
+ "sourceInconsistencies": [
+  "[해설 표 1.4.8] 결함도 지수 적용예시는 탄산화 가중치 4, 염화물 가중치 3, 기초 0(Q), 하부 20을 사용하는 구(舊) 형식이며, 본문 규칙(재료시험 통합 가중치 7, 기초 미평가 시 교대/교각에 합산)과 일치하지 않음.",
+  "[표 1.31] 라멘교 \"거더있음(복개구조물)\"은 2개 열로 값이 다르지만(바닥판 20/21 등) 원문에 하위 열 제목이 없음.",
+  "[표 1.31] 열 girder_general_no2nd의 부재 가중치 합(117)이 원문 합계(119)와 다름 – 원문 값 그대로 수록"
+ ]
+}

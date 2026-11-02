@@ -35,7 +35,8 @@ import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFo
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 import { extractPhotoBlocks } from './hwpxPhotos.js';
-import { shotFileName, ShotRuleError, type Shot, type ShotsStore, type ShotTemplateItem } from './shotsStore.js';
+import { shotFileName, ShotRuleError, type Shot, type ShotsStore } from './shotsStore.js';
+import { expandRequired, templateNeedsInfo, type RequiredTemplateItem } from './requiredShots.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -64,7 +65,7 @@ export interface AppDeps {
   projects: ProjectsStore;
   // 촬영 항목(필수 사진·전차 사진). requiredTemplate = 시설물 종류 → 필수 목록(config/requiredShots.json)
   shots: ShotsStore;
-  requiredTemplate: Record<string, ShotTemplateItem[]>;
+  requiredTemplate: Record<string, RequiredTemplateItem[]>;
   // 오프라인 모드(설계 3.1): 도면 파생 파일(f2d 등) 캐시와 뷰어 꾸러미 캐시.
   offline: OfflineFilesStore;
   viewerBundle: ViewerBundle;
@@ -648,13 +649,14 @@ export function createApp(deps: AppDeps) {
     const body = (req.body ?? {}) as Record<string, unknown>;
     // ProjectsStore.update는 준 키만 바꾼다 — req.body에 실제로 있던 키만 넘긴다(항상 undefined를
     // 넣으면 "그 키를 지워라"로 오해할 수 있다).
-    const patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown } = {};
+    const patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown; facilityInfo?: unknown } = {};
     if ('name' in body) patch.name = body.name;
     if ('memo' in body) patch.memo = body.memo;
     if ('inspectionType' in body) patch.inspectionType = body.inspectionType;
     if ('facilityType' in body) patch.facilityType = body.facilityType;
     if ('taskType' in body) patch.taskType = body.taskType;
     if ('location' in body) patch.location = body.location;
+    if ('facilityInfo' in body) patch.facilityInfo = body.facilityInfo;
     try {
       const updated = await deps.projects.update(id, patch);
       if (!updated) {
@@ -784,14 +786,25 @@ export function createApp(deps: AppDeps) {
     const project = await findShotProject(req, res);
     if (!project) return;
     const facilityType = project.facilityType ?? null;
+    // 점검 종류는 상위(과업)에 있다. 구조물 정보(경간·교각 수…)에 맞춰 필수 목록을 편다(requiredShots.ts)
+    const parent = project.parentId ? await deps.projects.get(project.parentId) : null;
+    const inspectionType = parent?.inspectionType ?? project.inspectionType ?? null;
+    const template = facilityType !== null ? (deps.requiredTemplate[facilityType] ?? []) : [];
     const shots =
       facilityType !== null
-        ? await deps.shots.ensureRequired(project.id, deps.requiredTemplate[facilityType] ?? [])
+        ? await deps.shots.ensureRequired(
+            project.id,
+            expandRequired(template, { inspectionType: inspectionType ?? undefined, info: project.facilityInfo }),
+          )
         : await deps.shots.list(project.id);
     res.json({
       projectId: project.id,
       projectName: project.name,
       facilityType,
+      inspectionType,
+      facilityInfo: project.facilityInfo ?? null,
+      /** 템플릿에 조건·반복 항목이 있는데 구조물 정보가 없으면 true — 앱이 「구조물 정보 넣기」를 띄운다 */
+      needsFacilityInfo: project.facilityInfo === undefined && templateNeedsInfo(template),
       shots: shots.map((shot) => ({
         ...shot,
         url: shot.photo ? shotPhotoUrl(project.id, shot.id) : null,

@@ -38,6 +38,8 @@ import { Wordmark } from '../components/Wordmark';
 import { nextShot, nextStructure, photoProgress, recentPhotos, taskTypeOf, taskTypeOptions, UNSET_TASK_TYPE, type ShotCache } from '../homeSummary';
 import { PreviousShotsView } from './PreviousShotsView';
 import { RequiredShotsView } from './RequiredShotsView';
+import { FacilityInfoSheet } from '../components/FacilityInfoSheet';
+import { infoSummary, type FacilityInfo } from '../facilityInfo';
 import { readShotsLocal } from '../shotsLocal';
 import { readHiddenProjects, writeHiddenProjects } from '../hiddenProjects';
 import { colors, font, radius, space, TABLET_MIN_WIDTH, TOUCH_MIN } from '../theme';
@@ -232,7 +234,7 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
   // 아래 시트(Alert 대신): 구조물 추가 / 시설물 종류 고르기 / 과업 숨기기
-  const [sheet, setSheet] = useState<null | { kind: 'addChild' } | { kind: 'facility' } | { kind: 'hide'; project: Project }>(null);
+  const [sheet, setSheet] = useState<null | { kind: 'addChild' } | { kind: 'facility' } | { kind: 'info' } | { kind: 'hide'; project: Project }>(null);
   // 맨 위 과업 목록의 검색
   const [query, setQuery] = useState('');
   // 맨 위 과업 목록의 과업구분 필터(웹 과업구분, 없으면 점검 종류). null = 전체
@@ -250,7 +252,7 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
     });
   }, []);
   const changeProjectType = useCallback(
-    async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null }) => {
+    async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null; facilityInfo?: FacilityInfo | null }) => {
       setSavingType(true);
       setError(null);
       try {
@@ -1001,6 +1003,7 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
     </View>
   ) : structureTabs ? (
     <View style={{ flex: 1 }}>
+      <View style={styles.pillRow}>
       <Pressable
         onPress={() => setSheet({ kind: 'facility' })}
         disabled={savingType}
@@ -1012,6 +1015,20 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
         <Text style={styles.facilityValue}>{structureTabs.facilityType ?? '고르기'}</Text>
         <Feather name="chevron-down" size={16} color={colors.ink2} />
       </Pressable>
+      {structureTabs.facilityType === '교량' && (
+        <Pressable
+          onPress={() => setSheet({ kind: 'info' })}
+          disabled={savingType}
+          accessibilityRole="button"
+          accessibilityLabel={`구조물 정보 ${infoSummary(structureTabs.facilityInfo) ?? '넣기'}`}
+          style={({ pressed }) => [styles.facilityPill, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.facilityLabel}>구조물 정보</Text>
+          <Text style={[styles.facilityValue, !structureTabs.facilityInfo && { color: colors.primaryText }]}>{infoSummary(structureTabs.facilityInfo) ?? '넣기'}</Text>
+          <Feather name="chevron-down" size={16} color={colors.ink2} />
+        </Pressable>
+      )}
+      </View>
       <View style={{ marginBottom: space.md }}>
         <SegmentedTabs options={TABS} value={tab} onChange={changeTab} />
       </View>
@@ -1019,8 +1036,9 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
         {tab === 'drawings' && list}
         {tab === 'shots' && (
           <RequiredShotsView
-            key={structureTabs.id}
+            key={`${structureTabs.id}:${JSON.stringify(structureTabs.facilityInfo ?? null)}`}
             project={structureTabs}
+            onEditInfo={() => setSheet({ kind: 'info' })}
             autoShoot={autoShootFor === structureTabs.id}
             onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())}
           />
@@ -1096,6 +1114,17 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
           );
         })}
       </BottomSheet>
+
+      <FacilityInfoSheet
+        visible={sheet?.kind === 'info'}
+        info={structureTabs?.facilityInfo}
+        saving={savingType}
+        onClose={() => setSheet(null)}
+        onSave={(info) => {
+          if (!structureTabs) return;
+          void changeProjectType(structureTabs, { facilityInfo: info }).then(() => setSheet(null));
+        }}
+      />
 
       <BottomSheet
         visible={sheet?.kind === 'hide'}
@@ -1230,6 +1259,7 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 68, paddingHorizontal: space.lg, borderRadius: 20, backgroundColor: colors.card, marginBottom: space.md },
   addText: { fontFamily: font.bold, fontSize: 16, color: colors.primaryText },
   // 구조물 화면
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   facilityPill: {
     flexDirection: 'row',
     alignItems: 'center',

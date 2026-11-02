@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { readJsonFile, writeJsonFileAtomic } from './jsonFile.js';
+import { FacilityInfoError, validateFacilityInfo, type FacilityInfo } from './requiredShots.js';
 
 // 점검 종류는 최상위(과업)에, 시설물 종류는 하위(구조물)에만 둔다. 둘 다 선택 필드 — 옛 레코드에는
 // 없다. 값 목록은 앱(src/api.ts)과 같아야 한다. 설계: docs/design/2026-10-24-field-photo-checklist.md 결정 5
@@ -27,6 +28,8 @@ export interface ProjectRecord {
   taskType?: TaskType;
   /** 구조물 위치(하위만, 2026-11-02) — 앱이 그 자리에서 사진을 찍을 때 폰 GPS로 기록한다. 홈 「근처 구조물」에 쓴다 */
   location?: ProjectLocation;
+  /** 구조물 정보(하위만, 2026-11-03) — 경간·교대·교각 수, 상부 형식 등. 필수 사진 펼치기(requiredShots.ts)와 비파괴 수량에 쓴다 */
+  facilityInfo?: FacilityInfo;
 }
 
 export interface ProjectLocation {
@@ -188,7 +191,7 @@ export class ProjectsStore {
   // inspectionType/facilityType/taskType은 null이면 지운다.
   update(
     id: string,
-    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown },
+    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown; facilityInfo?: unknown },
   ): Promise<ProjectRecord | null> {
     return this.serialize(async () => {
       const records = await this.readAll();
@@ -221,6 +224,18 @@ export class ProjectsStore {
         else {
           const loc = validateLocation(patch.location, current.parentId);
           if (shouldReplaceLocation(current.location, loc)) next.location = loc;
+        }
+      }
+      if ('facilityInfo' in patch) {
+        if (patch.facilityInfo === null) delete next.facilityInfo;
+        else {
+          if (current.parentId === null) throw new ProjectRuleError('type', '구조물 정보는 구조물(하위 프로젝트)에만 둘 수 있습니다.');
+          try {
+            next.facilityInfo = validateFacilityInfo(patch.facilityInfo);
+          } catch (err) {
+            if (err instanceof FacilityInfoError) throw new ProjectRuleError('type', err.message);
+            throw err;
+          }
         }
       }
       records[index] = next;
