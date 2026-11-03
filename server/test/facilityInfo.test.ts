@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { formFromInfo, infoFromForm, infoSummary, type InfoField } from '../../src/facilityInfo.js';
-import { parseFacilityTemplate, validateFacilityInfo } from '../src/requiredShots.js';
+import { fieldShown, formFromInfo, infoFromForm, infoSummary, type InfoField } from '../../src/facilityInfo.js';
+import { conditionsMet, parseFacilityTemplate, validateFacilityInfo } from '../src/requiredShots.js';
 
 const configPath = join(fileURLToPath(new URL('..', import.meta.url)), 'config', 'requiredShots.json');
 async function fieldsOf(type: string): Promise<InfoField[]> {
@@ -47,5 +47,37 @@ describe('앱 구조물 정보 시트 (src/facilityInfo.ts)', () => {
     expect(infoSummary(f, { spans: 5, piers: 4, girder: 'RC' })).toBe('5경간 · 교각 4 · RC');
     const plain: InfoField[] = [{ key: 'length', label: '총연장(m)', type: 'meter' }, { key: 'zones', label: '구간 수', type: 'count' }];
     expect(infoSummary(plain, { length: 1860, zones: 3 })).toBe('1860m · 구간 3');
+  });
+
+  it('항만외곽시설: 직립부 형식은 직립제·혼성제일 때만 보이고, 안 보이면 보내지 않는다', async () => {
+    const f = await fieldsOf('항만외곽시설');
+    const body = f.find((x) => x.key === 'bodyType')!;
+    const base = { ...formFromInfo(f, null), length: '200', units: '10', bodyType: 'caisson' };
+    expect(fieldShown(body, { ...base, structureTypes: ['rubble'] })).toBe(false);
+    expect(fieldShown(body, { ...base, structureTypes: ['composite'] })).toBe(true);
+    expect(fieldShown(body, { ...base, structureTypes: ['vertical', 'rubble'] })).toBe(true);
+    const rubble = infoFromForm(f, { ...base, structureTypes: ['rubble'] });
+    if (!('info' in rubble)) throw new Error(rubble.error);
+    expect(rubble.info.bodyType).toBeUndefined();
+    const vertical = infoFromForm(f, { ...base, structureTypes: ['vertical'] });
+    if (!('info' in vertical)) throw new Error(vertical.error);
+    expect(vertical.info.bodyType).toBe('caisson');
+  });
+
+  it.each(['교량', '터널', '옹벽', '상수도', '하수처리장', '항만외곽시설'])('%s: 앱(fieldShown)과 서버(conditionsMet)가 같은 칸을 숨긴다', async (type) => {
+    const f = await fieldsOf(type);
+    for (const field of f.filter((x) => x.showWhen)) {
+      for (const [key, want] of Object.entries(field.showWhen!)) {
+        const dep = f.find((x) => x.key === key)!;
+        expect(dep, `${type}.${field.key} → ${key}`).toBeDefined();
+        const first = String(Array.isArray(want) ? want[0] : want);
+        const on = dep.type === 'multi' ? [first] : dep.type === 'bool' ? want === true : first;
+        const off = dep.type === 'multi' ? [] : dep.type === 'bool' ? want !== true : '__none__';
+        expect(fieldShown(field, { [key]: on }), `${type}.${field.key} on`).toBe(true);
+        expect(conditionsMet(field.showWhen!, { [key]: on as never }), `${type}.${field.key} server on`).toBe(true);
+        expect(fieldShown(field, { [key]: off }), `${type}.${field.key} off`).toBe(false);
+        expect(conditionsMet(field.showWhen!, { [key]: off as never }), `${type}.${field.key} server off`).toBe(false);
+      }
+    }
   });
 });

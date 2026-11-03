@@ -8,7 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { BottomSheet } from './BottomSheet';
 import { PressScale } from './motion';
 import { SegmentedTabs } from './SegmentedTabs';
-import { formFromInfo, infoFromForm, type FacilityInfo, type InfoField, type InfoForm } from '../facilityInfo';
+import { fieldShown, formFromInfo, infoFromForm, type FacilityInfo, type InfoField, type InfoForm } from '../facilityInfo';
 import { colors, font, space } from '../theme';
 
 interface Props {
@@ -64,9 +64,11 @@ export function FacilityInfoSheet({ visible, fields, info, saving, onClose, onSa
     onSave(r.info);
   };
 
-  const numbers = fields.filter((f) => f.type === 'count' || f.type === 'meter');
-  const flags = fields.filter((f) => f.type === 'bool');
-  const groups = fields.filter((f) => f.type === 'choice' || f.type === 'multi');
+  // 조건이 안 맞는 칸(예: 사석식 경사제만 고르면 직립부 형식)은 아예 보이지 않는다 — 고른 값에 따라 바로 바뀜
+  const shown = fields.filter((f) => fieldShown(f, form));
+  const numbers = shown.filter((f) => f.type === 'count' || f.type === 'meter');
+  const flags = shown.filter((f) => f.type === 'bool');
+  const groups = shown.filter((f) => f.type === 'choice' || f.type === 'multi');
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="구조물 정보" description="수를 넣으면 위치마다 찍을 칸이 생기고, 해당 없는 칸은 빠져요.">

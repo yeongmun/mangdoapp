@@ -112,7 +112,14 @@
         "key": "box",
         "label": "박스거더",
         "type": "bool",
-        "default": false
+        "default": false,
+        "showWhen": {
+          "girder": [
+            "RC",
+            "PSC",
+            "steel"
+          ]
+        }
       },
       {
         "key": "trussOrArch",
@@ -1032,7 +1039,13 @@
         "key": "chlorideRisk",
         "label": "염해 우려(해안 250m·제설제)",
         "type": "bool",
-        "default": false
+        "default": false,
+        "showWhen": {
+          "wallTypes": [
+            "concrete",
+            "reinforcedEarth"
+          ]
+        }
       },
       {
         "key": "publicUse",

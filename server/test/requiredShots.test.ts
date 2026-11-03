@@ -9,6 +9,7 @@ import {
   parseInfoField,
   parseTemplateItem,
   pickInfo,
+  effectiveInfo,
   positionsOf,
   templateNeedsInfo,
   validateFacilityInfo,
@@ -122,6 +123,19 @@ describe('validateFacilityInfo (시설물별 항목)', () => {
   it('pickInfo: 이 시설물 항목에 없는 옛 키는 뺀다', () => {
     expect(pickInfo({ spans: 3, lining: ['tbm'] }, FIELDS)).toEqual({ spans: 3 });
     expect(pickInfo(undefined, FIELDS)).toBeUndefined();
+  });
+});
+
+describe('effectiveInfo (showWhen)', () => {
+  it('조건이 안 맞는 칸은 해당 없음: 수 0, 거짓, 빈 목록, 그 밖엔 값 없음', () => {
+    const fields: InfoField[] = [
+      { key: 'subKinds', label: '구성', type: 'multi', options: [['pipeline', '관로'], ['reservoir', '배수지']] },
+      { key: 'valveChambers', label: '밸브실 수', type: 'count', showWhen: { subKinds: 'pipeline' } },
+      { key: 'bodyType', label: '직립부 형식', type: 'choice', options: [['caisson', '케이슨']], showWhen: { subKinds: ['pipeline'] } },
+    ];
+    expect(effectiveInfo({ subKinds: ['reservoir'], valveChambers: 5, bodyType: 'caisson' }, fields)).toEqual({ subKinds: ['reservoir'], valveChambers: 0 });
+    expect(effectiveInfo({ subKinds: ['pipeline'], valveChambers: 5 }, fields)).toEqual({ subKinds: ['pipeline'], valveChambers: 5 });
+    expect(effectiveInfo(undefined, fields)).toBeUndefined();
   });
 });
 

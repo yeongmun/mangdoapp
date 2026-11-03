@@ -13,6 +13,8 @@ export interface InfoField {
   required?: boolean;
   max?: number;
   summary?: boolean;
+  /** 이 조건이 맞을 때만 보이는 칸(예: 직립부 형식은 직립제·혼성제일 때만). 안 보이면 고를 수 없고 보내지도 않는다 */
+  showWhen?: Record<string, unknown>;
 }
 
 export type FacilityInfo = Record<string, number | boolean | string | string[]>;
@@ -47,10 +49,24 @@ export function formFromInfo(fields: InfoField[], info: FacilityInfo | null | un
   return form;
 }
 
+/** 지금 입력 상태에서 이 칸이 보이는지 — showWhen 조건을 시트 값으로 본다(multi는 포함, 배열 조건은 그중 하나). 서버 conditionsMet과 같은 규칙 */
+export function fieldShown(field: InfoField, form: InfoForm): boolean {
+  if (!field.showWhen) return true;
+  return Object.entries(field.showWhen).every(([key, want]) => {
+    const have = form[key];
+    const wants = Array.isArray(want) ? want.map(String) : [String(want)];
+    if (Array.isArray(have)) return wants.some((w) => have.includes(w));
+    if (typeof want === 'boolean') return have === want;
+    return have !== undefined && have !== '' && wants.includes(String(have));
+  });
+}
+
 /** 시트 입력 → 서버로 보낼 facilityInfo. 틀리거나 빠진 칸이 있으면 { error } */
 export function infoFromForm(fields: InfoField[], form: InfoForm): { info: FacilityInfo } | { error: string } {
   const info: FacilityInfo = {};
   for (const f of fields) {
+    // 안 보이는 칸은 해당 없음 — 보내지 않는다(서버도 해당 없음으로 펼친다)
+    if (!fieldShown(f, form)) continue;
     const raw = form[f.key];
     if (f.type === 'count' || f.type === 'meter') {
       const t = typeof raw === 'string' ? raw.trim().replace(',', '.') : '';
