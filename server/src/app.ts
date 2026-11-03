@@ -36,7 +36,7 @@ import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 import { extractPhotoBlocks } from './hwpxPhotos.js';
 import { shotFileName, ShotRuleError, type Shot, type ShotsStore } from './shotsStore.js';
-import { expandRequired, FacilityInfoError, pickInfo, templateNeedsInfo, validateFacilityInfo, type FacilityTemplate } from './requiredShots.js';
+import { effectiveInfo, expandRequired, FacilityInfoError, pickInfo, templateNeedsInfo, validateFacilityInfo, type FacilityTemplate } from './requiredShots.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -822,7 +822,7 @@ export function createApp(deps: AppDeps) {
     const parent = project.parentId ? await deps.projects.get(project.parentId) : null;
     const inspectionType = parent?.inspectionType ?? project.inspectionType ?? null;
     const template: FacilityTemplate = (facilityType !== null ? deps.requiredTemplate[facilityType] : undefined) ?? { info: [], shots: [] };
-    const info = pickInfo(project.facilityInfo, template.info);
+    const info = effectiveInfo(pickInfo(project.facilityInfo, template.info), template.info);
     const shots =
       facilityType !== null
         ? await deps.shots.ensureRequired(project.id, expandRequired(template.shots, { inspectionType: inspectionType ?? undefined, info }))

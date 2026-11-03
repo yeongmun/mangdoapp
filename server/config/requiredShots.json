@@ -1,5 +1,5 @@
 {
-  "_설명": "시설물 종류별 필수 사진 목록. 시설물 하나 = { info: 「구조물 정보」 입력 항목, shots: 촬영 항목 }. info 항목: key·label·type(count|meter|bool|choice|multi)·options·default·required·max·summary(구조물 화면 요약에 보임). shots 항목: member=부재(파일명 가운데 토막), label=설명, 선택 필드 levels(점검 종류)·levelWhen(점검 종류별 조건)·when(구조물 정보 조건, multi는 포함 여부)·repeat(once|perSide|{count:<count 항목>,prefix}|교량용 perSpan·perAbutment·perPier·perSupport·perJoint). 반복 칸은 부재명에 위치가 붙는다(교각(P3)). 수를 안 넣으면 1장, 0이면 없음. 근거는 기록용(서버는 안 읽음). aliases는 예전 설명 — 이름을 바꿔도 이미 만든·찍은 칸이 새 이름으로 옮겨진다. 설명엔 부위만 적고 손상명은 넣지 않는다. 근거 문서: 세부지침 해설서 2026.2 각 편 — 추출 원본은 docs/reference/. 바꾸면 서버 재시작.",
+  "_설명": "시설물 종류별 필수 사진 목록. 시설물 하나 = { info: 「구조물 정보」 입력 항목, shots: 촬영 항목 }. info 항목: key·label·type(count|meter|bool|choice|multi)·options·default·required·max·summary(구조물 화면 요약에 보임)·showWhen(이 조건일 때만 보이는 칸, 안 보이면 해당 없음 — 수 0). shots 항목: member=부재(파일명 가운데 토막), label=설명, 선택 필드 levels(점검 종류)·levelWhen(점검 종류별 조건)·when(구조물 정보 조건, multi는 포함 여부)·repeat(once|perSide|{count:<count 항목>,prefix}|교량용 perSpan·perAbutment·perPier·perSupport·perJoint). 반복 칸은 부재명에 위치가 붙는다(교각(P3)). 수를 안 넣으면 1장, 0이면 없음. 근거는 기록용(서버는 안 읽음). aliases는 예전 설명 — 이름을 바꿔도 이미 만든·찍은 칸이 새 이름으로 옮겨진다. 설명엔 부위만 적고 손상명은 넣지 않는다. 근거 문서: 세부지침 해설서 2026.2 각 편 — 추출 원본은 docs/reference/. 바꾸면 서버 재시작.",
   "교량": {
     "info": [
       {
@@ -991,7 +991,10 @@
             "중력식(무근)"
           ]
         ],
-        "default": "RC"
+        "default": "RC",
+        "showWhen": {
+          "wallTypes": "concrete"
+        }
       },
       {
         "key": "length",
@@ -1332,49 +1335,77 @@
         "label": "지(池)·수조 수",
         "type": "count",
         "default": 0,
-        "max": 60
+        "max": 60,
+        "showWhen": {
+          "subKinds": [
+            "purification",
+            "reservoir"
+          ]
+        }
       },
       {
         "key": "pumps",
         "label": "펌프 수(호기)",
         "type": "count",
         "default": 0,
-        "max": 30
+        "max": 30,
+        "showWhen": {
+          "subKinds": [
+            "intakeStation",
+            "purification",
+            "booster"
+          ]
+        }
       },
       {
         "key": "valveChambers",
         "label": "조사 밸브실 수",
         "type": "count",
         "default": 0,
-        "max": 200
+        "max": 200,
+        "showWhen": {
+          "subKinds": "pipeline"
+        }
       },
       {
         "key": "testBoxes",
         "label": "T/B(전위측정함) 수",
         "type": "count",
         "default": 0,
-        "max": 300
+        "max": 300,
+        "showWhen": {
+          "subKinds": "pipeline"
+        }
       },
       {
         "key": "pipeLength",
         "label": "관로 연장",
         "type": "meter",
         "default": 0,
-        "max": 200000
+        "max": 200000,
+        "showWhen": {
+          "subKinds": "pipeline"
+        }
       },
       {
         "key": "tunnelLength",
         "label": "수로터널 연장",
         "type": "meter",
         "default": 0,
-        "max": 50000
+        "max": 50000,
+        "showWhen": {
+          "subKinds": "waterTunnel"
+        }
       },
       {
         "key": "tunnelSections",
         "label": "수로터널 구간 수",
         "type": "count",
         "default": 3,
-        "max": 30
+        "max": 30,
+        "showWhen": {
+          "subKinds": "waterTunnel"
+        }
       },
       {
         "key": "equipment",
@@ -1813,19 +1844,28 @@
         "key": "primaryCount",
         "label": "최초침전지 지 수",
         "type": "count",
-        "max": 30
+        "max": 30,
+        "showWhen": {
+          "units": "primary"
+        }
       },
       {
         "key": "aerationCount",
         "label": "포기조 지 수",
         "type": "count",
-        "max": 30
+        "max": 30,
+        "showWhen": {
+          "units": "aeration"
+        }
       },
       {
         "key": "secondaryCount",
         "label": "최종침전지 지 수",
         "type": "count",
-        "max": 30
+        "max": 30,
+        "showWhen": {
+          "units": "secondary"
+        }
       },
       {
         "key": "pumps",
@@ -2249,7 +2289,13 @@
             "콘크리트블록식(솔리드)"
           ]
         ],
-        "default": "caisson"
+        "default": "caisson",
+        "showWhen": {
+          "structureTypes": [
+            "vertical",
+            "composite"
+          ]
+        }
       },
       {
         "key": "length",

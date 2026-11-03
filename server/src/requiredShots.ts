@@ -29,6 +29,8 @@ export interface InfoField {
   max?: number;
   /** 구조물 화면 알약 요약에 넣을지 */
   summary?: boolean;
+  /** 이 조건이 맞을 때만 보이는 칸(예: 직립부 형식은 구조형식이 직립제·혼성제일 때만). 안 보이는 칸은 해당 없음으로 본다 */
+  showWhen?: Record<string, unknown>;
 }
 
 export type FacilityInfo = Record<string, number | boolean | string | string[]>;
@@ -94,6 +96,7 @@ export function parseInfoField(raw: unknown): InfoField | null {
   if (raw.required === true) field.required = true;
   if (typeof raw.max === 'number' && raw.max > 0) field.max = raw.max;
   if (raw.summary === true) field.summary = true;
+  if (isPlainObject(raw.showWhen)) field.showWhen = raw.showWhen;
   return field;
 }
 
@@ -169,6 +172,20 @@ export function pickInfo(info: FacilityInfo | undefined, fields: InfoField[]): F
   return Object.fromEntries(Object.entries(info).filter(([k]) => keys.has(k)));
 }
 
+/** 보이지 않는 칸(showWhen이 안 맞음)은 해당 없음 — 수 0, 거짓, 빈 목록, 그 밖엔 값 없음. 시설 구성을 바꾼 뒤 옛 수가 칸을 만들지 않게 */
+export function effectiveInfo(info: FacilityInfo | undefined, fields: InfoField[]): FacilityInfo | undefined {
+  if (!info) return undefined;
+  const out: FacilityInfo = { ...info };
+  for (const f of fields) {
+    if (!f.showWhen || conditionsMet(f.showWhen, info)) continue;
+    if (f.type === 'count') out[f.key] = 0;
+    else if (f.type === 'bool') out[f.key] = false;
+    else if (f.type === 'multi') out[f.key] = [];
+    else delete out[f.key];
+  }
+  return out;
+}
+
 // ── 펼치기 ───────────────────────────────────────────────────────────────────────
 export interface ExpandContext {
   /** 상위(과업)의 점검 종류. 없으면 점검 종류로 거르지 않는다 */
@@ -178,7 +195,7 @@ export interface ExpandContext {
 }
 
 /** 조건이 다 맞는지. info가 없으면 맞지 않는 것으로 본다. 배열 값(multi)은 포함, 그 밖엔 같은 글자 */
-function conditionsMet(cond: Record<string, unknown>, info: FacilityInfo | undefined): boolean {
+export function conditionsMet(cond: Record<string, unknown>, info: FacilityInfo | undefined): boolean {
   if (!info) return false;
   return Object.entries(cond).every(([key, want]) => {
     const have = info[key];
