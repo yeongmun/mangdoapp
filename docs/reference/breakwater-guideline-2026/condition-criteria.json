@@ -1,0 +1,2486 @@
+{
+ "meta": {
+  "source": "시설물의 안전 및 유지관리 실시 세부지침(안전점검·진단 편) 해설서(항만외곽시설편) 2026.2, 4.4.1 상태평가 항목 및 기준",
+  "conventions": {
+   "machine": "min은 이상(포함), max는 미만(제외)이 기본. 예외는 minInclusive/maxInclusive 로 명시.",
+   "units": "_cm, _mm, _pct(기울기 %), _kg_m3; countPerUnit=평가단위당 개소 수",
+   "grades": "셀 텍스트(text)는 원문 그대로, criteria는 ◦ 단위로 분리, 줄바꿈( / )은 공백으로 합침",
+   "score": "항만외곽시설은 결함점수가 아니라 \"평가점수\"(a=5 … e=1, 높을수록 양호). 상태지수 = 평가점수 × 영향계수(influence). 평가유형·영향계수는 weights.json",
+   "twoCol": "침하·경사/전도·활동 표는 비진행성/진행성 두 열 — progressive:true/false. 각 등급 criteria 끝의 qualitative 항목은 \"조사된 상태\" 열"
+  },
+  "gradeRange": "모든 항목 a~e (평가점수 5~1)",
+  "generalRules_4_4_1": [
+   "항만외곽시설에서의 시설물의 상태변화가 전체 구조물에 미치는 안전성의 영향정도, 구조적인 중요도가 적절히 고려되어 평가될 수 있도록 결함 및 손상을 평가유형별로 구분하여 영향계수를 적용한다.",
+   "영향계수는 상태평가를 위한 표준기준이며, 책임기술자의 판단으로 다소 조정할 수 있다.",
+   "[표 4.15] 주3) 사석식 경사제의 경우, 책임기술자의 판단 하에 ‘조사된 상태’로만 평가할 수 있으며 이 때에는 반드시 사유 또는 근거 등을 명시하여야 한다."
+  ],
+  "tableNumbersFoundInSource": [
+   "4.1",
+   "4.2",
+   "4.3",
+   "4.4",
+   "4.5",
+   "4.6",
+   "4.7",
+   "4.8",
+   "4.9",
+   "4.10",
+   "4.11",
+   "4.12",
+   "4.13",
+   "4.14",
+   "4.15",
+   "4.16",
+   "4.17",
+   "4.18",
+   "4.19",
+   "4.20",
+   "4.21",
+   "4.22",
+   "4.23",
+   "4.24",
+   "4.25",
+   "4.26",
+   "4.27",
+   "4.28",
+   "4.29",
+   "4.30",
+   "4.31",
+   "4.32",
+   "4.33",
+   "4.34",
+   "4.35",
+   "4.36",
+   "4.37",
+   "4.38",
+   "4.39",
+   "4.40",
+   "4.41",
+   "4.42",
+   "4.43",
+   "4.44"
+  ],
+  "tablesInThisFile": [
+   "4.15",
+   "4.16",
+   "4.17",
+   "4.18",
+   "4.19",
+   "4.20",
+   "4.21",
+   "4.22",
+   "4.23",
+   "4.24",
+   "4.25",
+   "4.26",
+   "4.27",
+   "4.28",
+   "4.29",
+   "4.30",
+   "4.31",
+   "4.32",
+   "4.33",
+   "4.34"
+  ],
+  "tablesElsewhere": {
+   "4.1": "task-scope.json (대상시설 범위)",
+   "4.2~4.4": "damage-types.json (점검항목)",
+   "4.5~4.12": "ndt-rules.json (재료시험 항목·평가방법·기준수량)",
+   "4.13~4.14": "weights.json (평가유형 및 영향계수)",
+   "4.35~4.39": "score-rules.json (상태평가 결과 산정 예·조정계수)",
+   "4.40~4.43": "score-rules.json (안전성평가)",
+   "4.44": "score-rules.json (종합평가)"
+  },
+  "publicUseNote": "공중이 이용하는 부위에 대한 상태평가결과는 전체 시설물 상태평가결과 결정에 필요한 상태지수에 반영되지 않는다. 공중이 이용하는 부위에 대한 상태평가결과는 보고서 또는 보고서 부록에 작성한다.(4.4.1 라. 【해설】1)",
+  "publicUseCommentary": [
+   "2. 공중이 이용하는 부위에 대한 상태평가 시 외관조사망도는 작성하지 않는 것을 원칙으로 한다. 다만, 원활한 점검 수행을 위해 외관조사망도를 작성할 수 있다. 공중이 이용하는 부위의 상태평가결과 중대한결함이 발생하진 않았으나 이전 보고서와의 비교 등을 통해 향후 성능저하가 예상되거나 “d” 또는 “e”등급으로 판정되어 중대한결함이 발생하였을 경우 해당 부위의 보수·보강을 위해 외관조사망도를 작성하여야 한다.",
+   "3. 항만외곽시설의 추락방지시설은 항만외곽시설 내에 존재하는 사람이 지나다닐 수 있는 난간, 점검로, 점검사다리 등이 해당한다.",
+   "4. 시설물안전법 시행령 별표1 비고에 따르면 도로란 도로법 제10조에 따르는 도로를 의미한다. 따라서, 해당 도로에 해당하는 항만외곽시설 내에 있는 도로포장 및 도로부 신축이음부는 상태평가기준에 따라 점검을 수행하여야 한다.",
+   "5. 항만외곽시설의 환기구 등의 덮개는 배수맨홀 덮개 등 수직갱 형태의 시설물 점검구, 입·출구부 등 덮개 파손으로 인해 사람의 추락이 발생할 수 있는 시설물이다.",
+   "6. 책임기술자는 점검 대상 시설물의 추락방지시설 등의 공중이 이용하는 부위를 파악하고 점검을 실시한다. 다만, 추락방지시설 등의 공중이 이용하는 부위가 점검 대상 시설물에설치되지 않은 경우 책임기술자는 사람의 안전 확보를 위해 공중이 이용하는 부위 설치 필요성에 대한 내용을 보고서에 기입할 수 있다.",
+   "7. 점검 대상 항만외곽시설 주변의 공중이 이용하는 부위에 대하여 관리주체가 상이한 시설물에 대해서는 평가하지 않는다."
+  ],
+  "sourceInconsistencies": [
+   "[표 4.15] 침하 진행성 d \"12㎝이상～15㎝미만\", e \"15㎝이상\" — [표 4.17] 활동 진행성은 d \"12～16㎝미만\", e \"16㎝이상\". 비진행성 열은 두 표가 같음(8/12/16/20). 침하만 15㎝로 끊긴 것이 의도인지 불명.",
+   "[표 4.21] d \"안벽 하단부\" — 항만(안벽)편 문구. 방파제 맥락에서는 직립부(제체) 하단부로 읽어야 함.",
+   "[표 4.26] c \"다소 심한 부분박리가 다소 심하게 발생한 상태\" 중복 표현.",
+   "[표 4.29]·[표 4.30](탄산화·염화물)은 기준표가 있으나 [표 4.13]·[표 4.14] 평가유형/영향계수 표와 [표 4.35] 산정 예시에 없음 — 평가단위 상태지수에 넣는 방법 미규정.",
+   "4.1.4 가. 3)은 [표 4.24] 파손 \"e\"를 중대한 결함으로 규정하나 [표 4.24]에는 다른 표들과 달리 \"주) … 중대한 결함으로 본다\" 각주가 없음.",
+   "[표 4.15] 주2) \"침하에 대한 안정성 평가\" vs [표 4.41] 표제 문단 \"침하에 대한 안전성 평가\" — 용어 혼용(안정성/안전성).",
+   "[표 4.13] 직립제 및 혼성제 표에 \"사석경사면\"·\"소파공\"이 있으나 [표 4.2]에서 사석경사면은 직립부와 같은 \"수상부 및 수중부\" 묶음 — 직립제(사석 마운드 없음)에 사석경사면을 적용하는지 명시 없음."
+  ]
+ },
+ "tables": [
+  {
+   "table": "4.15",
+   "item": "침하",
+   "part": "상부공 및 직립부(사석식 경사제: 상부공)",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "중요결함",
+   "captionInSource": "[표 4.15] 침하의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 537,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "침하",
+      "score": 5,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": {
+       "비진행성": "8㎝미만",
+       "진행성": "5㎝미만",
+       "조사된 상태": "◦침하가 거의 발생되지 않은 상태"
+      },
+      "criteria": [
+       {
+        "text": "8㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "max": 8
+         }
+        ]
+       },
+       {
+        "text": "5㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "max": 5
+         }
+        ]
+       },
+       {
+        "text": "침하가 거의 발생되지 않은 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "침하",
+      "score": 4,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 4.0,
+      "text": {
+       "비진행성": "8㎝이상 / ～ / 12㎝미만",
+       "진행성": "5㎝이상 / ～ / 8㎝미만",
+       "조사된 상태": "◦부분적으로 경미한 침하가 발생한 상태이나 근본적인 보수는 필요하지 않은 상태"
+      },
+      "criteria": [
+       {
+        "text": "8㎝이상 ～ 12㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 8,
+          "max": 12
+         }
+        ]
+       },
+       {
+        "text": "5㎝이상 ～ 8㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 5,
+          "max": 8
+         }
+        ]
+       },
+       {
+        "text": "부분적으로 경미한 침하가 발생한 상태이나 근본적인 보수는 필요하지 않은 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "침하",
+      "score": 3,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 3.0,
+      "text": {
+       "비진행성": "12㎝이상 / ～ / 16㎝미만",
+       "진행성": "8㎝이상 / ～ / 12㎝미만",
+       "조사된 상태": "◦침하의 정도가 보통정도이나 시설물의 기능저하 또는 지속적인 관찰로 진행성을 감시할 정도의 상태"
+      },
+      "criteria": [
+       {
+        "text": "12㎝이상 ～ 16㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 12,
+          "max": 16
+         }
+        ]
+       },
+       {
+        "text": "8㎝이상 ～ 12㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 8,
+          "max": 12
+         }
+        ]
+       },
+       {
+        "text": "침하의 정도가 보통정도이나 시설물의 기능저하 또는 지속적인 관찰로 진행성을 감시할 정도의 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "침하",
+      "score": 2,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 2.0,
+      "text": {
+       "비진행성": "16㎝이상 / ～ / 20㎝미만",
+       "진행성": "12㎝이상 / ～ / 15㎝미만",
+       "조사된 상태": "◦침하의 정도가 심각하여 시설물의 기능 또는 구조물의 구조적인 안정에 심각한 영향을 미칠 수 있는 상태"
+      },
+      "criteria": [
+       {
+        "text": "16㎝이상 ～ 20㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 16,
+          "max": 20
+         }
+        ]
+       },
+       {
+        "text": "12㎝이상 ～ 15㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 12,
+          "max": 15
+         }
+        ]
+       },
+       {
+        "text": "침하의 정도가 심각하여 시설물의 기능 또는 구조물의 구조적인 안정에 심각한 영향을 미칠 수 있는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "침하",
+      "score": 1,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 1.0,
+      "text": {
+       "비진행성": "20㎝이상",
+       "진행성": "15㎝이상",
+       "조사된 상태": "◦침하의 정도가 아주 심하고 광범위하게 발생하여 시설물의 기능 또는 구조적인 안정을 상실할 수 있는 위험한 상태"
+      },
+      "criteria": [
+       {
+        "text": "20㎝이상",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 20
+         }
+        ]
+       },
+       {
+        "text": "15㎝이상",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "settlement_cm",
+          "min": 15
+         }
+        ]
+       },
+       {
+        "text": "침하의 정도가 아주 심하고 광범위하게 발생하여 시설물의 기능 또는 구조적인 안정을 상실할 수 있는 위험한 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 551,
+   "notes": [
+    "주1) 상태평가 결과가 “d” 이하이면 4.1.4절의 중대한 결함으로 본다.",
+    "주2) 선택과업으로 침하에 대한 안정성 평가를 수행한 경우, 침하에 대한 상태평가를 생략할 수 있다.",
+    "주3) 사석식 경사제의 경우, 책임기술자의 판단 하에 ‘조사된 상태’로만 평가할 수 있으며 이 때에는 반드시 사유 또는 근거 등을 명시하여야 한다."
+   ],
+   "progressiveNote": "진행성 여부는 안전점검 혹은 정밀안전진단 시행시에 수준측량이나 구조물의 상대침하 등을 측정함으로서 판단한다(【해설】1, 침하 기준).",
+   "commentary": [
+    "1. 침하의 상태평가 기준에서 침하의 진행여부는 안전점검 혹은 정밀안전진단 시행시에 수준측량이나 구조물의 상대침하 등을 측정함으로서 판단한다.",
+    "2. 설계 및 공사시 침하를 예상하여 공사 천단고(B)를 계획 천단고(A) 이상으로 시공한 경우 책임기술자의 판단하에 계획 천단고(A) - 현재 천단고(C)를 발생한 침하량으로 보고 침하의 상태평가를 수행할 수 있다."
+   ],
+   "commentaryMachine": "settlement_cm = A(계획 천단고) − C(현재 천단고)  [공사 천단고 B ≥ A로 시공한 경우, 책임기술자 판단]"
+  },
+  {
+   "table": "4.16",
+   "item": "경사/전도",
+   "part": "상부공 및 직립부",
+   "appliesTo": [
+    "직립제 및 혼성제"
+   ],
+   "evalType": "중요결함",
+   "captionInSource": "[표 4.16] 경사/전도의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 562,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "경사/전도",
+      "score": 5,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": {
+       "비진행성": "3%미만",
+       "진행성": "2%미만",
+       "조사된 상태": "◦경사/전도가 발생되지 않은 상태"
+      },
+      "criteria": [
+       {
+        "text": "3%미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "max": 3
+         }
+        ]
+       },
+       {
+        "text": "2%미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "max": 2
+         }
+        ]
+       },
+       {
+        "text": "경사/전도가 발생되지 않은 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "경사/전도",
+      "score": 4,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 4.0,
+      "text": {
+       "비진행성": "3%이상 / ～ / 4%미만",
+       "진행성": "2%이상 / ～ / 3%미만",
+       "조사된 상태": "◦부분적으로 경미한 경사/전도가 발생한 상태이나 근본적인 보수는 필요하지 않는 상태"
+      },
+      "criteria": [
+       {
+        "text": "3%이상 ～ 4%미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 3,
+          "max": 4
+         }
+        ]
+       },
+       {
+        "text": "2%이상 ～ 3%미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 2,
+          "max": 3
+         }
+        ]
+       },
+       {
+        "text": "부분적으로 경미한 경사/전도가 발생한 상태이나 근본적인 보수는 필요하지 않는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "경사/전도",
+      "score": 3,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 3.0,
+      "text": {
+       "비진행성": "4%이상 / ～ / 6%미만",
+       "진행성": "3%이상 / ～ / 4%미만",
+       "조사된 상태": "◦경사/전도의 정도가 보통정도이나 지속적인 관찰로 진행성을 감시할 정도의 상태"
+      },
+      "criteria": [
+       {
+        "text": "4%이상 ～ 6%미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 4,
+          "max": 6
+         }
+        ]
+       },
+       {
+        "text": "3%이상 ～ 4%미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 3,
+          "max": 4
+         }
+        ]
+       },
+       {
+        "text": "경사/전도의 정도가 보통정도이나 지속적인 관찰로 진행성을 감시할 정도의 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "경사/전도",
+      "score": 2,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 2.0,
+      "text": {
+       "비진행성": "6%이상 / ～ / 8%미만",
+       "진행성": "4%이상 / ～ / 6%미만",
+       "조사된 상태": "◦경사/전도의 정도가 심각하여 구조물의 구조적인 안정에 심각한 영향을 미칠 수 있는 상태"
+      },
+      "criteria": [
+       {
+        "text": "6%이상 ～ 8%미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 6,
+          "max": 8
+         }
+        ]
+       },
+       {
+        "text": "4%이상 ～ 6%미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 4,
+          "max": 6
+         }
+        ]
+       },
+       {
+        "text": "경사/전도의 정도가 심각하여 구조물의 구조적인 안정에 심각한 영향을 미칠 수 있는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "경사/전도",
+      "score": 1,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 1.0,
+      "text": {
+       "비진행성": "8%이상",
+       "진행성": "6%이상",
+       "조사된 상태": "◦경사/전도의 정도가 아주 심하고 광범위하게 발생하여 구조적인 안정을 상실할 수 있는 위험한 상태"
+      },
+      "criteria": [
+       {
+        "text": "8%이상",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 8
+         }
+        ]
+       },
+       {
+        "text": "6%이상",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "tilt_pct",
+          "min": 6
+         }
+        ]
+       },
+       {
+        "text": "경사/전도의 정도가 아주 심하고 광범위하게 발생하여 구조적인 안정을 상실할 수 있는 위험한 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 563,
+   "notes": [
+    "주) 상태평가 결과가 “d\" 이하이면 4.1.4절의 중대한 결함으로 본다."
+   ],
+   "progressiveNote": "진행성 여부는 안전점검 혹은 정밀안전진단 시행시에 수준측량이나 구조물의 상대침하 등을 측정함으로서 판단한다(【해설】1, 침하 기준)."
+  },
+  {
+   "table": "4.17",
+   "item": "활동",
+   "part": "상부공 및 직립부(사석식 경사제: 상부공)",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "중요결함",
+   "captionInSource": "[표 4.17] 활동의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 562,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "활동",
+      "score": 5,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": {
+       "비진행성": "8㎝미만",
+       "진행성": "5㎝미만",
+       "조사된 상태": "◦양호한 상태"
+      },
+      "criteria": [
+       {
+        "text": "8㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "max": 8
+         }
+        ]
+       },
+       {
+        "text": "5㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "max": 5
+         }
+        ]
+       },
+       {
+        "text": "양호한 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "활동",
+      "score": 4,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 4.0,
+      "text": {
+       "비진행성": "8㎝이상 / ～ / 12㎝미만",
+       "진행성": "5㎝이상 / ～ / 8㎝미만",
+       "조사된 상태": "◦부분적으로 경미한 활동이 발생한 상태이나 근본적인 보수는 필요하지 않는 상태"
+      },
+      "criteria": [
+       {
+        "text": "8㎝이상 ～ 12㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 8,
+          "max": 12
+         }
+        ]
+       },
+       {
+        "text": "5㎝이상 ～ 8㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 5,
+          "max": 8
+         }
+        ]
+       },
+       {
+        "text": "부분적으로 경미한 활동이 발생한 상태이나 근본적인 보수는 필요하지 않는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "활동",
+      "score": 3,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 3.0,
+      "text": {
+       "비진행성": "12㎝이상 / ～ / 16㎝미만",
+       "진행성": "8㎝이상 / ～ / 12㎝미만",
+       "조사된 상태": "◦활동의 정도가 보통정도이나 지속적인 관찰로 진행성을 감시할 정도의 상태"
+      },
+      "criteria": [
+       {
+        "text": "12㎝이상 ～ 16㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 12,
+          "max": 16
+         }
+        ]
+       },
+       {
+        "text": "8㎝이상 ～ 12㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 8,
+          "max": 12
+         }
+        ]
+       },
+       {
+        "text": "활동의 정도가 보통정도이나 지속적인 관찰로 진행성을 감시할 정도의 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "활동",
+      "score": 2,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 2.0,
+      "text": {
+       "비진행성": "16㎝이상 / ～ / 20㎝미만",
+       "진행성": "12㎝이상 / ～ / 16㎝미만",
+       "조사된 상태": "◦활동의 정도가 심각하여 구조물의 구조적인 안정에 심각한 영향을 미칠 수 있는 상태"
+      },
+      "criteria": [
+       {
+        "text": "16㎝이상 ～ 20㎝미만",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 16,
+          "max": 20
+         }
+        ]
+       },
+       {
+        "text": "12㎝이상 ～ 16㎝미만",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 12,
+          "max": 16
+         }
+        ]
+       },
+       {
+        "text": "활동의 정도가 심각하여 구조물의 구조적인 안정에 심각한 영향을 미칠 수 있는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "활동",
+      "score": 1,
+      "evalType": "중요결함",
+      "influence": 1.0,
+      "conditionIndex": 1.0,
+      "text": {
+       "비진행성": "20㎝이상",
+       "진행성": "16㎝이상",
+       "조사된 상태": "◦활동의 정도가 아주 심하고 광범위하게 발생하여 구조적인 안정을 상실할 수 있는 위험한 상태"
+      },
+      "criteria": [
+       {
+        "text": "20㎝이상",
+        "progressive": false,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 20
+         }
+        ]
+       },
+       {
+        "text": "16㎝이상",
+        "progressive": true,
+        "machine": [
+         {
+          "metric": "sliding_cm",
+          "min": 16
+         }
+        ]
+       },
+       {
+        "text": "활동의 정도가 아주 심하고 광범위하게 발생하여 구조적인 안정을 상실할 수 있는 위험한 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 572,
+   "notes": [
+    "주) 상태평가 결과가 “d” 이하이면 4.1.4절의 중대한 결함으로 본다.",
+    "※ 선택과업으로 활동에 대한 안전성 평가를 수행한 경우, 활동에 대한 상태평가를 생략할 수 있다."
+   ],
+   "progressiveNote": "진행성 여부는 안전점검 혹은 정밀안전진단 시행시에 수준측량이나 구조물의 상대침하 등을 측정함으로서 판단한다(【해설】1, 침하 기준)."
+  },
+  {
+   "table": "4.18",
+   "item": "속채움재 유실(케이슨식)",
+   "part": "상부공 및 직립부",
+   "appliesTo": [
+    "직립제 및 혼성제"
+   ],
+   "evalType": "국부결함",
+   "captionInSource": "[표 4.18] 케이슨 속채움재 유실의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 583,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "속채움재 유실(케이슨식)",
+      "score": 5,
+      "evalType": "국부결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦양호한 상태",
+      "criteria": [
+       {
+        "text": "양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "속채움재 유실(케이슨식)",
+      "score": 4,
+      "evalType": "국부결함",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦경미하게 발생한 상태",
+      "criteria": [
+       {
+        "text": "경미하게 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "속채움재 유실(케이슨식)",
+      "score": 3,
+      "evalType": "국부결함",
+      "influence": 1.2,
+      "conditionIndex": 3.6,
+      "text": "◦다소 크게 발생한 상태",
+      "criteria": [
+       {
+        "text": "다소 크게 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "속채움재 유실(케이슨식)",
+      "score": 2,
+      "evalType": "국부결함",
+      "influence": 1.4,
+      "conditionIndex": 2.8,
+      "text": "◦심하게 발생하여 구조적인 안정에 영향을 줄 정도",
+      "criteria": [
+       {
+        "text": "심하게 발생하여 구조적인 안정에 영향을 줄 정도"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "속채움재 유실(케이슨식)",
+      "score": 1,
+      "evalType": "국부결함",
+      "influence": 2.0,
+      "conditionIndex": 2.0,
+      "text": "◦매우 심하여 경사가 발생하고 구조적인 안정에 크게 영향을 줄 정도",
+      "criteria": [
+       {
+        "text": "매우 심하여 경사가 발생하고 구조적인 안정에 크게 영향을 줄 정도"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 584,
+   "notes": [
+    "주) 상태평가 결과가 “e” 이면 4.1.4절의 중대한 결함으로 본다."
+   ],
+   "appliesToBody": [
+    "케이슨",
+    "셀룰러블록"
+   ],
+   "bodyNote": "4.2.1 해설 3.(1) \"속채움재 유실(케이슨 또는 셀룰러블럭식)\" — 솔리드 블록식에는 해당 없음."
+  },
+  {
+   "table": "4.19",
+   "item": "케이슨 및 블록 이격",
+   "part": "상부공 및 직립부",
+   "appliesTo": [
+    "직립제 및 혼성제"
+   ],
+   "evalType": "국부결함",
+   "captionInSource": "[표 4.19] 케이슨 및 블록 이격의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 583,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "케이슨 및 블록 이격",
+      "score": 5,
+      "evalType": "국부결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦양호한 상태",
+      "criteria": [
+       {
+        "text": "양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "케이슨 및 블록 이격",
+      "score": 4,
+      "evalType": "국부결함",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦경미하게 발생한 상태",
+      "criteria": [
+       {
+        "text": "경미하게 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "케이슨 및 블록 이격",
+      "score": 3,
+      "evalType": "국부결함",
+      "influence": 1.2,
+      "conditionIndex": 3.6,
+      "text": "◦다소 크게 발생한 상태",
+      "criteria": [
+       {
+        "text": "다소 크게 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "케이슨 및 블록 이격",
+      "score": 2,
+      "evalType": "국부결함",
+      "influence": 1.4,
+      "conditionIndex": 2.8,
+      "text": "◦평가단위의 1개소에서 심각하게 발생하여 구조적인 안정에 영향을 줄 정도",
+      "criteria": [
+       {
+        "text": "평가단위의 1개소에서 심각하게 발생하여 구조적인 안정에 영향을 줄 정도",
+        "machine": [
+         {
+          "metric": "countPerUnit",
+          "min": 1,
+          "max": 2
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "케이슨 및 블록 이격",
+      "score": 1,
+      "evalType": "국부결함",
+      "influence": 2.0,
+      "conditionIndex": 2.0,
+      "text": "◦평가단위의 2개소 이상에서 매우 심하게 발생하여 구조적인 안정에 크게 영향을 줄 정도",
+      "criteria": [
+       {
+        "text": "평가단위의 2개소 이상에서 매우 심하게 발생하여 구조적인 안정에 크게 영향을 줄 정도",
+        "machine": [
+         {
+          "metric": "countPerUnit",
+          "min": 2
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 592,
+   "notes": [
+    "주) 상태평가 결과가 “e” 이면 4.1.4절의 중대한 결함으로 본다."
+   ]
+  },
+  {
+   "table": "4.20",
+   "item": "세굴",
+   "part": "기초부",
+   "appliesTo": [
+    "직립제 및 혼성제"
+   ],
+   "evalType": "국부결함",
+   "captionInSource": "[표 4.20] 기초세굴의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 583,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "세굴",
+      "score": 5,
+      "evalType": "국부결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": {
+       "세굴의 최대 깊이": "30㎝미만",
+       "조사된 상태": "◦세굴이 없는 상태"
+      },
+      "criteria": [
+       {
+        "text": "30㎝미만",
+        "machine": [
+         {
+          "metric": "scourDepth_cm",
+          "max": 30
+         }
+        ]
+       },
+       {
+        "text": "세굴이 없는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "세굴",
+      "score": 4,
+      "evalType": "국부결함",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": {
+       "세굴의 최대 깊이": "30㎝이상 / ～ / 50㎝미만",
+       "조사된 상태": "◦세굴이 경미하게 발생된 상태"
+      },
+      "criteria": [
+       {
+        "text": "30㎝이상 ～ 50㎝미만",
+        "machine": [
+         {
+          "metric": "scourDepth_cm",
+          "min": 30,
+          "max": 50
+         }
+        ]
+       },
+       {
+        "text": "세굴이 경미하게 발생된 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "세굴",
+      "score": 3,
+      "evalType": "국부결함",
+      "influence": 1.2,
+      "conditionIndex": 3.6,
+      "text": {
+       "세굴의 최대 깊이": "50㎝이상 / ～ / 70㎝미만",
+       "조사된 상태": "◦세굴이 다소 심하게 발생된 상태"
+      },
+      "criteria": [
+       {
+        "text": "50㎝이상 ～ 70㎝미만",
+        "machine": [
+         {
+          "metric": "scourDepth_cm",
+          "min": 50,
+          "max": 70
+         }
+        ]
+       },
+       {
+        "text": "세굴이 다소 심하게 발생된 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "세굴",
+      "score": 2,
+      "evalType": "국부결함",
+      "influence": 1.4,
+      "conditionIndex": 2.8,
+      "text": {
+       "세굴의 최대 깊이": "70㎝이상 / ～ / 90㎝미만",
+       "조사된 상태": "◦세굴이 심하여 구조물 하단부가 크게 드러나고 기초사석이 교란되어 구조적인 안정에 영향을 미칠 수 있는 상태"
+      },
+      "criteria": [
+       {
+        "text": "70㎝이상 ～ 90㎝미만",
+        "machine": [
+         {
+          "metric": "scourDepth_cm",
+          "min": 70,
+          "max": 90
+         }
+        ]
+       },
+       {
+        "text": "세굴이 심하여 구조물 하단부가 크게 드러나고 기초사석이 교란되어 구조적인 안정에 영향을 미칠 수 있는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "세굴",
+      "score": 1,
+      "evalType": "국부결함",
+      "influence": 2.0,
+      "conditionIndex": 2.0,
+      "text": {
+       "세굴의 최대 깊이": "90㎝이상",
+       "조사된 상태": "◦세굴이 아주 심하여 구조물의 안정이 심각하게 위협받고 있는 상태"
+      },
+      "criteria": [
+       {
+        "text": "90㎝이상",
+        "machine": [
+         {
+          "metric": "scourDepth_cm",
+          "min": 90
+         }
+        ]
+       },
+       {
+        "text": "세굴이 아주 심하여 구조물의 안정이 심각하게 위협받고 있는 상태",
+        "qualitative": true
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 600,
+   "notes": [
+    "주) 상태평가 결과가 “e” 이면 4.1.4절의 중대한 결함으로 본다."
+   ]
+  },
+  {
+   "table": "4.21",
+   "item": "기초사석 교란",
+   "part": "기초부",
+   "appliesTo": [
+    "직립제 및 혼성제"
+   ],
+   "evalType": "국부결함",
+   "captionInSource": "[표 4.21] 기초사석 교란의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 610,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "기초사석 교란",
+      "score": 5,
+      "evalType": "국부결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦발생한 곳이 없음",
+      "criteria": [
+       {
+        "text": "발생한 곳이 없음"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "기초사석 교란",
+      "score": 4,
+      "evalType": "국부결함",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦기초사석이 부분적으로 경미하게 교란되어 있음",
+      "criteria": [
+       {
+        "text": "기초사석이 부분적으로 경미하게 교란되어 있음"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "기초사석 교란",
+      "score": 3,
+      "evalType": "국부결함",
+      "influence": 1.2,
+      "conditionIndex": 3.6,
+      "text": "◦기초사석이 전반적으로 다소 심하게 교란되어 있고 사석 경사에 변화발생",
+      "criteria": [
+       {
+        "text": "기초사석이 전반적으로 다소 심하게 교란되어 있고 사석 경사에 변화발생"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "기초사석 교란",
+      "score": 2,
+      "evalType": "국부결함",
+      "influence": 1.4,
+      "conditionIndex": 2.8,
+      "text": "◦기초사석이 심하게 유실되어 안벽 하단부가 크게 드러나서 구조적인 안정에 영향을 미칠 수 있는 상태",
+      "criteria": [
+       {
+        "text": "기초사석이 심하게 유실되어 안벽 하단부가 크게 드러나서 구조적인 안정에 영향을 미칠 수 있는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "기초사석 교란",
+      "score": 1,
+      "evalType": "국부결함",
+      "influence": 2.0,
+      "conditionIndex": 2.0,
+      "text": "◦기초사석이 완전히 유실되어 방파제의 안정이 심각하게 위협받고 있는 상태",
+      "criteria": [
+       {
+        "text": "기초사석이 완전히 유실되어 방파제의 안정이 심각하게 위협받고 있는 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 611,
+   "note": "d 문구가 \"안벽 하단부\" — 항만편(안벽) 문구를 그대로 옮긴 것으로 보임(방파제에서는 직립부/제체 하단부)."
+  },
+  {
+   "table": "4.22",
+   "item": "사면변화 및 피복석 유실",
+   "part": "사석경사면",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "국부결함",
+   "captionInSource": "[표 4.22] 사면변화 및 피복석 유실의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 610,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "사면변화 및 피복석 유실",
+      "score": 5,
+      "evalType": "국부결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦양호한 상태",
+      "criteria": [
+       {
+        "text": "양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "사면변화 및 피복석 유실",
+      "score": 4,
+      "evalType": "국부결함",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦국부적으로 경미하게 경사면 변화가 발생한 상태",
+      "criteria": [
+       {
+        "text": "국부적으로 경미하게 경사면 변화가 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "사면변화 및 피복석 유실",
+      "score": 3,
+      "evalType": "국부결함",
+      "influence": 1.2,
+      "conditionIndex": 3.6,
+      "text": "◦전반적으로 경사면 변화가 다소 심하게 발생한 상태",
+      "criteria": [
+       {
+        "text": "전반적으로 경사면 변화가 다소 심하게 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "사면변화 및 피복석 유실",
+      "score": 2,
+      "evalType": "국부결함",
+      "influence": 1.4,
+      "conditionIndex": 2.8,
+      "text": "◦수상부 및 수중부의 피복석 또는 소파공의 경사면 변화가 광범위하면서도 심하게 발생하여 제체의 안정에 영향을 미칠 수 있는 상태",
+      "criteria": [
+       {
+        "text": "수상부 및 수중부의 피복석 또는 소파공의 경사면 변화가 광범위하면서도 심하게 발생하여 제체의 안정에 영향을 미칠 수 있는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "사면변화 및 피복석 유실",
+      "score": 1,
+      "evalType": "국부결함",
+      "influence": 2.0,
+      "conditionIndex": 2.0,
+      "text": "◦경사면 변화가 전체적으로 아주 심하게 발생하고 피복석 또는 소파공이 광범위하게 산란 이동되어 있어서 제체의 안정에 매우 심각하게 영향을 미칠 수 있는 상태",
+      "criteria": [
+       {
+        "text": "경사면 변화가 전체적으로 아주 심하게 발생하고 피복석 또는 소파공이 광범위하게 산란 이동되어 있어서 제체의 안정에 매우 심각하게 영향을 미칠 수 있는 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 619,
+   "usedFor": [
+    "사면변화",
+    "피복석 유실"
+   ],
+   "note": "[표 4.13]·[표 4.14]의 \"사면변화\"와 \"피복석 유실\" 두 항목이 모두 이 표로 평가([표 4.35] 예시의 상태평가 기준 열도 둘 다 \"표 4.22\")."
+  },
+  {
+   "table": "4.23",
+   "item": "소파공 교란 및 유실",
+   "part": "소파공",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "국부결함",
+   "captionInSource": "[표 4.23] 소파공 교란 및 유실의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 610,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "소파공 교란 및 유실",
+      "score": 5,
+      "evalType": "국부결함",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦양호한 상태",
+      "criteria": [
+       {
+        "text": "양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "소파공 교란 및 유실",
+      "score": 4,
+      "evalType": "국부결함",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦소파공이 국부적으로 경미하게 교란된 상태",
+      "criteria": [
+       {
+        "text": "소파공이 국부적으로 경미하게 교란된 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "소파공 교란 및 유실",
+      "score": 3,
+      "evalType": "국부결함",
+      "influence": 1.2,
+      "conditionIndex": 3.6,
+      "text": "◦소파공이 전반적으로 교란되었고, 일부 소파공이 유실된 상태",
+      "criteria": [
+       {
+        "text": "소파공이 전반적으로 교란되었고, 일부 소파공이 유실된 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "소파공 교란 및 유실",
+      "score": 2,
+      "evalType": "국부결함",
+      "influence": 1.4,
+      "conditionIndex": 2.8,
+      "text": "◦소파공이 부분적으로 유실되어 사면변화가 크게 발생하였고, 일부 구간에서 소파능력이 상실된 상태",
+      "criteria": [
+       {
+        "text": "소파공이 부분적으로 유실되어 사면변화가 크게 발생하였고, 일부 구간에서 소파능력이 상실된 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "소파공 교란 및 유실",
+      "score": 1,
+      "evalType": "국부결함",
+      "influence": 2.0,
+      "conditionIndex": 2.0,
+      "text": "◦소파공이 광범위하게 유실되어 대부분의 구간에서 소파능력이 상실된 상태",
+      "criteria": [
+       {
+        "text": "소파공이 광범위하게 유실되어 대부분의 구간에서 소파능력이 상실된 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 627
+  },
+  {
+   "table": "4.24",
+   "item": "파손",
+   "part": "상부공 및 직립부(사석식 경사제: 상부공)",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "일반손상",
+   "captionInSource": "[표 4.24] 상부공 및 직립부 파손의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 637,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "파손",
+      "score": 5,
+      "evalType": "일반손상",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦콘크리트 부재에 파손이 발생하지 않은 양호한 상태",
+      "criteria": [
+       {
+        "text": "콘크리트 부재에 파손이 발생하지 않은 양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "파손",
+      "score": 4,
+      "evalType": "일반손상",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦파손이 경미하고, 추가적인 손상진행의 가능성이 없는 건전한 상태",
+      "criteria": [
+       {
+        "text": "파손이 경미하고, 추가적인 손상진행의 가능성이 없는 건전한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "파손",
+      "score": 3,
+      "evalType": "일반손상",
+      "influence": 1.3,
+      "conditionIndex": 3.9,
+      "text": "◦파손이 경미하지만, 철근부식 등과 같은 추가적인 손상진행의 가능성이 있는 보통의 상태",
+      "criteria": [
+       {
+        "text": "파손이 경미하지만, 철근부식 등과 같은 추가적인 손상진행의 가능성이 있는 보통의 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "파손",
+      "score": 2,
+      "evalType": "일반손상",
+      "influence": 1.7,
+      "conditionIndex": 3.4,
+      "text": "◦시설의 주요부에 부분적인 파손이 발생하여 제체의 안전성이 저하되거나, 손상의 진행에 따라 손상규모가 확대될 위험이 있는 불량한 상태",
+      "criteria": [
+       {
+        "text": "시설의 주요부에 부분적인 파손이 발생하여 제체의 안전성이 저하되거나, 손상의 진행에 따라 손상규모가 확대될 위험이 있는 불량한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "파손",
+      "score": 1,
+      "evalType": "일반손상",
+      "influence": 3.0,
+      "conditionIndex": 3.0,
+      "text": "◦시설의 주요부에 큰 파손이 발생하여 시설의 기능상실, 안전성 결여 또는 파괴로 이어질 수 있는 위험한 상태",
+      "criteria": [
+       {
+        "text": "시설의 주요부에 큰 파손이 발생하여 시설의 기능상실, 안전성 결여 또는 파괴로 이어질 수 있는 위험한 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 638
+  },
+  {
+   "table": "4.25",
+   "item": "균열",
+   "part": "상부공 및 직립부(사석식 경사제: 상부공)",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "일반손상",
+   "captionInSource": "[표 4.25] 상부공 및 직립부 균열의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 637,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "균열",
+      "score": 5,
+      "evalType": "일반손상",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦양호한 상태",
+      "criteria": [
+       {
+        "text": "양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "균열",
+      "score": 4,
+      "evalType": "일반손상",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦경미한 상태의 균열",
+      "criteria": [
+       {
+        "text": "경미한 상태의 균열"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "균열",
+      "score": 3,
+      "evalType": "일반손상",
+      "influence": 1.3,
+      "conditionIndex": 3.9,
+      "text": "◦균열이 다소 심한 상태",
+      "criteria": [
+       {
+        "text": "균열이 다소 심한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "균열",
+      "score": 2,
+      "evalType": "일반손상",
+      "influence": 1.7,
+      "conditionIndex": 3.4,
+      "text": "◦전반적으로 균열이 심하게 발생하여 보수가 요구되는 상태",
+      "criteria": [
+       {
+        "text": "전반적으로 균열이 심하게 발생하여 보수가 요구되는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "균열",
+      "score": 1,
+      "evalType": "일반손상",
+      "influence": 3.0,
+      "conditionIndex": 3.0,
+      "text": "◦대규모 관통 균열의 발생으로 구조물의 기능성에 영향을 초래하여 우선적인 보수가 요구되는 상태",
+      "criteria": [
+       {
+        "text": "대규모 관통 균열의 발생으로 구조물의 기능성에 영향을 초래하여 우선적인 보수가 요구되는 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 646
+  },
+  {
+   "table": "4.26",
+   "item": "박리",
+   "part": "상부공 및 직립부(사석식 경사제: 상부공)",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "일반손상",
+   "captionInSource": "[표 4.26] 상부공 및 직립부 박리의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 637,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "박리",
+      "score": 5,
+      "evalType": "일반손상",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦양호한 상태",
+      "criteria": [
+       {
+        "text": "양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "박리",
+      "score": 4,
+      "evalType": "일반손상",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦박리의 초기단계로 철근부식에 의해 박리부분에 균열이 형성되기 시작하거나 경미하게 콘크리트 덮개가 탈락된 상태",
+      "criteria": [
+       {
+        "text": "박리의 초기단계로 철근부식에 의해 박리부분에 균열이 형성되기 시작하거나 경미하게 콘크리트 덮개가 탈락된 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "박리",
+      "score": 3,
+      "evalType": "일반손상",
+      "influence": 1.3,
+      "conditionIndex": 3.9,
+      "text": "◦콘크리트 덮개가 일어나는 다소 심한 부분박리가 다소 심하게 발생한 상태",
+      "criteria": [
+       {
+        "text": "콘크리트 덮개가 일어나는 다소 심한 부분박리가 다소 심하게 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "박리",
+      "score": 2,
+      "evalType": "일반손상",
+      "influence": 1.7,
+      "conditionIndex": 3.4,
+      "text": "◦박리부분이 탈락하여 노출철근의 부식이 발생된 상태",
+      "criteria": [
+       {
+        "text": "박리부분이 탈락하여 노출철근의 부식이 발생된 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "박리",
+      "score": 1,
+      "evalType": "일반손상",
+      "influence": 3.0,
+      "conditionIndex": 3.0,
+      "text": "◦노출된 철근의 부식이 심하여 구조적 기능을 상실한 상태",
+      "criteria": [
+       {
+        "text": "노출된 철근의 부식이 심하여 구조적 기능을 상실한 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 654,
+   "note": "c 문구 \"다소 심한 부분박리가 다소 심하게 발생한 상태\" — 원문 중복 표현 그대로."
+  },
+  {
+   "table": "4.27",
+   "item": "마모/침식",
+   "part": "상부공 및 직립부(사석식 경사제: 상부공)",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "일반손상",
+   "captionInSource": "[표 4.27] 상부공 및 직립부 마모/침식의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 664,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "마모/침식",
+      "score": 5,
+      "evalType": "일반손상",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦마모/침식된 부위가 없는 양호한 상태",
+      "criteria": [
+       {
+        "text": "마모/침식된 부위가 없는 양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "마모/침식",
+      "score": 4,
+      "evalType": "일반손상",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦마모/침식에 의해 골재가 노출된 상태",
+      "criteria": [
+       {
+        "text": "마모/침식에 의해 골재가 노출된 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "마모/침식",
+      "score": 3,
+      "evalType": "일반손상",
+      "influence": 1.3,
+      "conditionIndex": 3.9,
+      "text": "◦상·하부와 비교해서 단면(철근덮개)이 감소되기 시작한 상태",
+      "criteria": [
+       {
+        "text": "상·하부와 비교해서 단면(철근덮개)이 감소되기 시작한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "마모/침식",
+      "score": 2,
+      "evalType": "일반손상",
+      "influence": 1.7,
+      "conditionIndex": 3.4,
+      "text": "◦철근덮개가 탈락되고 철근이 부분적으로 노출되어 부식이 발생한 상태",
+      "criteria": [
+       {
+        "text": "철근덮개가 탈락되고 철근이 부분적으로 노출되어 부식이 발생한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "마모/침식",
+      "score": 1,
+      "evalType": "일반손상",
+      "influence": 3.0,
+      "conditionIndex": 3.0,
+      "text": "◦마모/침식된 부위의 철근이 완전히 노출되어 구조적인 기능을 상실한 상태",
+      "criteria": [
+       {
+        "text": "마모/침식된 부위의 철근이 완전히 노출되어 구조적인 기능을 상실한 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 665
+  },
+  {
+   "table": "4.28",
+   "item": "소파공 파손",
+   "part": "소파공",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "evalType": "일반손상",
+   "captionInSource": "[표 4.28] 소파공 파손의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 664,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "소파공 파손",
+      "score": 5,
+      "evalType": "일반손상",
+      "influence": 1.0,
+      "conditionIndex": 5.0,
+      "text": "◦양호한 상태",
+      "criteria": [
+       {
+        "text": "양호한 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "소파공 파손",
+      "score": 4,
+      "evalType": "일반손상",
+      "influence": 1.1,
+      "conditionIndex": 4.4,
+      "text": "◦파손이 경미하고, 추가적인 손상진행의 가능성이 없는 건전한 상태",
+      "criteria": [
+       {
+        "text": "파손이 경미하고, 추가적인 손상진행의 가능성이 없는 건전한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "소파공 파손",
+      "score": 3,
+      "evalType": "일반손상",
+      "influence": 1.3,
+      "conditionIndex": 3.9,
+      "text": "◦파손이 경미하지만, 추가적인 손상진행의 가능성이 있는 보통의 상태",
+      "criteria": [
+       {
+        "text": "파손이 경미하지만, 추가적인 손상진행의 가능성이 있는 보통의 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "소파공 파손",
+      "score": 2,
+      "evalType": "일반손상",
+      "influence": 1.7,
+      "conditionIndex": 3.4,
+      "text": "◦부분적으로 파손되어 일부 구간에서 소파능력이 상실된 상태",
+      "criteria": [
+       {
+        "text": "부분적으로 파손되어 일부 구간에서 소파능력이 상실된 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "소파공 파손",
+      "score": 1,
+      "evalType": "일반손상",
+      "influence": 3.0,
+      "conditionIndex": 3.0,
+      "text": "◦광범위하게 파손되어 대부분의 구간에서 소파능력이 상실된 상태",
+      "criteria": [
+       {
+        "text": "광범위하게 파손되어 대부분의 구간에서 소파능력이 상실된 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 673
+  },
+  {
+   "table": "4.29",
+   "item": "탄산화 잔여 깊이",
+   "part": "상부공 및 직립부(콘크리트)",
+   "appliesTo": [
+    "직립제 및 혼성제"
+   ],
+   "evalType": null,
+   "captionInSource": "[표 4.29] 탄산화 잔여 깊이의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 664,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "score": 5,
+      "text": {
+       "탄산화 잔여 깊이": "◦30mm이상",
+       "철근부식의 가능성": "탄산화에 의한 부식발생 우려 없음"
+      },
+      "criteria": [
+       {
+        "text": "30mm이상",
+        "machine": [
+         {
+          "metric": "carbonationResidual_mm",
+          "min": 30
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "score": 4,
+      "text": {
+       "탄산화 잔여 깊이": "◦10mm이상∼30mm미만",
+       "철근부식의 가능성": "향후 탄산화에 의한 부식발생 가능성 있음"
+      },
+      "criteria": [
+       {
+        "text": "10mm이상∼30mm미만",
+        "machine": [
+         {
+          "metric": "carbonationResidual_mm",
+          "min": 10,
+          "max": 30
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "score": 3,
+      "text": {
+       "탄산화 잔여 깊이": "◦0mm이상∼10mm미만",
+       "철근부식의 가능성": "탄산화에 의한 부식발생 가능성 높음"
+      },
+      "criteria": [
+       {
+        "text": "0mm이상∼10mm미만",
+        "machine": [
+         {
+          "metric": "carbonationResidual_mm",
+          "min": 0,
+          "max": 10
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "score": 2,
+      "text": {
+       "탄산화 잔여 깊이": "◦0mm미만",
+       "철근부식의 가능성": "철근부식 발생 조건 만족"
+      },
+      "criteria": [
+       {
+        "text": "0mm미만",
+        "machine": [
+         {
+          "metric": "carbonationResidual_mm",
+          "max": 0
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "탄산화 잔여 깊이",
+      "score": 1,
+      "text": {
+       "탄산화 잔여 깊이": "◦0mm미만",
+       "철근부식의 가능성": "철근부식도 조사 등을 통해 철근부식 발생 확인"
+      },
+      "criteria": [
+       {
+        "text": "0mm미만",
+        "machine": [
+         {
+          "metric": "carbonationResidual_mm",
+          "max": 0,
+          "extraCondition": "철근부식도 조사 등을 통해 철근부식 발생 확인"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 681,
+   "notes": [
+    "주1) 상태평가결과가 “d” 판정으로 철근노출과 부식 등을 동반하고 있거나, 상태평가결과가 “e”판정에 해당하면 4.1.4절의 중대한 결함으로 본다.",
+    "주2) 제1장 교량[표 1.28] 해설을 따른다."
+   ],
+   "note": "[표 4.13]·[표 4.14] 평가유형 표와 [표 4.35]·[표 4.36] 평가단위 산정 예시에는 이 항목이 없음 — 평가유형·영향계수 미지정. 재료시험 결과(내구성 평가)와 중대한 결함(4.1.4 가. 2)) 판정에 쓰이고, 평가단위 상태지수(최솟값) 산정에 넣을지는 원문 미규정."
+  },
+  {
+   "table": "4.30",
+   "item": "전염화물 이온량",
+   "part": "상부공 및 직립부(콘크리트)",
+   "appliesTo": [
+    "직립제 및 혼성제"
+   ],
+   "evalType": null,
+   "captionInSource": "[표 4.30] 전염화물 이온량의 상태평가 기준",
+   "captionSource": "표 바깥 문단(변환 시 wrapper 셀 첫 줄)",
+   "captionSourceLine": 691,
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "전염화물 이온량",
+      "score": 5,
+      "text": {
+       "전염화물 이온량": "◦염화물≤0.3kg/m3",
+       "철근부식의 가능성": "염화물에 의한 부식이 발생할 우려 없음"
+      },
+      "criteria": [
+       {
+        "text": "염화물≤0.3kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "max": 0.3,
+          "maxInclusive": true
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "전염화물 이온량",
+      "score": 4,
+      "text": {
+       "전염화물 이온량": "◦0.3kg/m3<염화물<1.2kg/m3",
+       "철근부식의 가능성": "염화물이 함유되어 있으나, 부식발생 가능성 낮음."
+      },
+      "criteria": [
+       {
+        "text": "0.3kg/m3<염화물<1.2kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 0.3,
+          "max": 1.2,
+          "minInclusive": false
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "전염화물 이온량",
+      "score": 3,
+      "text": {
+       "전염화물 이온량": "◦1.2kg/m3≤염화물<2.5kg/m3",
+       "철근부식의 가능성": "향후 염화물에 의한 부식발생 가능성 높음."
+      },
+      "criteria": [
+       {
+        "text": "1.2kg/m3≤염화물<2.5kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 1.2,
+          "max": 2.5
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "전염화물 이온량",
+      "score": 2,
+      "text": {
+       "전염화물 이온량": "◦염화물≥2.5kg/m3",
+       "철근부식의 가능성": "철근부식 발생 조건 만족"
+      },
+      "criteria": [
+       {
+        "text": "염화물≥2.5kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 2.5
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "전염화물 이온량",
+      "score": 1,
+      "text": {
+       "전염화물 이온량": "◦염화물≥2.5kg/m3",
+       "철근부식의 가능성": "철근부식도 조사 등을 통해 철근부식 발생 확인"
+      },
+      "criteria": [
+       {
+        "text": "염화물≥2.5kg/m3",
+        "machine": [
+         {
+          "metric": "chloride_kg_m3",
+          "min": 2.5,
+          "extraCondition": "철근부식도 조사 등을 통해 철근부식 발생 확인"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 692,
+   "notes": [
+    "주) 상태평가결과가 “d” 판정으로 철근노출과 부식 등을 동반하고 있거나, 상태평가결과가 “e”판정에 해당하면 4.1.4절의 중대한 결함으로 본다."
+   ],
+   "note": "[표 4.13]·[표 4.14] 평가유형 표와 [표 4.35]·[표 4.36] 평가단위 산정 예시에는 이 항목이 없음 — 평가유형·영향계수 미지정. 재료시험 결과(내구성 평가)와 중대한 결함(4.1.4 가. 2)) 판정에 쓰이고, 평가단위 상태지수(최솟값) 산정에 넣을지는 원문 미규정."
+  }
+ ],
+ "publicUse": [
+  {
+   "table": "4.31",
+   "item": "추락방지시설",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "captionInSource": "[표 4.31] 추락방지시설 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "추락방지시설",
+      "text": "◦손상 및 결함 등이 없는 최상의 상태",
+      "criteria": [
+       {
+        "text": "손상 및 결함 등이 없는 최상의 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "추락방지시설",
+      "text": "◦추락방지시설에 경미한 결함 및 파손이 발생하였으나, 기능에는 문제가 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정해야 하는 상태",
+      "criteria": [
+       {
+        "text": "추락방지시설에 경미한 결함 및 파손이 발생하였으나, 기능에는 문제가 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정해야 하는 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "추락방지시설",
+      "text": "◦추락방지시설에 결함 및 파손으로 인하여 기능에 일부 문제가 발생하여 간단한 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "추락방지시설에 결함 및 파손으로 인하여 기능에 일부 문제가 발생하여 간단한 보수가 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "추락방지시설",
+      "text": "◦고정부 및 연결부 파손 등으로 인해 추락방지시설의 전도 및 이탈이 발생 할 수 있어 즉각적인 보수․보강이 필요한 상태",
+      "criteria": [
+       {
+        "text": "고정부 및 연결부 파손 등으로 인해 추락방지시설의 전도 및 이탈이 발생 할 수 있어 즉각적인 보수․보강이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "추락방지시설",
+      "text": "◦추락방지시설의 전반적 기능저하로 사용자의 안전에 위험이 있어 즉각 사용을 금지해야 하는 상태",
+      "criteria": [
+       {
+        "text": "추락방지시설의 전반적 기능저하로 사용자의 안전에 위험이 있어 즉각 사용을 금지해야 하는 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 711,
+   "id": "공중-1",
+   "member": "추락방지시설"
+  },
+  {
+   "table": "4.32",
+   "item": "도로포장",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "captionInSource": "[표 4.32] 도로포장 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "도로포장",
+      "text": "◦포장상태가 최상으로 차량의 주행에 문제가 없는 상태",
+      "criteria": [
+       {
+        "text": "포장상태가 최상으로 차량의 주행에 문제가 없는 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "도로포장",
+      "text": "◦포장의 결함 및 파손이 미미하게 발생된 상태로 차량주행에 문제는 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태",
+      "criteria": [
+       {
+        "text": "포장의 결함 및 파손이 미미하게 발생된 상태로 차량주행에 문제는 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "도로포장",
+      "text": "◦포장 결함 및 파손이 차량에 직접적인 파손을 유발할 정도는 아니나 차량 운전자에게 불쾌감을 유발할 수 있어 간단한 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "포장 결함 및 파손이 차량에 직접적인 파손을 유발할 정도는 아니나 차량 운전자에게 불쾌감을 유발할 수 있어 간단한 보수가 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "도로포장",
+      "text": "◦깊이 8cm이상의 포트홀에 의해 차량에 심각한 손상이 발생할 수 있어 즉각적인 보수가 필요한 상태 / ◦배수불량으로 인한 주행차로 상시 물고임으로 통행차량의 안전성 저하가 우려되는 상태",
+      "criteria": [
+       {
+        "text": "깊이 8cm이상의 포트홀에 의해 차량에 심각한 손상이 발생할 수 있어 즉각적인 보수가 필요한 상태 /",
+        "machine": [
+         {
+          "metric": "potholeDepth_cm",
+          "min": 8
+         }
+        ]
+       },
+       {
+        "text": "배수불량으로 인한 주행차로 상시 물고임으로 통행차량의 안전성 저하가 우려되는 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "도로포장",
+      "text": "◦도로포장 결함 및 파손 정도가 심각하고 차량주행이 불가하여 차량통행 제한 및 사용금지가 필요한 상태",
+      "criteria": [
+       {
+        "text": "도로포장 결함 및 파손 정도가 심각하고 차량주행이 불가하여 차량통행 제한 및 사용금지가 필요한 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 720,
+   "id": "공중-2",
+   "member": "도로포장"
+  },
+  {
+   "table": "4.33",
+   "item": "도로부 신축이음부",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "captionInSource": "[표 4.33] 도로부 신축이음부 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "도로부 신축이음부",
+      "text": "◦신축이음부에 손상이 없는 상태",
+      "criteria": [
+       {
+        "text": "신축이음부에 손상이 없는 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "도로부 신축이음부",
+      "text": "◦신축이음 본체의 토사 및 이물질 퇴적, 고무판 노후, 후타재의 미세균열이 발생된 상태로 기능발휘에는 지장이 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태",
+      "criteria": [
+       {
+        "text": "신축이음 본체의 토사 및 이물질 퇴적, 고무판 노후, 후타재의 미세균열이 발생된 상태로 기능발휘에는 지장이 없으며 결함의 진행 여부를 지속적으로 관찰하고 보수 여부를 결정하여야 하는 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "도로부 신축이음부",
+      "text": "◦신축이음 본체의 유간사이 이물질로 기능불량, 고무판 마모, 국부적인 부식 등의 열화가 발생한 상태 또는 후타재의 균열이 50cm이하의 간격으로 발생하거나, 국부적인 박리, 박락, 파손이 발생하여 간단한 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "신축이음 본체의 유간사이 이물질로 기능불량, 고무판 마모, 국부적인 부식 등의 열화가 발생한 상태 또는 후타재의 균열이 50cm이하의 간격으로 발생하거나, 국부적인 박리, 박락, 파손이 발생하여 간단한 보수가 필요한 상태",
+        "machine": [
+         {
+          "metric": "jointCoverCrackSpacing_cm",
+          "max": 50,
+          "maxInclusive": true,
+          "note": "\"후타재의 균열이 50cm이하의 간격으로 발생\" 부분만"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "도로부 신축이음부",
+      "text": "◦신축유간 밀착으로 인한 거동불량 또는 신축유간이 넓어 차량통행에 지장을 초래할 수 있어 교체가 필요한 상태 / ◦신축이음의 파손 상태가 심각하여 차량통행 시 충격이 발생하는 등 긴급한 보수·보강이 필요한 상태",
+      "criteria": [
+       {
+        "text": "신축유간 밀착으로 인한 거동불량 또는 신축유간이 넓어 차량통행에 지장을 초래할 수 있어 교체가 필요한 상태 /"
+       },
+       {
+        "text": "신축이음의 파손 상태가 심각하여 차량통행 시 충격이 발생하는 등 긴급한 보수·보강이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "도로부 신축이음부",
+      "text": "◦신축이음부 본체 탈락으로 차량주행 시 파손을 유발하거나, 주행 중 사고의 원인이 될 수 있는 상태",
+      "criteria": [
+       {
+        "text": "신축이음부 본체 탈락으로 차량주행 시 파손을 유발하거나, 주행 중 사고의 원인이 될 수 있는 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 729,
+   "id": "공중-3",
+   "member": "도로부 신축이음부"
+  },
+  {
+   "table": "4.34",
+   "item": "환기구 등의 덮개",
+   "appliesTo": [
+    "직립제 및 혼성제",
+    "사석식 경사제"
+   ],
+   "captionInSource": "[표 4.34] 환기구 등의 덮개 상태평가기준",
+   "captionSource": "hp:caption",
+   "gradeRange": "a-e",
+   "grades": {
+    "a": [
+     {
+      "item": "환기구 등의 덮개",
+      "text": "◦환기구 등의 덮개가 최상의 상태",
+      "criteria": [
+       {
+        "text": "환기구 등의 덮개가 최상의 상태"
+       }
+      ]
+     }
+    ],
+    "b": [
+     {
+      "item": "환기구 등의 덮개",
+      "text": "◦덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등이 발생하였으나, 기능 발휘에는 지장이 없고 기능성에 문제가 없는 상태 / ◦기능성에 문제가 없어 결함 및 파손에 대해 지속적 관찰이 필요한 상태",
+      "criteria": [
+       {
+        "text": "덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등이 발생하였으나, 기능 발휘에는 지장이 없고 기능성에 문제가 없는 상태 /"
+       },
+       {
+        "text": "기능성에 문제가 없어 결함 및 파손에 대해 지속적 관찰이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "c": [
+     {
+      "item": "환기구 등의 덮개",
+      "text": "◦덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능에 일부 문제가 발생하여 보수가 필요한 상태",
+      "criteria": [
+       {
+        "text": "덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능에 일부 문제가 발생하여 보수가 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "d": [
+     {
+      "item": "환기구 등의 덮개",
+      "text": "◦덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능이 상실되어 국부적인 교체 및 보강이 필요한 상태",
+      "criteria": [
+       {
+        "text": "덮개 등(지지구조 철물, 연결재, 걸침턱 등)에 결함 및 파손 등으로 기능이 상실되어 국부적인 교체 및 보강이 필요한 상태"
+       }
+      ]
+     }
+    ],
+    "e": [
+     {
+      "item": "환기구 등의 덮개",
+      "text": "◦결함 및 파손 정도가 심각하거나 덮개 등이 탈락된 상태",
+      "criteria": [
+       {
+        "text": "결함 및 파손 정도가 심각하거나 덮개 등이 탈락된 상태"
+       }
+      ]
+     }
+    ]
+   },
+   "sourceLine": 738,
+   "id": "공중-4",
+   "member": "환기구 등의 덮개"
+  }
+ ],
+ "surveyNotes_4_4_1": {
+  "progressive": "침하·경사/전도·활동은 최대값 범위를 비진행성/진행성으로 나눠 판정. 진행성 판단은 수준측량·상대침하 측정(【해설】1).",
+  "designCrestAdjustment": "2. 설계 및 공사시 침하를 예상하여 공사 천단고(B)를 계획 천단고(A) 이상으로 시공한 경우 책임기술자의 판단하에 계획 천단고(A) - 현재 천단고(C)를 발생한 침하량으로 보고 침하의 상태평가를 수행할 수 있다.",
+  "figure": "[해설 그림 4.4.1] 계획 천단고 이상으로 시공한 시설물의 침하 상태평가(예)"
+ }
+}

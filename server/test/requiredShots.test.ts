@@ -159,7 +159,7 @@ describe('config/requiredShots.json (세부지침 2026.2 — 교량·터널·옹
     const tpl = await loadRequiredTemplate(configPath);
     const raw = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, { info: unknown[]; shots: unknown[] }>;
     expect(tpl['_설명']).toBeUndefined();
-    for (const type of ['교량', '터널', '옹벽', '상수도', '하수처리장']) {
+    for (const type of ['교량', '터널', '옹벽', '상수도', '하수처리장', '항만외곽시설']) {
       const t = tpl[type];
       expect(t.shots.length, type).toBe(raw[type].shots.length);
       expect(t.info.length, type).toBe(raw[type].info.length);

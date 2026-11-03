@@ -79,7 +79,7 @@ export interface Project {
 }
 
 export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
-export const FACILITY_TYPES = ['교량', '터널', '옹벽', '상수도', '하수처리장', '절토사면', '건축물', '기타'] as const;
+export const FACILITY_TYPES = ['교량', '터널', '옹벽', '상수도', '하수처리장', '항만외곽시설', '절토사면', '건축물', '기타'] as const;
 
 // 점검 종류·시설물 종류만 고친다. null은 지우기. 응답은 서버가 트리 계산을 거친 Project 하나.
 export async function updateProject(

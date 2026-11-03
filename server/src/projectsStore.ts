@@ -9,7 +9,7 @@ import type { FacilityInfo } from './requiredShots.js';
 // 점검 종류는 최상위(과업)에, 시설물 종류는 하위(구조물)에만 둔다. 둘 다 선택 필드 — 옛 레코드에는
 // 없다. 값 목록은 앱(src/api.ts)과 같아야 한다. 설계: docs/design/2026-10-24-field-photo-checklist.md 결정 5
 export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
-export const FACILITY_TYPES = ['교량', '터널', '옹벽', '상수도', '하수처리장', '절토사면', '건축물', '기타'] as const;
+export const FACILITY_TYPES = ['교량', '터널', '옹벽', '상수도', '하수처리장', '항만외곽시설', '절토사면', '건축물', '기타'] as const;
 // 과업구분: 웹(daenong)의 과업구분을 웹이 앱 프로젝트를 만들·연결할 때 넣는다(앱 목록 필터용, 2026-10-26).
 // 최상위에만. 웹 app/work-status/lib/appLink.ts의 APP_LINKED_TASK_TYPES와 같은 값.
 export const TASK_TYPES = ['정밀안전점검', '정기안전점검', '정밀안전진단', '옹벽(사급)'] as const;

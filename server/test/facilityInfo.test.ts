@@ -19,7 +19,7 @@ describe('앱 구조물 정보 시트 (src/facilityInfo.ts)', () => {
     expect(formFromInfo(f, { spans: 3, piers: 2, girder: 'RC', river: true, facilityClass: 2 })).toMatchObject({ spans: '3', abutments: '', piers: '2', girder: 'RC', river: true, facilityClass: '2' });
   });
 
-  it.each(['교량', '터널', '옹벽', '상수도', '하수처리장'])('%s: 기본값 + 필수 칸만 채운 입력이 서버 검사를 통과한다', async (type) => {
+  it.each(['교량', '터널', '옹벽', '상수도', '하수처리장', '항만외곽시설'])('%s: 기본값 + 필수 칸만 채운 입력이 서버 검사를 통과한다', async (type) => {
     const f = await fieldsOf(type);
     const form = formFromInfo(f, null);
     for (const field of f) {
