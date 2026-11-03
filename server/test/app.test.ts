@@ -1739,6 +1739,15 @@ describe('프로젝트 과업구분(taskType)', () => {
   });
 });
 
+describe('첫 주소', () => {
+  it('/ 는 업로드 페이지로 넘긴다', async () => {
+    const { app } = setup();
+    const res = await request(app).get('/');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/upload.html');
+  });
+});
+
 // 촬영 항목(필수 사진). 설계: docs/design/2026-10-24-field-photo-checklist.md 서버(앱)
 describe('촬영 항목 API (/api/projects/:id/shots)', () => {
   async function bridge(app: ReturnType<typeof setup>['app']) {

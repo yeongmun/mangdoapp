@@ -344,6 +344,8 @@ export function createApp(deps: AppDeps) {
   };
 
   const app = express();
+  // 첫 주소로 들어와도 PC 업로드 페이지로(터널 주소 확인할 때 "Cannot GET /"로 헷갈리지 않게, 11-04)
+  app.get('/', (_req, res) => res.redirect('/upload.html'));
   app.use(express.static(deps.publicDir));
 
   const api = express.Router();
