@@ -117,6 +117,8 @@ export async function fetchDrawings(): Promise<Drawing[]> {
     throw new Error('서버에 연결할 수 없습니다. PC의 서버와 터널이 켜져 있는지 확인하세요.');
   }
   if (res.status === 401) throw new Error('접근키를 확인하세요.');
+  // 404는 앱 서버가 아닌 곳(웹 서버 포트, 바뀐 터널 주소 등)에 닿았다는 뜻 — 앱 서버엔 이 주소가 늘 있다(11-04)
+  if (res.status === 404) throw new Error(`앱 서버를 찾지 못했어요 (404). 앱의 서버 주소(${API_URL})가 앱 서버를 가리키는지 확인하세요 — 그 주소를 브라우저로 열면 PC 업로드 페이지가 떠야 해요.`);
   if (!res.ok) throw new Error(`도면 목록을 불러오지 못했습니다 (${res.status}).`);
   return (await res.json()) as Drawing[];
 }
