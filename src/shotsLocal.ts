@@ -3,13 +3,14 @@
 // 읽기·쓰기 실패는 삼킨다(photoUpload.ts와 같은 이유 — 목록보다 앱이 뜨는 것이 중요).
 import { Directory, File, Paths } from 'expo-file-system';
 import type { ShotList } from './api';
+import { normalizeLocal, type LocalMap } from './shotsRules';
 
 export interface LocalShotState {
   /** 서버에서 마지막으로 받은 목록. 아직 못 받았으면 null */
   list: ShotList | null;
   fetchedAt: number;
-  /** 이 기기에서 찍은 사진(서버에 올라갔든 아니든). 카드 표시에 서버 photo보다 우선 */
-  local: Record<string, { uri: string; takenAt: number }>;
+  /** 이 기기에서 찍었는데 아직 서버에 없는 사진들(칸마다 목록, 2026-11-05) */
+  local: LocalMap;
   /** 내려받아 둔 전차 참조 이미지(shotId → 기기 uri). 오프라인 표시용 */
   refs: Record<string, string>;
 }
@@ -28,7 +29,7 @@ export function readShotsLocal(projectId: string): LocalShotState {
     return {
       list: parsed.list ?? null,
       fetchedAt: typeof parsed.fetchedAt === 'number' ? parsed.fetchedAt : 0,
-      local: parsed.local && typeof parsed.local === 'object' ? parsed.local : {},
+      local: normalizeLocal(parsed.local),
       refs: parsed.refs && typeof parsed.refs === 'object' ? parsed.refs : {},
     };
   } catch {

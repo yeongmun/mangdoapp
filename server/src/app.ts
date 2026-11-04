@@ -766,10 +766,10 @@ export function createApp(deps: AppDeps) {
       const folder = record.id === id ? '' : `${safeSegment(record.name)}/`;
       for (const shot of await deps.shots.list(record.id)) {
         // 한 칸의 사진 전부: 대표는 …_017.jpg, 둘째 장부터 …_017-2.jpg
-        for (const photo of photosOf(shot)) {
+        for (const [position, photo] of photosOf(shot).entries()) {
           const path = deps.shots.photoPathOf(record.id, photo);
           if (!(await stat(path).then(() => true, () => false))) continue;
-          shotFiles.push({ name: `${folder}${shotFileName(record.name, shot, photo)}`, path });
+          shotFiles.push({ name: `${folder}${shotFileName(record.name, shot, position)}`, path });
         }
       }
     }

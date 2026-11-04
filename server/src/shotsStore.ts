@@ -108,9 +108,9 @@ function safe(text: string): string {
 }
 
 /** `<구조물이름>_<부재>_<번호>.jpg` — zip·내려받기 때의 이름. 디스크 이름은 번호뿐이다 */
-export function shotFileName(projectName: string, shot: Shot, photo?: ShotPhoto): string {
-  // 둘째 장부터는 디스크 이름의 "-2"를 그대로 붙인다: A교_교각(P1)_017-2.jpg
-  const suffix = photo ? (/^\d+(-\d+)\./.exec(photo.file)?.[1] ?? '') : '';
+export function shotFileName(projectName: string, shot: Shot, position = 0): string {
+  // 대표(첫 장)는 …_017.jpg, 둘째 장부터 순서대로 …_017-2.jpg — 디스크 이름이 아니라 지금 순서로(대표를 바꾸거나 지워도 대표가 _017)
+  const suffix = position > 0 ? `-${position + 1}` : '';
   return `${safe(projectName)}_${safe(shot.member)}_${shot.number}${suffix}.jpg`;
 }
 

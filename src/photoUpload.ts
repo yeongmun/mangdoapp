@@ -108,6 +108,15 @@ export async function keepCopy(sourceUri: string): Promise<string | null> {
 // 돌려준다 — 사진은 앨범에 남아 있으니 호출부(ViewerScreen)는 willRetry:false로 알린다
 // (통제관 규칙 R3).
 /** 대기열에 남아 있는 촬영 항목(shot) id들 — 목록 화면이 ✓·썸네일 표시를 정리할 때 쓴다 */
+/** 대기열에 남아 있는 사진 id들(한 칸 여러 장) — 기기 사본 정리(shotsRules.reconcileLocal)에 쓴다 */
+export function queuedShotPhotoIds(): Set<string> {
+  return new Set(
+    readQueue()
+      .map((item) => item.target?.photoId)
+      .filter((id): id is string => typeof id === 'string'),
+  );
+}
+
 export function queuedShotIds(): Set<string> {
   return new Set(
     readQueue()
@@ -214,7 +223,8 @@ async function uploadOne(item: PhotoQueueItem): Promise<Attempt> {
       fieldName: 'file',
       // 보관 사본의 확장자가 곧 내용이다(줄여서 JPEG로 다시 저장한 파일). 앨범 파일명은 HEIC일 수 있다.
       mimeType: mimeOf(item.uri),
-      parameters: { filename: item.filename },
+      // 촬영 항목은 기기가 만든 사진 id도 보낸다 — 서버가 같은 id면 덮어써서 재전송이 두 장을 만들지 않는다
+      parameters: item.target?.photoId ? { filename: item.filename, photoId: item.target.photoId } : { filename: item.filename },
       headers: { 'x-access-key': ACCESS_KEY },
       // 앱이 잠깐 뒤로 가도 이어지는 background 세션은 60초 타임아웃·재시도 대기열과 어긋난다.
       sessionType: 'foreground',

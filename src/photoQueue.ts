@@ -9,6 +9,8 @@ export interface ShotTarget {
   kind: 'shot';
   projectId: string;
   shotId: string;
+  /** 기기가 만든 사진 id(2026-11-05 한 칸 여러 장). 서버는 같은 id면 덮어쓰고 새 id면 덧붙인다. 옛 항목엔 없다 */
+  photoId?: string;
 }
 
 export interface PhotoQueueItem {
@@ -95,7 +97,9 @@ function parseTarget(value: unknown): ShotTarget | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const t = value as Record<string, unknown>;
   if (t.kind !== 'shot' || !isText(t.projectId) || !isText(t.shotId)) return undefined;
-  return { kind: 'shot', projectId: t.projectId, shotId: t.shotId };
+  const out: ShotTarget = { kind: 'shot', projectId: t.projectId, shotId: t.shotId };
+  if (isText(t.photoId)) out.photoId = t.photoId;
+  return out;
 }
 
 export function parseQueue(value: unknown): PhotoQueueItem[] {
@@ -119,7 +123,12 @@ export function parseQueue(value: unknown): PhotoQueueItem[] {
       tries: numberOr(entry.tries, 0),
       lastTriedAt: numberOr(entry.lastTriedAt, 0),
     };
-    if (target !== undefined) parsed.target = target;
+    if (target !== undefined) {
+      // 11-05 이전에 넣은 항목은 사진 id가 없다 — 그대로 보내면 서버가 대표를 덮어쓴다(새로 찍은 사진이 먼저 올라갔으면 그걸 지움).
+      // 대기열 id로 고정 id를 붙여 한 장 더로 올린다(재전송해도 같은 id라 두 장이 안 된다)
+      if (!target.photoId) target.photoId = `q_${entry.id.replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 64);
+      parsed.target = target;
+    }
     if (typeof entry.holdUntil === 'number' && Number.isFinite(entry.holdUntil)) parsed.holdUntil = entry.holdUntil;
     result.push(parsed);
   }

@@ -278,6 +278,14 @@ export interface Shot {
   photo?: { file: string; savedAt: string };
   url: string | null;
   thumbUrl: string | null;
+  /** 이 칸의 사진 전부(2026-11-05 한 칸 여러 장). 첫 장이 대표(photo·url·thumbUrl과 같음) */
+  photos?: ShotPhotoItem[];
+  /** required만: 템플릿 항목 이름표("부재|설명") — 예시 사진의 열쇠 */
+  templateKey?: string;
+  /** 이 항목의 예시 사진(시설물 종류 + 항목마다 한 장, 모든 구조물 공통) */
+  exampleUrl?: string;
+  exampleThumbUrl?: string;
+  exampleSavedAt?: string;
   /** required만: 점검 포인트(세부지침 1.2.1) */
   hint?: string;
   /** previous(전차 사진)만: 보고서 페이지 id, 캡션, 참조 이미지 주소, 휴지통 */
@@ -286,6 +294,13 @@ export interface Shot {
   trashed?: true;
   refUrl?: string | null;
   refThumbUrl?: string | null;
+}
+
+export interface ShotPhotoItem {
+  id: string;
+  savedAt: string;
+  url: string;
+  thumbUrl: string;
 }
 
 export interface ShotList {
@@ -340,6 +355,54 @@ export function shotThumbSource(shot: { thumbUrl: string | null; photo?: { saved
   // 다시 찍으면 주소가 같아 Image 캐시가 옛 사진을 보여 줄 수 있다 — savedAt을 붙여 구분한다
   const v = encodeURIComponent(shot.photo?.savedAt ?? '');
   return { uri: `${API_URL}${shot.thumbUrl}?v=${v}`, headers: { 'x-access-key': ACCESS_KEY } };
+}
+
+/** 사진 한 장(원본·썸네일) — 한 칸 여러 장 */
+export function shotPhotoItemSource(p: ShotPhotoItem, thumb: boolean): { uri: string; headers: Record<string, string> } {
+  return { uri: `${API_URL}${thumb ? p.thumbUrl : p.url}?v=${encodeURIComponent(p.savedAt)}`, headers: { 'x-access-key': ACCESS_KEY } };
+}
+
+/** 예시 사진(원본·썸네일). 없으면 null */
+export function exampleSource(shot: Pick<Shot, 'exampleUrl' | 'exampleThumbUrl' | 'exampleSavedAt'>, thumb: boolean): { uri: string; headers: Record<string, string> } | null {
+  const url = thumb ? shot.exampleThumbUrl : shot.exampleUrl;
+  if (!url) return null;
+  return { uri: `${API_URL}${url}?v=${encodeURIComponent(shot.exampleSavedAt ?? '')}`, headers: { 'x-access-key': ACCESS_KEY } };
+}
+
+async function shotCall(path: string, method: 'DELETE' | 'PATCH' | 'POST', body?: unknown): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/projects/${path}`, {
+      method,
+      headers: { 'x-access-key': ACCESS_KEY, ...(body ? { 'content-type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('서버에 연결할 수 없습니다. 인터넷이 되는 곳에서 다시 해 주세요.');
+  }
+  if (res.status === 401) throw new Error('접근키를 확인하세요.');
+  if (!res.ok) {
+    const b = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(b?.error ?? `저장하지 못했습니다 (${res.status}).`);
+  }
+}
+
+const enc = encodeURIComponent;
+/** 서버에 올라간 사진 한 장 지우기 */
+export function deleteShotPhoto(projectId: string, shotId: string, photoId: string): Promise<void> {
+  return shotCall(`${enc(projectId)}/shots/${enc(shotId)}/photos/${enc(photoId)}`, 'DELETE');
+}
+/** 대표 사진으로 */
+export function setPrimaryShotPhoto(projectId: string, shotId: string, photoId: string): Promise<void> {
+  return shotCall(`${enc(projectId)}/shots/${enc(shotId)}/photos/${enc(photoId)}`, 'PATCH', { primary: true });
+}
+/** 이 사진을 이 항목의 예시로(같은 시설물 종류의 모든 구조물에 보인다) */
+export function setShotExample(projectId: string, shotId: string, photoId: string): Promise<void> {
+  return shotCall(`${enc(projectId)}/shots/${enc(shotId)}/photos/${enc(photoId)}/example`, 'POST');
+}
+/** 이 항목의 예시 빼기 */
+export function removeShotExample(projectId: string, shotId: string): Promise<void> {
+  return shotCall(`${enc(projectId)}/shots/${enc(shotId)}/example`, 'DELETE');
 }
 
 // 구조물(하위 프로젝트) 추가. 응답은 트리 계산을 거친 Project 하나.

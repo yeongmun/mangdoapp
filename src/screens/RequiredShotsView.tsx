@@ -5,7 +5,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import type { Project, Shot } from '../api';
+import { exampleSource, type Project, type Shot } from '../api';
+import { ShotPhotosModal } from '../components/ShotPhotosModal';
 import { ShotTile } from '../components/ShotCard';
 import { AllDoneCard, NextShotButton, ShotProgressCard, TakenHeader } from '../components/ShotProgress';
 import { useCelebrate } from '../useCelebrate';
@@ -28,11 +29,15 @@ interface Props {
 }
 
 export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, onEditInfo, onSaveOptional }: Props) {
-  const { state, error, busyId, isTaken, takenThumb, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates } = useShots(project, onPhotoQueued);
+  const { state, error, busyId, isTaken, photoCount, takenThumb, photoItems, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates, deletePhoto, makePrimary, setExample } = useShots(project, onPhotoQueued);
+  // 찍은 칸을 누르면 그 칸의 사진 보기(한 칸 여러 장·대표·예시, 2026-11-05). [한 장 더]는 그 칸에 계속 찍는 카메라
+  const [viewShotId, setViewShotId] = useState<string | null>(null);
+  const [stayCamera, setStayCamera] = useState(false);
   const [takenOpen, setTakenOpen] = useState(false);
   const [optionalOpen, setOptionalOpen] = useState(false);
   const [savingOptional, setSavingOptional] = useState(false);
   const choices = state.list?.optionalChoices ?? [];
+  const viewShot = viewShotId ? (state.list?.shots ?? []).find((x) => x.id === viewShotId) ?? null : null;
   const chosenCount = choices.filter((c) => c.chosen).length;
 
   const required = useMemo(() => (state.list?.shots ?? []).filter((s) => s.kind === 'required'), [state.list]);
@@ -130,8 +135,11 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, o
                     taken={isTaken(shot)}
                     thumb={takenThumb(shot)}
                     upload={uploadStates.get(shot.id)}
+                    count={photoCount(shot)}
+                    hasExample={!!shot.exampleUrl}
                     disabled={busyId !== null}
-                    onPress={() => shoot(shot)}
+                    onPress={() => (isTaken(shot) ? setViewShotId(shot.id) : shoot(shot))}
+                    onLongPress={() => isTaken(shot) && setViewShotId(shot.id)}
                   />
                 </View>
               ))}
@@ -142,6 +150,27 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, o
         contentContainerStyle={styles.list}
       />
       <NextShotButton nextLabel={next ? `${next.member} ${next.label}` : null} disabled={busyId !== null} onPress={() => next && shoot(next)} />
+      {viewShot ? (
+        <ShotPhotosModal
+          shot={viewShot}
+          photos={photoItems(viewShot)}
+          canSetExample={viewShot.kind === 'required' && !!viewShot.templateKey}
+          onClose={() => setViewShotId(null)}
+          onShootMore={() => {
+            setViewShotId(null);
+            setStayCamera(true);
+            shoot(viewShot);
+          }}
+          onDelete={async (item) => {
+            const ok = await deletePhoto(viewShot, item);
+            // 마지막 장을 지웠으면 닫는다
+            if (ok && photoItems(viewShot).length <= 1) setViewShotId(null);
+            return ok;
+          }}
+          onMakePrimary={(photoId) => makePrimary(viewShot, photoId)}
+          onSetExample={(photoId) => setExample(viewShot, photoId)}
+        />
+      ) : null}
       {onSaveOptional ? (
         <OptionalShotsSheet
           visible={optionalOpen}
@@ -167,8 +196,14 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, o
           isTaken={isTaken}
           takenThumb={takenThumb}
           uploadStates={uploadStates}
+          exampleSource={(s) => exampleSource(s, false)}
+          photoCount={photoCount}
+          initialStay={stayCamera}
           onCapture={(s, r, inCamera) => commitPhoto(s, r, inCamera)}
-          onClose={closeCamera}
+          onClose={() => {
+            setStayCamera(false);
+            closeCamera();
+          }}
         />
       )}
     </View>

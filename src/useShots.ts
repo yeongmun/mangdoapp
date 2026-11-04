@@ -1,13 +1,13 @@
 // [필수 사진]·[전차 사진] 탭이 함께 쓰는 상태·촬영 로직(2026-10-24). 화면은 보여 주기만 하고, 서버 목록 받기,
 // 기기 저장(shotsLocal), 촬영 → 대기열(photoUpload) → 즉시 ✓ 표시, 서버와 맞추기(shotsRules.reconcileLocal)는 여기서.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, LayoutAnimation } from 'react-native';
-import { fetchShots, shotThumbSource, type Project, type Shot, type ShotList } from './api';
+import { deleteShotPhoto, fetchShots, removeShotExample, setPrimaryShotPhoto, setShotExample, shotPhotoItemSource, shotThumbSource, type Project, type Shot, type ShotList } from './api';
 import type { PhotoResult } from './photo';
 import { recordStructureLocation } from './structureLocation';
-import { enqueuePhoto, flushPhotoQueue, queuedShotIds, removeQueuedPhoto, shotUploadStates } from './photoUpload';
+import { enqueuePhoto, flushPhotoQueue, pendingPhotoItems, queuedShotIds, queuedShotPhotoIds, removeQueuedPhoto, shotUploadStates } from './photoUpload';
 import { useUploadStatus } from './useUploadStatus';
-import { reconcileLocal } from './shotsRules';
+import { newPhotoId, photoCountOf, reconcileLocal, type LocalEntry } from './shotsRules';
 import { readShotsLocal, writeShotsLocal, type LocalShotState } from './shotsLocal';
 import { useToast } from './components/Toast';
 
@@ -15,6 +15,18 @@ import { useToast } from './components/Toast';
 export function fileNameFor(projectName: string, shot: Shot): string {
   const safe = (t: string) => t.trim().replace(/[\\/:*?"<>|]/g, '_');
   return `${safe(projectName)}_${safe(shot.member)}_${shot.number}.jpg`;
+}
+
+/** 크게 보기의 사진 한 장(서버 사진 또는 아직 안 올라간 기기 사본) */
+export interface ShotPhotoView {
+  key: string;
+  photoId?: string;
+  localUri?: string;
+  source: { uri: string; headers?: Record<string, string> };
+  thumb: { uri: string; headers?: Record<string, string> };
+  at: number;
+  onServer: boolean;
+  primary: boolean;
 }
 
 /** 찍은 뒤 이만큼은 서버로 보내지 않고 「되돌리기」를 받는다(구글 Tasks 「실행취소」 레퍼런스, 2026-11-02) */
@@ -33,9 +45,10 @@ export function useShots(project: Project, onPhotoQueued?: () => void) {
 
   const refresh = useCallback(async () => {
     try {
+      // 대기열은 요청 **전에** 읽는다 — 요청 중에 올라간 사진이 「대기열에도 서버 목록에도 없음」으로 지워지지 않게(리뷰 5)
+      const queued = { shotIds: queuedShotIds(), photoIds: queuedShotPhotoIds() };
       const list: ShotList = await fetchShots(project.id);
       // 서버에 올라간 사진은 서버 썸네일로, 버려진 전송은 ✓를 내린다
-      const queued = queuedShotIds();
       setState((prev) => {
         const next = { ...prev, list, fetchedAt: Date.now(), local: reconcileLocal(prev.local, list.shots, queued) };
         writeShotsLocal(project.id, next);
@@ -62,14 +75,55 @@ export function useShots(project: Project, onPhotoQueued?: () => void) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [upload.version],
   );
+  // 이 구조물 사진이 대기열에서 빠지면(올라감) 서버 목록을 다시 받는다 — 기기 사본이 지워졌으니 서버 사진으로 바꿔 보여 준다(리뷰 4)
+  const pendingHere = useMemo(
+    () => pendingPhotoItems().filter((x) => x.target?.projectId === project.id).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [upload.version, project.id],
+  );
+  const lastPending = useRef(pendingHere);
+  useEffect(() => {
+    if (pendingHere < lastPending.current) void refresh();
+    lastPending.current = pendingHere;
+  }, [pendingHere, refresh]);
 
-  const isTaken = useCallback((shot: Shot) => state.local[shot.id] !== undefined || shot.photo !== undefined, [state.local]);
+  const isTaken = useCallback((shot: Shot) => (state.local[shot.id]?.length ?? 0) > 0 || shot.photo !== undefined, [state.local]);
 
-  /** 찍은 사진 썸네일: 서버에 사진이 있으면 서버 것(기기 사본은 업로드 뒤 지워진다), 아니면 기기 사본 */
+  /** 칸의 사진 수(서버 + 아직 안 올라간 기기 사본) — 2장 이상이면 칸에 「N장」 */
+  const photoCount = useCallback((shot: Shot) => photoCountOf(shot, state.local[shot.id]), [state.local]);
+
+  /** 대표 썸네일: 서버에 사진이 있으면 서버 대표, 아니면 가장 최근 기기 사본 */
   const takenThumb = useCallback(
     (shot: Shot) => {
-      const local = state.local[shot.id];
-      return shot.photo ? shotThumbSource(shot) : local ? { uri: local.uri } : null;
+      const local = state.local[shot.id] ?? [];
+      // 서버도 먼저 올라간 사진을 대표로 삼으므로 기기 사본도 첫 장을 보인다(올라간 뒤 썸네일이 바뀌지 않게)
+      return shot.photo ? shotThumbSource(shot) : local.length > 0 ? { uri: local[0].uri } : null;
+    },
+    [state.local],
+  );
+
+  /** 크게 보기에 넘길 사진 목록: 서버 사진(대표 먼저) + 아직 안 올라간 기기 사본 */
+  const photoItems = useCallback(
+    (shot: Shot): ShotPhotoView[] => {
+      const server: ShotPhotoView[] = (shot.photos ?? []).map((p, i) => ({
+        key: `s-${p.id}`,
+        photoId: p.id,
+        source: shotPhotoItemSource(p, false),
+        thumb: shotPhotoItemSource(p, true),
+        at: Date.parse(p.savedAt) || 0,
+        onServer: true,
+        primary: i === 0,
+      }));
+      const ids = new Set((shot.photos ?? []).map((p) => p.id));
+      // 옛 서버(photos 없이 photo만)는 대표 한 장으로
+      if (server.length === 0 && shot.photo && shot.url) {
+        const src = shotThumbSource(shot);
+        server.push({ key: 's-p0', photoId: 'p0', source: { uri: src!.uri.replace('/thumb?', '?'), headers: src!.headers }, thumb: src!, at: Date.parse(shot.photo.savedAt) || 0, onServer: true, primary: true });
+      }
+      const local: ShotPhotoView[] = (state.local[shot.id] ?? [])
+        .filter((e) => !e.photoId || !ids.has(e.photoId))
+        .map((e) => ({ key: `l-${e.photoId ?? e.uri}`, photoId: e.photoId, localUri: e.uri, source: { uri: e.uri }, thumb: { uri: e.uri }, at: e.takenAt, onServer: false, primary: server.length === 0 && e === (state.local[shot.id] ?? [])[0] }));
+      return [...server, ...local];
     },
     [state.local],
   );
@@ -96,23 +150,25 @@ export function useShots(project: Project, onPhotoQueued?: () => void) {
           return null;
         }
         const projectName = state.list?.projectName ?? project.name;
+        // 사진마다 기기가 id를 만든다 — 같은 칸을 또 찍으면 덮어쓰지 않고 한 장 더(2026-11-05)
+        const photoId = newPhotoId(Date.now(), Math.random());
         const queued = enqueuePhoto({
           drawingId: '',
           damageId: '',
           filename: fileNameFor(projectName, shot),
           uploadUri: result.uploadUri,
-          target: { kind: 'shot', projectId: project.id, shotId: shot.id },
+          target: { kind: 'shot', projectId: project.id, shotId: shot.id, photoId },
           holdMs: UNDO_MS,
         });
         if (!queued) {
           Alert.alert('사진', '앨범에는 저장됐지만 전송 대기열에 넣지 못했습니다.');
           return null;
         }
-        let before: LocalShotState['local'][string] | undefined;
-        animateMove();
+        const entry: LocalEntry = { uri: result.uploadUri, takenAt: Date.now(), photoId };
+        const wasTaken = isTaken(shot);
+        if (!wasTaken) animateMove();
         setState((prev) => {
-          before = prev.local[shot.id];
-          const next = { ...prev, local: { ...prev.local, [shot.id]: { uri: result.uploadUri!, takenAt: Date.now() } } };
+          const next = { ...prev, local: { ...prev.local, [shot.id]: [...(prev.local[shot.id] ?? []), entry] } };
           writeShotsLocal(project.id, next);
           return next;
         });
@@ -122,22 +178,21 @@ export function useShots(project: Project, onPhotoQueued?: () => void) {
         const undo = (): boolean => {
           // 아직 안 보낸 사진만 뺄 수 있다(UNDO_MS 동안은 보내지 않는다). 앨범 사본은 남는다
           if (!removeQueuedPhoto(queued.id)) {
-            if (!inCamera) toast('이미 올리기 시작해서 되돌릴 수 없어요 · 다시 찍으면 바뀌어요');
+            if (!inCamera) toast('이미 올리기 시작해서 되돌릴 수 없어요 · 찍은 칸을 눌러 이 사진을 지울 수 있어요');
             return false;
           }
           // 구조물 화면을 벗어났어도 맞도록 기기 파일을 직접 고친다(화면이 없으면 setState는 안 돈다)
+          const without = (l: LocalShotState['local']) => {
+            const rest = (l[shot.id] ?? []).filter((e) => e.photoId !== photoId);
+            const out = { ...l };
+            if (rest.length > 0) out[shot.id] = rest;
+            else delete out[shot.id];
+            return out;
+          };
           const disk = readShotsLocal(project.id);
-          const local = { ...disk.local };
-          if (before) local[shot.id] = before;
-          else delete local[shot.id];
-          writeShotsLocal(project.id, { ...disk, local });
-          animateMove();
-          setState((prev) => {
-            const l = { ...prev.local };
-            if (before) l[shot.id] = before;
-            else delete l[shot.id];
-            return { ...prev, local: l };
-          });
+          writeShotsLocal(project.id, { ...disk, local: without(disk.local) });
+          if (!wasTaken) animateMove();
+          setState((prev) => ({ ...prev, local: without(prev.local) }));
           onPhotoQueued?.();
           return true;
         };
@@ -155,8 +210,68 @@ export function useShots(project: Project, onPhotoQueued?: () => void) {
         setBusyId(null);
       }
     },
-    [project.id, project.name, state.list?.projectName, onPhotoQueued, toast],
+    [project.id, project.name, state.list?.projectName, onPhotoQueued, toast, isTaken],
   );
 
-  return { state, setState, error, busyId, refresh, isTaken, takenThumb, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates };
+  /** 크게 보기에서 한 장 지우기: 서버 사진은 서버에서, 안 올라간 사본은 대기열에서 뺀다 */
+  const deletePhoto = useCallback(
+    async (shot: Shot, item: ShotPhotoView): Promise<boolean> => {
+      try {
+        if (item.onServer && item.photoId) {
+          await deleteShotPhoto(project.id, shot.id, item.photoId);
+        } else {
+          const q = pendingPhotoItems().find((x) => x.target?.shotId === shot.id && (item.photoId ? x.target?.photoId === item.photoId : x.uri === item.localUri));
+          if (q && !removeQueuedPhoto(q.id)) {
+            toast('지금 올리는 중이에요 · 올라간 뒤 다시 지워 주세요');
+            return false;
+          }
+          setState((prev) => {
+            const rest = (prev.local[shot.id] ?? []).filter((e) => (item.photoId ? e.photoId !== item.photoId : e.uri !== item.localUri));
+            const local = { ...prev.local };
+            if (rest.length > 0) local[shot.id] = rest;
+            else delete local[shot.id];
+            const next = { ...prev, local };
+            writeShotsLocal(project.id, next);
+            return next;
+          });
+          onPhotoQueued?.();
+        }
+        await refresh();
+        return true;
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e));
+        return false;
+      }
+    },
+    [project.id, refresh, toast, onPhotoQueued],
+  );
+
+  const makePrimary = useCallback(
+    async (shot: Shot, photoId: string): Promise<void> => {
+      try {
+        await setPrimaryShotPhoto(project.id, shot.id, photoId);
+        await refresh();
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [project.id, refresh, toast],
+  );
+
+  /** 예시로 지정(on) 또는 빼기(off) — 같은 시설물 종류의 모든 구조물 같은 칸에 보인다 */
+  const setExample = useCallback(
+    async (shot: Shot, photoId: string | null): Promise<void> => {
+      try {
+        if (photoId) await setShotExample(project.id, shot.id, photoId);
+        else await removeShotExample(project.id, shot.id);
+        toast(photoId ? '예시 사진으로 정했어요 · 다른 구조물에도 보여요' : '예시 사진을 뺐어요');
+        await refresh();
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [project.id, refresh, toast],
+  );
+
+  return { state, setState, error, busyId, refresh, isTaken, photoCount, takenThumb, photoItems, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates, deletePhoto, makePrimary, setExample };
 }

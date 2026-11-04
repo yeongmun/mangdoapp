@@ -2,6 +2,7 @@
 // 보고서 페이지(group)별 큰 카드로 보여 준다. 카드 아래 버튼은 바로 카메라, 위 보고서 사진을 누르면 「사진 한 장」
 // 화면(ShotDetailModal)에서 크게 보고 넘기며 찍는다. 필요 없는 페이지는 「휴지통으로」 — 서버에
 // trashed 표시만 하므로 「휴지통 보기」에서 「복구」할 수 있다. 참조 이미지는 온라인일 때 기기에 내려받아 둔다.
+import { ShotPhotosModal } from '../components/ShotPhotosModal';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
@@ -24,11 +25,15 @@ interface Props {
 }
 
 export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }: Props) {
-  const { state, setState, error, busyId, refresh, isTaken, takenThumb, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates } = useShots(project, onPhotoQueued);
+  const { state, setState, error, busyId, refresh, isTaken, photoCount, takenThumb, photoItems, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates, deletePhoto, makePrimary, setExample } = useShots(project, onPhotoQueued);
+  // 찍은 카드 「찍은 사진 N장 · 보기」 → 그 칸의 사진 보기(한 칸 여러 장, 2026-11-05)
+  const [viewShotId, setViewShotId] = useState<string | null>(null);
+  const [stayCamera, setStayCamera] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [takenOpen, setTakenOpen] = useState(false);
   const [changingGroup, setChangingGroup] = useState<string | null>(null);
 
+  const viewShot = viewShotId ? (state.list?.shots ?? []).find((x) => x.id === viewShotId) ?? null : null;
   const previous = useMemo(() => (state.list?.shots ?? []).filter((s) => s.kind === 'previous'), [state.list]);
   const visible = useMemo(() => previous.filter((s) => (s.trashed === true) === showTrash), [previous, showTrash]);
   const trashedCount = previous.filter((s) => s.trashed === true).length;
@@ -221,6 +226,8 @@ export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }:
             thumb={takenThumb(shot)}
             refThumb={thumbOf(shot)}
             upload={uploadStates.get(shot.id)}
+            count={photoCount(shot)}
+            onLongPress={() => setViewShotId(shot.id)}
             disabled={busyId !== null || showTrash}
             onPress={() => shoot(shot)}
             onPressImage={() => {
@@ -256,10 +263,35 @@ export function PreviousShotsView({ project, onPhotoQueued, autoShoot = false }:
           refSource={(s) => (state.refs[s.id] ? { uri: state.refs[s.id] } : shotRefRequest(s) ?? thumbOf(s))}
           refThumbSource={thumbOf}
           uploadStates={uploadStates}
+          photoCount={photoCount}
+          initialStay={stayCamera}
           onCapture={(s, r, inCamera) => commitPhoto(s, r, inCamera)}
-          onClose={closeCamera}
+          onClose={() => {
+            setStayCamera(false);
+            closeCamera();
+          }}
         />
       )}
+      {viewShot ? (
+        <ShotPhotosModal
+          shot={viewShot}
+          photos={photoItems(viewShot)}
+          canSetExample={false}
+          onClose={() => setViewShotId(null)}
+          onShootMore={() => {
+            setViewShotId(null);
+            setStayCamera(true);
+            shoot(viewShot);
+          }}
+          onDelete={async (item) => {
+            const ok = await deletePhoto(viewShot, item);
+            if (ok && photoItems(viewShot).length <= 1) setViewShotId(null);
+            return ok;
+          }}
+          onMakePrimary={(photoId) => makePrimary(viewShot, photoId)}
+          onSetExample={(photoId) => setExample(viewShot, photoId)}
+        />
+      ) : null}
     </View>
   );
 }

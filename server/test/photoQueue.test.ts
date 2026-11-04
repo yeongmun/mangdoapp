@@ -142,7 +142,10 @@ describe('parseQueue', () => {
   // 촬영 항목(필수 사진) 대상. 2026-10-24 설계 결정 4 — 손상 사진과 같은 대기열을 쓴다
   it('target(shot)을 보존하고, 없으면 키가 없다', () => {
     const shot = item('s', { drawingId: '', damageId: '', target: { kind: 'shot', projectId: 'p_1', shotId: 's_1' } });
-    expect(parseQueue([shot])[0].target).toEqual({ kind: 'shot', projectId: 'p_1', shotId: 's_1' });
+    // 11-05 이전 항목(사진 id 없음)은 대기열 id로 고정 사진 id를 받는다 — 서버에서 대표를 덮어쓰지 않고 한 장 더로
+    expect(parseQueue([shot])[0].target).toEqual({ kind: 'shot', projectId: 'p_1', shotId: 's_1', photoId: 'q_s' });
+    const withId = item('t', { drawingId: '', damageId: '', target: { kind: 'shot', projectId: 'p_1', shotId: 's_1', photoId: 'ph_x' } });
+    expect(parseQueue([withId])[0].target?.photoId).toBe('ph_x');
     expect('target' in parseQueue([item('a')])[0]).toBe(false);
     // 모양이 깨진 target은 버린다(항목 자체는 남김)
     expect('target' in parseQueue([item('b', { target: { kind: 'shot' } as never })])[0]).toBe(false);

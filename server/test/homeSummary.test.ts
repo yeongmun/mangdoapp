@@ -12,7 +12,7 @@ const cache = (shots: ReturnType<typeof shot>[] | null, local: ShotCache['local'
 describe('photoProgress', () => {
   it('구조물들의 찍은 수/전체 수. 휴지통 항목은 빼고, 기기 사본만 있어도 찍음', () => {
     const a = cache([shot('1', { photo: { savedAt: 'x' } }), shot('2'), shot('3', { trashed: true, photo: { savedAt: 'x' } })]);
-    const b = cache([shot('4')], { '4': { uri: 'file:///4.jpg', takenAt: 5 } });
+    const b = cache([shot('4')], { '4': [{ uri: 'file:///4.jpg', takenAt: 5 }] });
     expect(photoProgress([a, b])).toEqual({ taken: 2, total: 3 });
   });
   it('전차 사진이 있는 구조물은 전차 사진만 센다(그것만 찍어도 된다)', () => {
@@ -46,7 +46,7 @@ describe('recentPhotos', () => {
   it('기기 사본(takenAt)·서버 사진(savedAt)을 시간 역순으로, limit개', () => {
     const a = cache(
       [shot('1', { photo: { savedAt: '2026-10-25T01:00:00.000Z' } }), shot('2'), shot('3', { trashed: true, photo: { savedAt: '2026-10-25T09:00:00.000Z' } })],
-      { '2': { uri: 'file:///2.jpg', takenAt: Date.parse('2026-10-25T02:00:00.000Z') } },
+      { '2': [{ uri: 'file:///2.jpg', takenAt: Date.parse('2026-10-25T02:00:00.000Z') }] },
     );
     const b = cache([shot('4', { photo: { savedAt: '2026-10-25T03:00:00.000Z' } })]);
     const out = recentPhotos(
@@ -85,7 +85,7 @@ describe('nextShot (이어서 찍기·다음 사진 찍기)', () => {
     const { nextShot } = await import('../../src/homeSummary.js');
     expect(nextShot(cache([shot('1', { photo: { savedAt: 'x' } }), shot('2', { label: 'A2' })]))?.id).toBe('2');
     expect(nextShot(cache([shot('1'), shot('2', { kind: 'previous' })]))?.id).toBe('2');
-    expect(nextShot(cache([shot('1')], { '1': { uri: 'f', takenAt: 1 } }))).toBeNull();
+    expect(nextShot(cache([shot('1')], { '1': [{ uri: 'f', takenAt: 1 }] }))).toBeNull();
     expect(nextShot(cache(null))).toBeNull();
   });
   it('kind를 주면 그 종류에서만 고른다(탭별 다음 사진)', async () => {

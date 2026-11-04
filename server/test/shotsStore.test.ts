@@ -124,10 +124,10 @@ describe('ShotsStore', () => {
     ]);
     expect(await readFile(store.photoPathOf('p_1', again!.photo), 'utf8')).toBe('b2');
     expect(shot.photo?.file).toBe('001.jpg');
-    expect(shotFileName('A교', shot, photosOf(shot)[1])).toBe('A교_전경_001-2.jpg');
-    expect(shotFileName('A교', shot, photosOf(shot)[0])).toBe('A교_전경_001.jpg');
+    expect(shotFileName('A교', shot, 1)).toBe('A교_전경_001-2.jpg');
+    expect(shotFileName('A교', shot, 0)).toBe('A교_전경_001.jpg');
     shot = (await store.setPrimaryPhoto('p_1', 's0', 'ph_c'))!;
-    expect(shot.photo?.file).toBe('001-3.png');
+    expect(shot.photo?.file).toBe('001-3.png'); // 대표가 바뀌면 zip에선 이 사진이 _001.jpg(순서 기준)
     shot = (await store.deletePhoto('p_1', 's0', 'ph_c'))!;
     expect(photosOf(shot).map((p) => p.id)).toEqual(['ph_a', 'ph_b']);
     expect(shot.photo?.file).toBe('001.jpg');

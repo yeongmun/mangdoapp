@@ -110,7 +110,7 @@ export function ShotDetailModal({ shots, startIndex, projectName, refSource, tak
             style={styles.shoot}
           >
             <Feather name="camera" size={20} color={colors.onPrimary} />
-            <Text style={styles.shootText}>{taken ? '다시 찍기' : '사진 찍기'}</Text>
+            <Text style={styles.shootText}>{taken ? '한 장 더 찍기' : '사진 찍기'}</Text>
           </PressScale>
         </View>
       </View>

@@ -17,7 +17,8 @@ export interface CachedShot {
 
 export interface ShotCache {
   list: { shots: CachedShot[] } | null;
-  local: Record<string, { uri: string; takenAt: number }>;
+  /** 칸마다 아직 서버에 없는 기기 사본들(한 칸 여러 장, 2026-11-05) */
+  local: Record<string, { uri: string; takenAt: number }[]>;
 }
 
 function active(cache: ShotCache): CachedShot[] {
@@ -32,7 +33,7 @@ function toShoot(cache: ShotCache): CachedShot[] {
 }
 
 function isTaken(cache: ShotCache, shot: CachedShot): boolean {
-  return shot.photo !== undefined || cache.local[shot.id] !== undefined;
+  return shot.photo !== undefined || (cache.local[shot.id]?.length ?? 0) > 0;
 }
 
 /** 구조물들의 찍은 수/전체 수(휴지통 제외, toShoot 기준). 하나도 목록을 못 받았으면 null */
@@ -79,7 +80,8 @@ export function recentPhotos(items: { projectId: string; projectName: string; ca
   const out: RecentPhoto[] = [];
   for (const { projectId, projectName, cache } of items) {
     for (const shot of active(cache)) {
-      const local = cache.local[shot.id];
+      const all = cache.local[shot.id] ?? [];
+      const local = all[all.length - 1];
       if (local) out.push({ projectId, projectName, shot, at: local.takenAt, localUri: local.uri });
       else if (shot.photo) out.push({ projectId, projectName, shot, at: Date.parse(shot.photo.savedAt) || 0 });
     }

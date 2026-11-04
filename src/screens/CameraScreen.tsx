@@ -31,6 +31,12 @@ interface Props {
   /** 전차 사진의 작은 보고서 사진 — 항목 줄(수십 장을 한 번에 그리므로 원본을 쓰면 메모리가 모자란다) */
   refThumbSource?: (shot: Shot) => Source;
   uploadStates: Map<string, ShotUploadState>;
+  /** 필수 사진의 예시 사진(시설물·항목마다 한 장, 2026-11-05) — 오른쪽 위 작은 창, 누르면 겹쳐 보기 */
+  exampleSource?: (shot: Shot) => Source;
+  /** 칸의 사진 수(한 칸 여러 장) — 위에 「N장」 */
+  photoCount?: (shot: Shot) => number;
+  /** 「한 장 더」를 켠 채로 연다(칸 사진 보기의 [한 장 더]) */
+  initialStay?: boolean;
   /** 찍힌 사진을 항목에 붙인다. 되돌리기 함수를 돌려준다(실패면 null) */
   /** inCamera=false면(찍는 사이 카메라가 닫힘) 바깥 토스트로 알린다 */
   onCapture: (shot: Shot, result: PhotoResult, inCamera: boolean) => { undo: () => boolean } | null;
@@ -75,7 +81,9 @@ function StripItem({ item, i, current, done, thumb, onPress }: { item: Shot; i: 
   );
 }
 
-export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, refSource, refThumbSource, uploadStates, onCapture, onClose }: Props) {
+export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, refSource, refThumbSource, uploadStates, exampleSource, photoCount, initialStay = false, onCapture, onClose }: Props) {
+  // 「한 장 더」: 켜 두면 찍어도 다음 칸으로 넘어가지 않고 같은 칸에 계속 찍는다(2026-11-05)
+  const [stay, setStay] = useState(initialStay);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const reduce = useReduceMotion();
@@ -155,6 +163,7 @@ export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, re
       setLastUri(result.uploadUri ?? pic.uri);
       const target = shot;
       showUndo(`${target.member} · ${target.label} 찍었어요`, committed.undo);
+      if (stay) return; // 같은 칸에 한 장 더
       // 다음 안 찍은 항목으로(지금 칸 뒤에서 먼저 찾고, 없으면 앞에서). 없으면 그대로
       const after = shots.findIndex((s, i) => i > index && !isTaken(s) && s.id !== target.id);
       const before = shots.findIndex((s) => !isTaken(s) && s.id !== target.id);
@@ -176,9 +185,10 @@ export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, re
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [shot, busy, ready, reduce, flashAnim, nextHint, onCapture, shots, index, isTaken]);
+  }, [shot, busy, ready, reduce, flashAnim, nextHint, onCapture, shots, index, isTaken, stay]);
 
-  const refOf = useCallback((s: Shot) => (refSource ? refSource(s) : null), [refSource]);
+  // 전차 사진은 보고서 사진, 필수 사진은 예시 사진을 겹쳐 본다
+  const refOf = useCallback((s: Shot) => (refSource ? refSource(s) : exampleSource ? exampleSource(s) : null), [refSource, exampleSource]);
   const refThumbOf = useCallback((s: Shot) => (refThumbSource ? refThumbSource(s) : refSource ? refSource(s) : null), [refThumbSource, refSource]);
   const previewH = Math.round(width * 1.25);
   const nextShot = shots[Math.min(index + 1, shots.length - 1)];
@@ -205,6 +215,7 @@ export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, re
             </Text>
             <Text style={styles.sub} numberOfLines={1}>
               {mode === 'previous' ? `전차 사진${shot.group ? ` · ${shot.group.replace(/^r\d+_pg_0*/, '페이지 ')}` : ''}` : '필수 사진'} · No. {shot.number}
+              {photoCount && photoCount(shot) > 1 ? ` · ${photoCount(shot)}장` : ''}
               {isTaken(shot) ? '  ·  찍음' : ''}
             </Text>
           </View>
@@ -227,7 +238,7 @@ export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, re
             </View>
           )}
           {/* 전차 사진 겹쳐 보기 */}
-          {mode === 'previous' && OVERLAY_LEVELS[overlay] > 0 && refOf(shot) ? (
+          {OVERLAY_LEVELS[overlay] > 0 && refOf(shot) ? (
             <Image source={refOf(shot)!} style={[StyleSheet.absoluteFill, { opacity: OVERLAY_LEVELS[overlay] }]} resizeMode="contain" pointerEvents="none" />
           ) : null}
           {/* 격자 */}
@@ -250,6 +261,29 @@ export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, re
               <Text style={styles.refMiniLabel}>보고서</Text>
             </View>
           ) : null}
+          {mode === 'required' && refOf(shot) ? (
+            // 예시 사진: 누르면 끔 → 연하게 → 진하게 겹쳐 보기
+            <Pressable
+              onPress={() => setOverlay((v) => (v + 1) % OVERLAY_LEVELS.length)}
+              accessibilityRole="button"
+              accessibilityLabel={`예시 사진, 겹쳐 보기 ${['끔', '연하게', '진하게'][overlay]}, 누르면 바꿈`}
+              style={styles.refMini}
+            >
+              <Image source={refOf(shot)!} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              <Text style={styles.refMiniLabel}>예시{overlay > 0 ? ' · 겹침' : ''}</Text>
+            </Pressable>
+          ) : null}
+          {/* 한 장 더: 켜면 이 칸에 계속 찍는다 */}
+          <Pressable
+            onPress={() => setStay((v) => !v)}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: stay }}
+            accessibilityLabel="이 칸에 한 장 더 찍기"
+            style={[styles.stayBtn, stay && styles.stayBtnOn]}
+          >
+            <Feather name={stay ? 'repeat' : 'plus'} size={15} color={stay ? '#191f28' : '#ffffff'} />
+            <Text style={[styles.stayText, stay && styles.stayTextOn]}>{stay ? '이 칸에 계속' : '한 장 더'}</Text>
+          </Pressable>
           {/* ‹ › */}
           <Pressable
             onPress={() => go(-1)}
@@ -331,7 +365,7 @@ export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, re
                 setUndo(null);
                 if (ok) setLastUri(null);
                 else {
-                  setUndoNote('이미 올리기 시작해서 되돌릴 수 없어요 · 다시 찍으면 바뀌어요');
+                  setUndoNote('이미 올리기 시작했어요 · 나중에 찍은 칸을 눌러 지울 수 있어요');
                   undoTimer.current = setTimeout(() => setUndoNote(null), 2500);
                 }
               }}
@@ -353,7 +387,7 @@ export function CameraScreen({ shots, startShotId, mode, isTaken, takenThumb, re
             onPress={() => void capture()}
             disabled={busy || !ready || !permission?.granted}
             accessibilityRole="button"
-            accessibilityLabel={isTaken(shot) ? '다시 찍기' : '사진 찍기'}
+            accessibilityLabel={isTaken(shot) ? '이 칸에 한 장 더 찍기' : '사진 찍기'}
             style={({ pressed }) => [styles.shutter, pressed && { transform: [{ scale: 0.92 }] }, (busy || !ready) && { opacity: 0.6 }]}
           >
             {busy ? <ActivityIndicator color="#000000" /> : <View style={styles.shutterInner} />}
@@ -394,9 +428,13 @@ const styles = StyleSheet.create({
   refMini: { position: 'absolute', top: 12, right: 12, width: 92, height: 70, borderRadius: 12, borderWidth: 2, borderColor: '#ffffff', overflow: 'hidden', backgroundColor: '#555' },
   refMiniLabel: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 20, lineHeight: 20, textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.55)', fontFamily: font.bold, fontSize: 10.5, color: '#ffffff' },
   arrow: { position: 'absolute', top: '45%', width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  stayBtn: { position: 'absolute', right: 12, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.55)' },
+  stayBtnOn: { backgroundColor: '#ffffff' },
+  stayText: { fontFamily: font.bold, fontSize: 12.5, color: '#ffffff' },
+  stayTextOn: { color: '#191f28' },
   overlayBtn: { position: 'absolute', left: 12, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.55)' },
   overlayText: { fontFamily: font.bold, fontSize: 12.5, color: '#ffffff' },
-  uploadChip: { position: 'absolute', right: 12, bottom: 12, height: 28, lineHeight: 28, paddingHorizontal: 10, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.55)', fontFamily: font.semibold, fontSize: 12, color: '#ffffff' },
+  uploadChip: { position: 'absolute', right: 12, bottom: 56, height: 28, lineHeight: 28, paddingHorizontal: 10, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.55)', fontFamily: font.semibold, fontSize: 12, color: '#ffffff' },
   stripHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm },
   stripTitle: { fontFamily: font.bold, fontSize: 13, color: 'rgba(255,255,255,0.86)' },
   stripSub: { fontFamily: font.semibold, fontSize: 12.5, color: 'rgba(255,255,255,0.6)' },

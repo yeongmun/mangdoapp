@@ -47,22 +47,53 @@ interface TileProps {
   onPress: () => void;
   /** 대기열에 있으면 그 상태 */
   upload?: ShotUploadState;
+  /** 이 칸의 사진 수(한 칸 여러 장, 2026-11-05) — 2장 이상이면 「N장」 */
+  count?: number;
+  /** 이 항목에 예시 사진이 있으면 안 찍은 칸에 작은 「예시」 표시 */
+  hasExample?: boolean;
+  /** 길게 누르기 — 찍은 사진 보기·관리 */
+  onLongPress?: () => void;
 }
 
-export function ShotTile({ member, label, number, taken, thumb, disabled = false, onPress, upload }: TileProps) {
+/** 칸 사진 위 왼쪽 위 작은 표시: 「3장」 또는(안 찍었고 예시가 있으면) 「예시」 */
+function CornerChip({ taken, count, hasExample }: { taken: boolean; count?: number; hasExample?: boolean }) {
+  if (taken && (count ?? 0) > 1) {
+    return (
+      <View style={styles.countChip}>
+        <Feather name="layers" size={11} color="#ffffff" />
+        <Text style={styles.countText}>{count}장</Text>
+      </View>
+    );
+  }
+  if (!taken && hasExample) {
+    return (
+      <View style={styles.exampleChip}>
+        <Feather name="image" size={11} color={colors.primaryText} />
+        <Text style={styles.exampleText}>예시</Text>
+      </View>
+    );
+  }
+  return null;
+}
+
+export function ShotTile({ member, label, number, taken, thumb, disabled = false, onPress, upload, count, hasExample, onLongPress }: TileProps) {
   return (
     <PressScale
       accessibilityRole="button"
-      accessibilityLabel={`${member} ${label} ${taken ? '찍음, 다시 찍기' : '안 찍음, 찍기'}`}
+      accessibilityLabel={`${member} ${label} ${taken ? '찍음, 사진 보기' : '안 찍음, 찍기'}`}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
+      onLongPress={onLongPress}
       style={[styles.tile, disabled && styles.disabled]}
     >
       <View style={[styles.tilePhoto, !taken && styles.tilePhotoEmpty]}>
         {taken && thumb ? <ZoomImage source={thumb} style={StyleSheet.absoluteFill} /> : <Feather name="camera" size={26} color={colors.subtle} />}
         <View style={styles.checkCorner}>
           <Check taken={taken} />
+        </View>
+        <View style={styles.chipCorner}>
+          <CornerChip taken={taken} count={count} hasExample={hasExample} />
         </View>
         {taken && (
           <View style={styles.uploadCorner}>
@@ -89,7 +120,9 @@ interface PreviousProps extends TileProps {
   onPressImage: () => void;
 }
 
-export function PreviousShotCard({ member, label, number, taken, thumb, refThumb, caption, disabled = false, onPress, onPressImage, upload }: PreviousProps) {
+export function PreviousShotCard({ member, label, number, taken, thumb, refThumb, caption, disabled = false, onPress, onPressImage, upload, count, onLongPress }: PreviousProps) {
+  // 찍은 카드의 버튼은 「찍은 사진 N장」 — 누르면 그 칸의 사진 보기(한 장 더·지우기·대표, 2026-11-05)
+  const viewTaken = taken && onLongPress !== undefined;
   return (
     <View style={[styles.big, disabled && styles.disabled]}>
       <PressScale onPress={onPressImage} accessibilityRole="imagebutton" accessibilityLabel={`${caption ?? label} 보고서 사진 크게 보기`} to={0.98}>
@@ -122,13 +155,17 @@ export function PreviousShotCard({ member, label, number, taken, thumb, refThumb
         </Text>
       </View>
       <Pressable
-        onPress={onPress}
+        onPress={viewTaken ? onLongPress : onPress}
+        onLongPress={onLongPress}
         disabled={disabled}
         accessibilityRole="button"
         style={({ pressed }) => [styles.shootButton, taken ? styles.shootAgain : styles.shootFirst, pressed && styles.shootPressed]}
       >
         {!taken && <Feather name="camera" size={18} color={colors.primaryText} />}
-        <Text style={[styles.shootText, taken ? styles.shootTextAgain : styles.shootTextFirst]}>{taken ? '다시 찍기' : '같은 자리에서 찍기'}</Text>
+        {viewTaken && <Feather name="layers" size={17} color={colors.ink2} />}
+        <Text style={[styles.shootText, taken ? styles.shootTextAgain : styles.shootTextFirst]}>
+          {viewTaken ? `찍은 사진 ${count ?? 1}장 · 보기` : taken ? '한 장 더 찍기' : '같은 자리에서 찍기'}
+        </Text>
       </Pressable>
     </View>
   );
@@ -143,6 +180,11 @@ const styles = StyleSheet.create({
   tilePhoto: { height: 104, borderRadius: 16, overflow: 'hidden', backgroundColor: '#c9d2dc', alignItems: 'center', justifyContent: 'center' },
   tilePhotoEmpty: { backgroundColor: colors.muted },
   checkCorner: { position: 'absolute', top: 8, right: 8 },
+  chipCorner: { position: 'absolute', top: 8, left: 8 },
+  countChip: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 22, paddingHorizontal: 7, borderRadius: 11, backgroundColor: colors.photoChip },
+  countText: { fontFamily: font.bold, fontSize: 11.5, color: '#ffffff' },
+  exampleChip: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 22, paddingHorizontal: 7, borderRadius: 11, backgroundColor: colors.primarySoft },
+  exampleText: { fontFamily: font.bold, fontSize: 11.5, color: colors.primaryText },
   uploadCorner: { position: 'absolute', left: 8, bottom: 8 },
   upload: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 22, paddingHorizontal: 8, borderRadius: 11, backgroundColor: colors.photoChip },
   uploadFailed: { backgroundColor: colors.destructive },
