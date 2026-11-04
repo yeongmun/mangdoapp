@@ -31,6 +31,10 @@ export interface InfoField {
   summary?: boolean;
   /** 이 조건이 맞을 때만 보이는 칸(예: 직립부 형식은 구조형식이 직립제·혼성제일 때만). 안 보이는 칸은 해당 없음으로 본다 */
   showWhen?: Record<string, unknown>;
+  /** 이 점검 종류에서만 보이는 칸(예: 재료시험 수량에만 쓰는 연장은 정밀점검·진단만). 촬영 항목의 levels와 같은 뜻 */
+  levels?: string[];
+  /** 점검 종류별 추가 조건(예: 정기안전점검은 제3종만 → { "정기안전점검": { "facilityClass": "3" } }) */
+  levelWhen?: Record<string, Record<string, unknown>>;
 }
 
 export type FacilityInfo = Record<string, number | boolean | string | string[]>;
@@ -49,6 +53,13 @@ export interface RequiredTemplateItem {
   repeat?: Repeat;
   /** 예전 설명들 — 바꾸기 전에 만든 칸을 이 항목으로 옮긴다 */
   aliases?: string[];
+  /** 필요시 항목(해설서 「필요시」「책임기술자 판단」·선택과업) — 기본 목록엔 없고, 현장에서 골라 넣는다(2026-11-04) */
+  optional?: boolean;
+}
+
+/** 템플릿 항목의 이름표(고른 필요시 항목을 구조물에 저장할 때 쓴다) */
+export function templateKey(item: { member: string; label: string }): string {
+  return `${item.member}|${item.label}`;
 }
 
 export interface FacilityTemplate {
@@ -70,6 +81,7 @@ export function parseTemplateItem(raw: unknown): RequiredTemplateItem | null {
     if (aliases.length > 0) item.aliases = aliases;
   }
   if (Array.isArray(raw.levels)) item.levels = raw.levels.filter((x): x is string => typeof x === 'string');
+  if (raw.optional === true) item.optional = true;
   if (isPlainObject(raw.when)) item.when = raw.when;
   if (isPlainObject(raw.levelWhen)) item.levelWhen = raw.levelWhen as RequiredTemplateItem['levelWhen'];
   const rep = raw.repeat;
@@ -97,6 +109,8 @@ export function parseInfoField(raw: unknown): InfoField | null {
   if (typeof raw.max === 'number' && raw.max > 0) field.max = raw.max;
   if (raw.summary === true) field.summary = true;
   if (isPlainObject(raw.showWhen)) field.showWhen = raw.showWhen;
+  if (Array.isArray(raw.levels)) field.levels = raw.levels.filter((x): x is string => typeof x === 'string');
+  if (isPlainObject(raw.levelWhen)) field.levelWhen = raw.levelWhen as InfoField['levelWhen'];
   return field;
 }
 
@@ -119,7 +133,7 @@ export class FacilityInfoError extends Error {
 }
 
 /** 앱이 보낸 구조물 정보를 그 시설물의 입력 항목으로 검사해 깨끗한 값만 돌려준다. 모르는 키는 거부, null은 버린다 */
-export function validateFacilityInfo(value: unknown, fields: InfoField[]): FacilityInfo {
+export function validateFacilityInfo(value: unknown, fields: InfoField[], ctx: { inspectionType?: string } = {}): FacilityInfo {
   if (!isPlainObject(value)) throw new FacilityInfoError('구조물 정보 값이 올바르지 않습니다.');
   const byKey = new Map(fields.map((f) => [f.key, f]));
   const out: FacilityInfo = {};
@@ -160,7 +174,8 @@ export function validateFacilityInfo(value: unknown, fields: InfoField[]): Facil
     }
   }
   for (const f of fields) {
-    if (f.required && out[f.key] === undefined) throw new FacilityInfoError(`${f.label}을(를) 적어 주세요.`);
+    // 이 점검 종류·조건에서 안 보이는 칸은 필수라도 안 물어본다
+    if (f.required && out[f.key] === undefined && fieldApplies(f, ctx.inspectionType, out)) throw new FacilityInfoError(`${f.label}을(를) 적어 주세요.`);
   }
   return out;
 }
@@ -172,11 +187,30 @@ export function pickInfo(info: FacilityInfo | undefined, fields: InfoField[]): F
   return Object.fromEntries(Object.entries(info).filter(([k]) => keys.has(k)));
 }
 
-/** 보이지 않는 칸(showWhen이 안 맞음)은 해당 없음 — 수 0, 거짓, 빈 목록, 그 밖엔 값 없음. 시설 구성을 바꾼 뒤 옛 수가 칸을 만들지 않게 */
-export function effectiveInfo(info: FacilityInfo | undefined, fields: InfoField[]): FacilityInfo | undefined {
+/** 칸이 보이는지 — 점검 종류(levels·levelWhen)와 조건(showWhen). 앱 src/facilityInfo.ts fieldShown과 같은 규칙 */
+export function fieldApplies(f: InfoField, inspectionType: string | undefined, info: FacilityInfo | undefined): boolean {
+  return fieldLevelOk(f, inspectionType, info) && (!f.showWhen || conditionsMet(f.showWhen, info));
+}
+
+function fieldLevelOk(f: InfoField, inspectionType: string | undefined, info: FacilityInfo | undefined): boolean {
+  if (!inspectionType) return true;
+  if (f.levels && !f.levels.includes(inspectionType)) return false;
+  const extra = f.levelWhen?.[inspectionType];
+  return !extra || conditionsMet(extra, info);
+}
+
+/**
+ * 펼칠 때 쓸 정보. 조건(showWhen)이 안 맞는 칸은 해당 없음 — 수 0, 거짓, 빈 목록, 그 밖엔 값 없음(시설 구성을 바꾼 뒤 옛 수가
+ * 칸을 만들지 않게). 점검 종류 때문에 안 보이는 칸은 "모름" — 값을 뺀다(수는 1장으로 펴진다).
+ */
+export function effectiveInfo(info: FacilityInfo | undefined, fields: InfoField[], inspectionType?: string): FacilityInfo | undefined {
   if (!info) return undefined;
   const out: FacilityInfo = { ...info };
   for (const f of fields) {
+    if (!fieldLevelOk(f, inspectionType, info)) {
+      delete out[f.key];
+      continue;
+    }
     if (!f.showWhen || conditionsMet(f.showWhen, info)) continue;
     if (f.type === 'count') out[f.key] = 0;
     else if (f.type === 'bool') out[f.key] = false;
@@ -192,6 +226,8 @@ export interface ExpandContext {
   inspectionType?: string;
   /** 구조물 정보. 없으면 조건(when) 항목은 빼고, 반복 항목은 1장으로 */
   info?: FacilityInfo;
+  /** 현장에서 고른 필요시 항목(templateKey). 없는 필요시 항목은 펴지 않는다 */
+  chosenOptional?: string[];
 }
 
 /** 조건이 다 맞는지. info가 없으면 맞지 않는 것으로 본다. 배열 값(multi)은 포함, 그 밖엔 같은 글자 */
@@ -239,11 +275,10 @@ export function positionsOf(repeat: Repeat, info: FacilityInfo | undefined): str
 export function expandRequired(template: RequiredTemplateItem[], ctx: ExpandContext): ShotTemplateItem[] {
   const out: ShotTemplateItem[] = [];
   const seen = new Set<string>();
+  const chosen = new Set(ctx.chosenOptional ?? []);
   for (const item of template) {
-    if (ctx.inspectionType && item.levels && !item.levels.includes(ctx.inspectionType)) continue;
-    const extra = ctx.inspectionType ? item.levelWhen?.[ctx.inspectionType] : undefined;
-    if (extra && !conditionsMet(extra, ctx.info)) continue;
-    if (item.when && !conditionsMet(item.when, ctx.info)) continue;
+    if (!itemApplies(item, ctx)) continue;
+    if (item.optional && !chosen.has(templateKey(item))) continue;
     const positions = positionsOf(item.repeat ?? 'once', ctx.info) ?? [''];
     for (const pos of positions) {
       const shot: ShotTemplateItem = { member: pos ? `${item.member}(${pos})` : item.member, label: item.label };
@@ -255,6 +290,38 @@ export function expandRequired(template: RequiredTemplateItem[], ctx: ExpandCont
     }
   }
   return out;
+}
+
+/** 점검 종류·구조물 정보 조건이 맞는 항목인지(필요시 여부는 보지 않음) */
+function itemApplies(item: RequiredTemplateItem, ctx: ExpandContext): boolean {
+  if (ctx.inspectionType && item.levels && !item.levels.includes(ctx.inspectionType)) return false;
+  const extra = ctx.inspectionType ? item.levelWhen?.[ctx.inspectionType] : undefined;
+  if (extra && !conditionsMet(extra, ctx.info)) return false;
+  if (item.when && !conditionsMet(item.when, ctx.info)) return false;
+  return true;
+}
+
+export interface OptionalChoice {
+  key: string;
+  member: string;
+  label: string;
+  chosen: boolean;
+  /** 고르면 생기는 칸 수(위치 반복) */
+  count: number;
+}
+
+/** 이 구조물에서 고를 수 있는 필요시 항목(점검 종류·조건이 맞는 것만) */
+export function optionalChoices(template: RequiredTemplateItem[], ctx: ExpandContext): OptionalChoice[] {
+  const chosen = new Set(ctx.chosenOptional ?? []);
+  return template
+    .filter((item) => item.optional && itemApplies(item, ctx))
+    .map((item) => ({
+      key: templateKey(item),
+      member: item.member,
+      label: item.label,
+      chosen: chosen.has(templateKey(item)),
+      count: Math.max(1, (positionsOf(item.repeat ?? 'once', ctx.info) ?? ['']).length),
+    }));
 }
 
 /** 구조물 정보를 넣어야 목록이 다 펴지는지(입력 항목이 있고, 조건·위치 반복 항목이 있는지) */

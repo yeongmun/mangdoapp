@@ -10,6 +10,8 @@ import {
   parseTemplateItem,
   pickInfo,
   effectiveInfo,
+  fieldApplies,
+  optionalChoices,
   positionsOf,
   templateNeedsInfo,
   validateFacilityInfo,
@@ -139,6 +141,45 @@ describe('effectiveInfo (showWhen)', () => {
   });
 });
 
+describe('점검 종류별 칸(levels·levelWhen) · 필요시 항목(optional) (11-04)', () => {
+  const fields: InfoField[] = [
+    { key: 'facilityClass', label: '종별', type: 'choice', options: [['2', '2종'], ['3', '3종']] },
+    { key: 'length', label: '연장', type: 'meter', required: true, levels: ['정기안전점검', '정밀안전점검'], levelWhen: { 정기안전점검: { facilityClass: '3' } } },
+    { key: 'units', label: '평가단위 수', type: 'count', levels: ['정밀안전점검'] },
+  ];
+
+  it('보이는지: 점검 종류·3종 조건', () => {
+    const len = fields[1];
+    expect(fieldApplies(len, '정밀안전점검', {})).toBe(true);
+    expect(fieldApplies(len, '정기안전점검', { facilityClass: '2' })).toBe(false);
+    expect(fieldApplies(len, '정기안전점검', { facilityClass: '3' })).toBe(true);
+    expect(fieldApplies(len, '정밀안전진단', {})).toBe(false);
+    expect(fieldApplies(len, undefined, {})).toBe(true); // 점검 종류를 모르면 다 보인다
+  });
+
+  it('점검 종류로 숨긴 칸은 필수라도 안 묻고, 펼칠 땐 "모름"(값 빠짐 → 1장)', () => {
+    expect(() => validateFacilityInfo({ facilityClass: '2' }, fields, { inspectionType: '정기안전점검' })).not.toThrow();
+    expect(() => validateFacilityInfo({ facilityClass: '3' }, fields, { inspectionType: '정기안전점검' })).toThrow(FacilityInfoError);
+    expect(effectiveInfo({ facilityClass: '2', length: 120, units: 5 }, fields, '정기안전점검')).toEqual({ facilityClass: '2' });
+    expect(effectiveInfo({ facilityClass: '2', length: 120, units: 5 }, fields, '정밀안전점검')).toEqual({ facilityClass: '2', length: 120, units: 5 });
+  });
+
+  it('필요시 항목은 고른 것만 펴지고, 고를 수 있는 목록엔 조건이 맞는 것만', () => {
+    const t: RequiredTemplateItem[] = [
+      { member: '전경', label: '측면' },
+      { member: '수중조사', label: '기초 수중부', optional: true, when: { river: true }, repeat: 'perPier' },
+      { member: '코어채취', label: '코어채취 위치', optional: true, levels: ['정밀안전점검', '정밀안전진단'] },
+    ];
+    const info = { river: true, piers: 2 };
+    expect(names(expandRequired(t, { info }))).toEqual(['전경']);
+    expect(names(expandRequired(t, { info, chosenOptional: ['수중조사|기초 수중부'] }))).toEqual(['전경', '수중조사(P1)', '수중조사(P2)']);
+    expect(optionalChoices(t, { inspectionType: '정기안전점검', info, chosenOptional: ['수중조사|기초 수중부'] })).toEqual([
+      { key: '수중조사|기초 수중부', member: '수중조사', label: '기초 수중부', chosen: true, count: 2 },
+    ]);
+    expect(optionalChoices(t, { inspectionType: '정밀안전점검', info: { river: false } }).map((c) => c.key)).toEqual(['코어채취|코어채취 위치']);
+  });
+});
+
 describe('설정 읽기', () => {
   it('항목: 옛 형식도 읽고, 모르는 repeat은 버린다, 근거 같은 기록용 키는 무시', () => {
     expect(parseTemplateItem({ member: '전경', label: '상류측' })).toEqual({ member: '전경', label: '상류측' });
@@ -190,7 +231,14 @@ describe('config/requiredShots.json (세부지침 2026.2 — 교량·터널·옹
           }
         }
         if (typeof s.repeat === 'object') expect(fields.get(s.repeat.count)?.type, `${type} ${s.member} repeat`).toBe('count');
+        for (const l of s.levels ?? []) expect(['정기안전점검', '정밀안전점검', '정밀안전진단'], `${type} ${s.member} levels`).toContain(l);
       }
+      for (const f of t.info) {
+        for (const cond of [f.showWhen ?? {}, ...Object.values(f.levelWhen ?? {})]) for (const key of Object.keys(cond)) expect(fields.get(key), `${type} info ${f.key} → ${key}`).toBeDefined();
+      }
+      expect(t.shots.some((x) => x.optional), `${type} 필요시 항목`).toBe(true);
+      // 필요시 항목 설명에도 손상명이 없다
+      for (const x of t.shots) expect(x.label, `${type} ${x.member}`).not.toMatch(/균열|침하|세굴|유실|파손|부식|누수|퇴적|박리|박락/);
       // 기본값으로 만든 정보는 서버 검사를 통과한다(필수 count는 1로)
       const sample = Object.fromEntries(t.info.map((f) => [f.key, f.default ?? (f.type === 'count' ? 1 : f.type === 'meter' ? 100 : f.type === 'bool' ? false : f.type === 'multi' ? [f.options![0][0]] : f.options![0][0])]));
       expect(() => validateFacilityInfo(sample, t.info), type).not.toThrow();

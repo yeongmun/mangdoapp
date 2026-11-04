@@ -10,6 +10,7 @@ import { ShotTile } from '../components/ShotCard';
 import { AllDoneCard, NextShotButton, ShotProgressCard, TakenHeader } from '../components/ShotProgress';
 import { useCelebrate } from '../useCelebrate';
 import { CameraScreen } from './CameraScreen';
+import { OptionalShotsSheet } from '../components/OptionalShotsSheet';
 import { Skeleton } from '../components/motion';
 import { useShots } from '../useShots';
 import { colors, font, space } from '../theme';
@@ -22,11 +23,17 @@ interface Props {
   autoShoot?: boolean;
   /** 「구조물 정보 넣기」 — 경간·교각 수를 넣으면 칸이 그만큼 펴진다(2026-11-03) */
   onEditInfo?: () => void;
+  /** 「필요시 추가」에서 고른 항목 저장(부모가 서버에 PATCH 후 목록을 다시 받는다). 없으면 버튼을 안 보인다 */
+  onSaveOptional?: (keys: string[]) => Promise<boolean>;
 }
 
-export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, onEditInfo }: Props) {
+export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, onEditInfo, onSaveOptional }: Props) {
   const { state, error, busyId, isTaken, takenThumb, shoot, cameraShotId, closeCamera, commitPhoto, uploadStates } = useShots(project, onPhotoQueued);
   const [takenOpen, setTakenOpen] = useState(false);
+  const [optionalOpen, setOptionalOpen] = useState(false);
+  const [savingOptional, setSavingOptional] = useState(false);
+  const choices = state.list?.optionalChoices ?? [];
+  const chosenCount = choices.filter((c) => c.chosen).length;
 
   const required = useMemo(() => (state.list?.shots ?? []).filter((s) => s.kind === 'required'), [state.list]);
   const untaken = required.filter((s) => !isTaken(s));
@@ -95,6 +102,14 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, o
               total={required.length}
               caption={`${project.facilityType}${state.list?.inspectionType ? ` · ${state.list.inspectionType}` : ''} · 필수 사진`}
             />
+            {choices.length > 0 && onSaveOptional ? (
+              <Pressable onPress={() => setOptionalOpen(true)} accessibilityRole="button" style={({ pressed }) => [styles.optionalRow, pressed && { opacity: 0.8 }]}>
+                <Feather name="plus-circle" size={18} color={colors.primaryText} />
+                <Text style={styles.optionalText}>필요시 추가</Text>
+                <Text style={styles.optionalSub}>{chosenCount > 0 ? `${chosenCount}개 넣음 · 고칠 수 있어요` : `수중조사·코어채취 등 ${choices.length}개`}</Text>
+                <Feather name="chevron-right" size={18} color={colors.subtle} />
+              </Pressable>
+            ) : null}
           </>
         }
         renderItem={({ item: row }) => {
@@ -127,6 +142,23 @@ export function RequiredShotsView({ project, onPhotoQueued, autoShoot = false, o
         contentContainerStyle={styles.list}
       />
       <NextShotButton nextLabel={next ? `${next.member} ${next.label}` : null} disabled={busyId !== null} onPress={() => next && shoot(next)} />
+      {onSaveOptional ? (
+        <OptionalShotsSheet
+          visible={optionalOpen}
+          choices={choices}
+          saving={savingOptional}
+          onClose={() => setOptionalOpen(false)}
+          onSave={(keys) => {
+            setSavingOptional(true);
+            // 이 점검 종류에서 고를 수 없어 목록에 없는 옛 key는 지우지 않는다(다음 회차에 다시 쓸 수 있게)
+            const offList = (project.optionalShots ?? []).filter((k) => !choices.some((c) => c.key === k));
+            void onSaveOptional([...offList, ...keys]).then((ok) => {
+              setSavingOptional(false);
+              if (ok) setOptionalOpen(false);
+            });
+          }}
+        />
+      ) : null}
       {cameraShotId !== null && (
         <CameraScreen
           shots={required}
@@ -148,6 +180,9 @@ const styles = StyleSheet.create({
   list: { paddingBottom: space.lg },
   columns: { flexDirection: 'row', gap: space.md },
   cell: { flex: 1, marginBottom: space.md },
+  optionalRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 52, paddingHorizontal: space.lg, borderRadius: 16, backgroundColor: colors.card, marginBottom: space.md },
+  optionalText: { fontFamily: font.bold, fontSize: 15, color: colors.primaryText },
+  optionalSub: { flex: 1, fontFamily: font.regular, fontSize: 13, color: colors.mutedForeground, textAlign: 'right' },
   infoBanner: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 52, paddingHorizontal: space.lg, borderRadius: 16, backgroundColor: colors.primarySoft, marginBottom: space.md },
   infoText: { flex: 1, fontFamily: font.semibold, fontSize: 14, color: colors.primaryText, lineHeight: 20 },
   infoAction: { fontFamily: font.bold, fontSize: 14, color: colors.primaryText, textDecorationLine: 'underline' },

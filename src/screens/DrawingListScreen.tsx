@@ -263,14 +263,16 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
       .catch(() => undefined);
   }, []);
   const changeProjectType = useCallback(
-    async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null; facilityInfo?: FacilityInfo | null }) => {
+    async (project: Project, patch: { inspectionType?: string | null; facilityType?: string | null; facilityInfo?: FacilityInfo | null; optionalShots?: string[] | null }): Promise<boolean> => {
       setSavingType(true);
       setError(null);
       try {
         const updated = await updateProject(project.id, patch);
         setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+        return true;
       } catch (e) {
         setError(errMessage(e));
+        return false;
       } finally {
         setSavingType(false);
       }
@@ -614,6 +616,8 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
   // `현장 가기 전 모두 받기`는 도면이 든 목록(프로젝트 안·미분류·평평한 목록)에만 — 머리글 오른쪽 아이콘(설계 5장).
   const showListDownload = scoped.length > 0 && (flat || location !== null);
   const structureTabs = currentProject?.depth === 1 ? currentProject : undefined;
+  // 구조물의 점검 종류는 상위 과업에 있다 — 구조물 정보 시트가 그 점검에서 쓰는 칸만 보인다
+  const structureInspectionType = structureTabs ? (projects.find((p) => p.id === structureTabs.parentId)?.inspectionType ?? null) : null;
   // 구조물을 열 때 입력 항목을 (아직 없으면) 받는다
   const structureId = structureTabs?.id;
   useEffect(() => {
@@ -1052,9 +1056,10 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
         {tab === 'drawings' && list}
         {tab === 'shots' && (
           <RequiredShotsView
-            key={`${structureTabs.id}:${JSON.stringify(structureTabs.facilityInfo ?? null)}`}
+            key={`${structureTabs.id}:${JSON.stringify(structureTabs.facilityInfo ?? null)}:${(structureTabs.optionalShots ?? []).join(',')}:${structureInspectionType ?? ''}`}
             project={structureTabs}
             onEditInfo={() => setSheet({ kind: 'info' })}
+            onSaveOptional={(keys) => changeProjectType(structureTabs, { optionalShots: keys })}
             autoShoot={autoShootFor === structureTabs.id}
             onPhotoQueued={() => setPendingPhotos(pendingPhotoCount())}
           />
@@ -1134,12 +1139,13 @@ export function DrawingListScreen({ onOpen, withTabBar = false, onKindChange, on
       <FacilityInfoSheet
         visible={sheet?.kind === 'info'}
         fields={(structureTabs?.facilityType && infoFields[structureTabs.facilityType]) || NO_FIELDS}
+        inspectionType={structureInspectionType}
         info={structureTabs?.facilityInfo}
         saving={savingType}
         onClose={() => setSheet(null)}
         onSave={(info) => {
           if (!structureTabs) return;
-          void changeProjectType(structureTabs, { facilityInfo: info }).then(() => setSheet(null));
+          void changeProjectType(structureTabs, { facilityInfo: info }).then((ok) => ok && setSheet(null));
         }}
       />
 

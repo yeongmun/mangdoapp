@@ -76,6 +76,8 @@ export interface Project {
   location?: { lat: number; lng: number; accuracy: number; at: string };
   /** 구조물 정보(하위만, 2026-11-03) — 경간·교대·교각 수, 형식. 서버가 필수 사진을 이 값으로 편다 */
   facilityInfo?: FacilityInfo;
+  /** 현장에서 고른 필요시 촬영 항목(서버 templateKey "부재|설명", 하위만) */
+  optionalShots?: string[];
 }
 
 export const INSPECTION_TYPES = ['정기안전점검', '정밀안전점검', '정밀안전진단'] as const;
@@ -89,6 +91,7 @@ export async function updateProject(
     facilityType?: string | null;
     location?: { lat: number; lng: number; accuracy: number; at: string } | null;
     facilityInfo?: FacilityInfo | null;
+    optionalShots?: string[] | null;
   },
 ): Promise<Project> {
   let res: Response;
@@ -294,6 +297,8 @@ export interface ShotList {
   facilityInfo?: FacilityInfo | null;
   /** 이 시설물 종류의 「구조물 정보」 입력 항목 */
   infoFields?: InfoField[];
+  /** 「필요시 추가」에서 고를 수 있는 항목(해설서 필요시·책임기술자 판단·선택과업). chosen = 지금 목록에 들어 있음 */
+  optionalChoices?: { key: string; member: string; label: string; chosen: boolean; count: number }[];
   /** 경간·교각 수 등이 있어야 다 펴지는데 아직 없다 → 「구조물 정보 넣기」 */
   needsFacilityInfo?: boolean;
   shots: Shot[];

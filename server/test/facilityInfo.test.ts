@@ -80,4 +80,18 @@ describe('앱 구조물 정보 시트 (src/facilityInfo.ts)', () => {
       }
     }
   });
+
+  it('점검 종류별: 터널 연장은 정기(2종)에선 안 보이고 3종이면 보인다, 숨긴 칸의 예전 값은 남긴다', async () => {
+    const f = await fieldsOf('터널');
+    const len = f.find((x) => x.key === 'length')!;
+    const form = { ...formFromInfo(f, { lining: ['natmPlain'], length: 1860, use: 'road', facilityClass: '2' }) };
+    expect(fieldShown(len, form, '정기안전점검')).toBe(false);
+    expect(fieldShown(len, { ...form, facilityClass: '3' }, '정기안전점검')).toBe(true);
+    expect(fieldShown(len, form, '정밀안전점검')).toBe(true);
+    const r = infoFromForm(f, form, '정기안전점검');
+    if (!('info' in r)) throw new Error(r.error);
+    expect(r.info.length).toBe(1860); // 정기(2종)에선 안 보이지만 지우지 않음
+    expect(validateFacilityInfo(r.info, f as never, { inspectionType: '정기안전점검' })).toEqual(r.info);
+  });
 });
+

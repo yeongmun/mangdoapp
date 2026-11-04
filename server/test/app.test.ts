@@ -124,6 +124,7 @@ function setup(
         { member: '교대', label: 'A1 전면' },
         { member: '교각', label: '두부', repeat: 'perPier' as const, when: { girder: 'PSC' } },
         { member: '장비', label: '사용장비', levels: ['정밀안전진단'] },
+        { member: '코어채취', label: '코어채취 위치', optional: true },
       ],
     },
     터널: { info: [], shots: [{ member: '갱구', label: '시점' }] },
@@ -1798,6 +1799,20 @@ describe('촬영 항목 API (/api/projects/:id/shots)', () => {
     await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ facilityInfo: { piers: 1, girder: 'PSC' } });
     const fewer = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
     expect(fewer.shots.map((s: { member: string }) => s.member)).toEqual(['전경', '교대', '교각(P1)']);
+  });
+
+  it('필요시 항목: 목록엔 없고 optionalChoices로 오며, 고르면(PATCH optionalShots) 칸이 생긴다 (11-04)', async () => {
+    const { app } = setup();
+    const { child } = await bridge(app);
+    const before = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(before.shots.map((s: { member: string }) => s.member)).not.toContain('코어채취');
+    expect(before.optionalChoices).toEqual([{ key: '코어채취|코어채취 위치', member: '코어채취', label: '코어채취 위치', chosen: false, count: 1 }]);
+    const patched = await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ optionalShots: ['코어채취|코어채취 위치'] });
+    expect(patched.status).toBe(200);
+    const after = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    expect(after.shots.map((s: { member: string }) => s.member)).toContain('코어채취');
+    expect(after.optionalChoices[0].chosen).toBe(true);
+    expect((await request(app).patch(`/api/projects/${child.id}`).set('x-access-key', KEY).send({ optionalShots: 'x' })).status).toBe(400);
   });
 
   it('구조물 정보: 상위 프로젝트에는 못 넣고, 틀린 값은 400, null은 지운다', async () => {

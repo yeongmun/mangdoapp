@@ -30,6 +30,8 @@ export interface ProjectRecord {
   location?: ProjectLocation;
   /** 구조물 정보(하위만, 2026-11-03) — 시설물 종류별 입력 항목(config/requiredShots.json info)의 값. 필수 사진 펼치기와 비파괴 수량에 쓴다 */
   facilityInfo?: FacilityInfo;
+  /** 현장에서 고른 필요시 촬영 항목(templateKey "부재|설명", 하위만, 2026-11-04) */
+  optionalShots?: string[];
 }
 
 export interface ProjectLocation {
@@ -191,7 +193,7 @@ export class ProjectsStore {
   // inspectionType/facilityType/taskType은 null이면 지운다.
   update(
     id: string,
-    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown; facilityInfo?: unknown },
+    patch: { name?: unknown; memo?: unknown; inspectionType?: unknown; facilityType?: unknown; taskType?: unknown; location?: unknown; facilityInfo?: unknown; optionalShots?: unknown },
   ): Promise<ProjectRecord | null> {
     return this.serialize(async () => {
       const records = await this.readAll();
@@ -233,6 +235,17 @@ export class ProjectsStore {
           // 값 검사는 시설물 종류별 입력 항목을 아는 라우트(app.ts, requiredShots.validateFacilityInfo)가 먼저 한다
           if (typeof patch.facilityInfo !== 'object' || Array.isArray(patch.facilityInfo)) throw new ProjectRuleError('type', '구조물 정보 값이 올바르지 않습니다.');
           next.facilityInfo = patch.facilityInfo as FacilityInfo;
+        }
+      }
+      if ('optionalShots' in patch) {
+        if (patch.optionalShots === null) delete next.optionalShots;
+        else {
+          if (current.parentId === null) throw new ProjectRuleError('type', '필요시 사진은 구조물(하위 프로젝트)에만 고를 수 있습니다.');
+          const list = patch.optionalShots;
+          if (!Array.isArray(list) || list.length > 200 || list.some((k) => typeof k !== 'string' || k.length < 3 || k.length > 200)) {
+            throw new ProjectRuleError('type', '필요시 사진 값이 올바르지 않습니다.');
+          }
+          next.optionalShots = [...new Set(list as string[])];
         }
       }
       records[index] = next;

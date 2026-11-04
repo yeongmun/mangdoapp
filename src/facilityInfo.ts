@@ -15,6 +15,10 @@ export interface InfoField {
   summary?: boolean;
   /** 이 조건이 맞을 때만 보이는 칸(예: 직립부 형식은 직립제·혼성제일 때만). 안 보이면 고를 수 없고 보내지도 않는다 */
   showWhen?: Record<string, unknown>;
+  /** 이 점검 종류에서만 보이는 칸 */
+  levels?: string[];
+  /** 점검 종류별 추가 조건(예: 정기안전점검은 3종만) */
+  levelWhen?: Record<string, Record<string, unknown>>;
 }
 
 export type FacilityInfo = Record<string, number | boolean | string | string[]>;
@@ -49,10 +53,9 @@ export function formFromInfo(fields: InfoField[], info: FacilityInfo | null | un
   return form;
 }
 
-/** 지금 입력 상태에서 이 칸이 보이는지 — showWhen 조건을 시트 값으로 본다(multi는 포함, 배열 조건은 그중 하나). 서버 conditionsMet과 같은 규칙 */
-export function fieldShown(field: InfoField, form: InfoForm): boolean {
-  if (!field.showWhen) return true;
-  return Object.entries(field.showWhen).every(([key, want]) => {
+/** 조건을 시트 값으로 본다(multi는 포함, 배열 조건은 그중 하나). 서버 requiredShots.ts conditionsMet과 같은 규칙 */
+function formMatches(cond: Record<string, unknown>, form: InfoForm): boolean {
+  return Object.entries(cond).every(([key, want]) => {
     const have = form[key];
     const wants = Array.isArray(want) ? want.map(String) : [String(want)];
     if (Array.isArray(have)) return wants.some((w) => have.includes(w));
@@ -61,12 +64,25 @@ export function fieldShown(field: InfoField, form: InfoForm): boolean {
   });
 }
 
+/** 지금 점검 종류·입력 상태에서 이 칸이 보이는지 — levels·levelWhen(점검 종류)과 showWhen(조건). 서버 fieldApplies와 같은 규칙 */
+export function fieldShown(field: InfoField, form: InfoForm, inspectionType?: string | null): boolean {
+  if (inspectionType) {
+    if (field.levels && !field.levels.includes(inspectionType)) return false;
+    const extra = field.levelWhen?.[inspectionType];
+    if (extra && !formMatches(extra, form)) return false;
+  }
+  return !field.showWhen || formMatches(field.showWhen, form);
+}
+
 /** 시트 입력 → 서버로 보낼 facilityInfo. 틀리거나 빠진 칸이 있으면 { error } */
-export function infoFromForm(fields: InfoField[], form: InfoForm): { info: FacilityInfo } | { error: string } {
+export function infoFromForm(fields: InfoField[], form: InfoForm, inspectionType?: string | null): { info: FacilityInfo } | { error: string } {
   const info: FacilityInfo = {};
   for (const f of fields) {
-    // 안 보이는 칸은 해당 없음 — 보내지 않는다(서버도 해당 없음으로 펼친다)
-    if (!fieldShown(f, form)) continue;
+    // 안 보이는 칸은 보내지 않는다 — 단 점검 종류 때문에 숨긴 칸에 예전에 넣은 값은 남겨 둔다(다음 회차가 정밀점검이면 다시 쓴다)
+    if (!fieldShown(f, form, inspectionType)) {
+      if (fieldShown(f, form, null) && keepValue(f, form[f.key])) info[f.key] = keepValue(f, form[f.key])!;
+      continue;
+    }
     const raw = form[f.key];
     if (f.type === 'count' || f.type === 'meter') {
       const t = typeof raw === 'string' ? raw.trim().replace(',', '.') : '';
@@ -92,6 +108,18 @@ export function infoFromForm(fields: InfoField[], form: InfoForm): { info: Facil
     }
   }
   return { info };
+}
+
+/** 점검 종류 때문에 숨긴 칸의 예전 값(그대로 보존) */
+function keepValue(f: InfoField, raw: InfoForm[string] | undefined): FacilityInfo[string] | null {
+  if (raw === undefined) return null;
+  if (f.type === 'count' || f.type === 'meter') {
+    const n = typeof raw === 'string' && raw.trim() !== '' ? Number(raw.trim().replace(',', '.')) : NaN;
+    return Number.isFinite(n) && n >= 0 && (f.type === 'meter' || Number.isInteger(n)) ? n : null;
+  }
+  if (f.type === 'choice') return typeof raw === 'string' && raw !== '' ? raw : null;
+  if (f.type === 'multi') return Array.isArray(raw) && raw.length > 0 ? [...raw] : null;
+  return raw === true ? true : null;
 }
 
 /** 「경간 수」→「경간」, 「연장(m)」→「연장」 */

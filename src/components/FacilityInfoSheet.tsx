@@ -14,6 +14,8 @@ import { colors, font, space } from '../theme';
 interface Props {
   visible: boolean;
   fields: InfoField[];
+  /** 상위 과업의 점검 종류 — 그 점검에서 쓰는 칸만 보인다 */
+  inspectionType?: string | null;
   info: FacilityInfo | null | undefined;
   saving: boolean;
   onClose: () => void;
@@ -26,7 +28,7 @@ function fitsSegmented(f: InfoField): boolean {
   return opts.length <= 4 && opts.every(([, l]) => l.length <= 7);
 }
 
-export function FacilityInfoSheet({ visible, fields, info, saving, onClose, onSave }: Props) {
+export function FacilityInfoSheet({ visible, fields, inspectionType, info, saving, onClose, onSave }: Props) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState<InfoForm>(() => formFromInfo(fields, info));
@@ -56,7 +58,7 @@ export function FacilityInfoSheet({ visible, fields, info, saving, onClose, onSa
 
   const set = (key: string, value: InfoForm[string]) => setForm((f) => ({ ...f, [key]: value }));
   const save = () => {
-    const r = infoFromForm(fields, form);
+    const r = infoFromForm(fields, form, inspectionType);
     if ('error' in r) {
       setError(r.error);
       return;
@@ -65,13 +67,13 @@ export function FacilityInfoSheet({ visible, fields, info, saving, onClose, onSa
   };
 
   // 조건이 안 맞는 칸(예: 사석식 경사제만 고르면 직립부 형식)은 아예 보이지 않는다 — 고른 값에 따라 바로 바뀜
-  const shown = fields.filter((f) => fieldShown(f, form));
+  const shown = fields.filter((f) => fieldShown(f, form, inspectionType));
   const numbers = shown.filter((f) => f.type === 'count' || f.type === 'meter');
   const flags = shown.filter((f) => f.type === 'bool');
   const groups = shown.filter((f) => f.type === 'choice' || f.type === 'multi');
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="구조물 정보" description="수를 넣으면 위치마다 찍을 칸이 생기고, 해당 없는 칸은 빠져요.">
+    <BottomSheet visible={visible} onClose={onClose} title="구조물 정보" description={inspectionType ? `${inspectionType}에 쓰는 칸만 보여요. 수를 넣으면 위치마다 찍을 칸이 생겨요.` : '수를 넣으면 위치마다 찍을 칸이 생기고, 해당 없는 칸은 빠져요.'}>
       <ScrollView style={{ maxHeight: scrollMax }} keyboardShouldPersistTaps="handled">
         {numbers.length > 0 && (
           <View style={styles.grid}>
