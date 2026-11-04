@@ -4,7 +4,7 @@
 // 설계: docs/design/2026-10-24-field-photo-checklist.md 결정 3·서버(앱)
 
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { memberOfCaption, type PhotoBlock } from './hwpxPhotos.js';
 import { readJsonFile, writeFileAtomic, writeJsonFileAtomic } from './jsonFile.js';
@@ -21,7 +21,12 @@ export interface Shot {
   label: string;
   /** 구조물 안의 일련번호, 3자리. 파일명의 끝 토막 */
   number: string;
+  /** 대표 사진(= photos[0]). 옛 기록·웹(daenong)이 이것만 읽는다 */
   photo?: { file: string; savedAt: string };
+  /** 이 칸의 사진 전부(2026-11-05, 한 칸 여러 장). 첫 장이 대표. 옛 기록엔 없다 — photosOf()로 읽는다 */
+  photos?: ShotPhoto[];
+  /** required만: 템플릿 항목 이름표("부재|설명", 위치 붙기 전) — 예시 사진을 찾는 열쇠 */
+  templateKey?: string;
   /** previous만: 보고서 페이지 id(pg_001…). 휴지통은 이 단위로 */
   group?: string;
   /** previous만: 보고서 캡션 원문 */
@@ -34,6 +39,30 @@ export interface Shot {
   hint?: string;
 }
 
+export interface ShotPhoto {
+  /** 기기가 만든 id(재전송해도 같은 사진으로 덮어쓴다). 옛 사진은 'p0' */
+  id: string;
+  file: string;
+  savedAt: string;
+}
+
+export const PHOTO_ID_PATTERN = /^[A-Za-z0-9_-]{2,64}$/;
+
+/** 칸의 사진 목록(옛 기록은 photo 하나를 'p0'으로) */
+export function photosOf(shot: Shot): ShotPhoto[] {
+  if (Array.isArray(shot.photos) && shot.photos.length > 0) return shot.photos;
+  return shot.photo ? [{ id: 'p0', file: shot.photo.file, savedAt: shot.photo.savedAt }] : [];
+}
+
+/** 사진 목록을 칸에 넣는다 — 대표(photo)는 첫 장, 비면 둘 다 지운다 */
+function withPhotos(shot: Shot, photos: ShotPhoto[]): Shot {
+  const { photo: _p, photos: _ps, ...rest } = shot;
+  void _p;
+  void _ps;
+  if (photos.length === 0) return rest as Shot;
+  return { ...rest, photo: { file: photos[0].file, savedAt: photos[0].savedAt }, photos } as Shot;
+}
+
 /** 펼친 뒤의 촬영 칸 하나(requiredShots.ts expandRequired의 결과) */
 export interface ShotTemplateItem {
   member: string;
@@ -41,6 +70,8 @@ export interface ShotTemplateItem {
   hint?: string;
   /** 예전 설명 — 이 이름으로 이미 만든(찍은) 칸은 새 설명으로 옮긴다(이름을 바꿔도 칸이 둘이 되지 않게, 11-03) */
   aliases?: string[];
+  /** 템플릿 항목 이름표(예시 사진 열쇠). expandRequired가 채운다 */
+  key?: string;
 }
 
 export const THUMB_SUFFIX = '.thumb.jpg';
@@ -77,8 +108,10 @@ function safe(text: string): string {
 }
 
 /** `<구조물이름>_<부재>_<번호>.jpg` — zip·내려받기 때의 이름. 디스크 이름은 번호뿐이다 */
-export function shotFileName(projectName: string, shot: Shot): string {
-  return `${safe(projectName)}_${safe(shot.member)}_${shot.number}.jpg`;
+export function shotFileName(projectName: string, shot: Shot, photo?: ShotPhoto): string {
+  // 둘째 장부터는 디스크 이름의 "-2"를 그대로 붙인다: A교_교각(P1)_017-2.jpg
+  const suffix = photo ? (/^\d+(-\d+)\./.exec(photo.file)?.[1] ?? '') : '';
+  return `${safe(projectName)}_${safe(shot.member)}_${shot.number}${suffix}.jpg`;
 }
 
 /**
@@ -109,7 +142,13 @@ export function mergeRequired(existingRaw: Shot[], template: ShotTemplateItem[])
     next += 1;
     out.push(withHint({ id: newShotId(), kind: 'required', member: item.member, label: item.label, number: pad3(next) }, item.hint));
   }
-  return out;
+  // 템플릿 이름표(예시 사진 열쇠)를 칸에 적는다 — 찍은 칸도 같은 부재·설명이면
+  const keys = new Map(template.filter((i) => i.key).map((i) => [keyOf(i), i.key!]));
+  return out.map((shot) => {
+    if (shot.kind !== 'required') return shot;
+    const k = keys.get(keyOf(shot));
+    return k && shot.templateKey !== k ? { ...shot, templateKey: k } : shot;
+  });
 }
 
 /** 템플릿 항목의 예전 설명(aliases)으로 된 required 칸을 새 설명으로 바꾼다. 새 이름 칸이 이미 있으면 그대로 둔다 */
@@ -300,29 +339,121 @@ export class ShotsStore {
     });
   }
 
-  /** 디스크의 본 사진 경로. photo가 없으면 번호 기준 이름(없을 수 있다) */
+  /** 디스크의 대표 사진 경로. photo가 없으면 번호 기준 이름(없을 수 있다) */
   pathOf(projectId: string, shot: Shot): string {
     return join(this.dirOf(projectId), shot.photo?.file ?? `${shot.number}.jpg`);
   }
 
-  thumbPathOf(projectId: string, shot: Shot): string {
-    return join(this.dirOf(projectId), `${shot.number}${THUMB_SUFFIX}`);
+  photoPathOf(projectId: string, photo: ShotPhoto): string {
+    return join(this.dirOf(projectId), photo.file);
   }
 
-  /** 사진을 쓰고 shot.photo를 채운다. 같은 shot을 다시 찍으면 덮어쓴다. 없는 shot이면 null */
-  savePhoto(projectId: string, shotId: string, extension: string, data: Buffer, savedAt: string): Promise<Shot | null> {
+  /** 사진별 썸네일: <파일 이름에서 확장자 뺀 것>.thumb.jpg — 대표 첫 장(017.jpg)은 옛 이름 017.thumb.jpg와 같다 */
+  photoThumbPathOf(projectId: string, photo: ShotPhoto): string {
+    return join(this.dirOf(projectId), `${photo.file.replace(/\.[^.]+$/, '')}${THUMB_SUFFIX}`);
+  }
+
+  thumbPathOf(projectId: string, shot: Shot): string {
+    const first = photosOf(shot)[0];
+    return first ? this.photoThumbPathOf(projectId, first) : join(this.dirOf(projectId), `${shot.number}${THUMB_SUFFIX}`);
+  }
+
+  /**
+   * 사진을 쓴다(2026-11-05 한 칸 여러 장).
+   * - photoId가 이미 있으면 그 사진을 덮어쓴다(대기열 재전송이 두 장을 만들지 않게)
+   * - 새 photoId면 뒤에 덧붙인다: 첫 장 <번호>.jpg, 그다음 <번호>-2.jpg …
+   * - photoId 없이 오면(옛 앱) 예전처럼 대표 사진을 바꾼다
+   * 없는 shot이면 null
+   */
+  savePhoto(projectId: string, shotId: string, extension: string, data: Buffer, savedAt: string, photoId?: string): Promise<{ shot: Shot; photo: ShotPhoto } | null> {
     return this.serialize(async () => {
       const shots = await this.list(projectId);
       const index = shots.findIndex((s) => s.id === shotId);
       if (index === -1) return null;
+      const shot = shots[index];
+      const photos = [...photosOf(shot)];
+      const number = shot.number;
+      let at = photoId ? photos.findIndex((p) => p.id === photoId) : photos.length > 0 ? 0 : -1;
+      let base: string;
+      if (at >= 0) {
+        base = photos[at].file.replace(/\.[^.]+$/, '');
+      } else {
+        const used = photos.map((p) => Number(/^\d+-(\d+)\./.exec(p.file)?.[1] ?? 1));
+        const n = photos.length === 0 ? 1 : Math.max(1, ...used) + 1;
+        base = n === 1 ? number : `${number}-${n}`;
+      }
+      const file = `${base}${extension}`;
       await mkdir(this.dirOf(projectId), { recursive: true });
-      const file = `${shots[index].number}${extension}`;
       await writeFileAtomic(join(this.dirOf(projectId), file), data);
-      const updated: Shot = { ...shots[index], photo: { file, savedAt } };
+      const photo: ShotPhoto = { id: photoId ?? (at >= 0 ? photos[at].id : 'p0'), file, savedAt };
+      if (at >= 0) {
+        // 확장자가 바뀌었으면 옛 파일은 지운다
+        if (photos[at].file !== file) await rm(join(this.dirOf(projectId), photos[at].file), { force: true });
+        photos[at] = photo;
+      } else {
+        photos.push(photo);
+        at = photos.length - 1;
+      }
+      const updated = withPhotos(shot, photos);
+      shots[index] = updated;
+      await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots });
+      return { shot: updated, photo };
+    });
+  }
+
+  /** 사진 한 장 지우기(파일·썸네일도). 대표를 지우면 다음 장이 대표. 없으면 null */
+  deletePhoto(projectId: string, shotId: string, photoId: string): Promise<Shot | null> {
+    return this.serialize(async () => {
+      const shots = await this.list(projectId);
+      const index = shots.findIndex((s) => s.id === shotId);
+      if (index === -1) return null;
+      const photos = photosOf(shots[index]);
+      const gone = photos.find((p) => p.id === photoId);
+      if (!gone) return null;
+      await rm(this.photoPathOf(projectId, gone), { force: true });
+      await rm(this.photoThumbPathOf(projectId, gone), { force: true });
+      const updated = withPhotos(shots[index], photos.filter((p) => p.id !== photoId));
       shots[index] = updated;
       await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots });
       return updated;
     });
+  }
+
+  /** 대표 사진 바꾸기(그 사진을 맨 앞으로). 없으면 null */
+  setPrimaryPhoto(projectId: string, shotId: string, photoId: string): Promise<Shot | null> {
+    return this.serialize(async () => {
+      const shots = await this.list(projectId);
+      const index = shots.findIndex((s) => s.id === shotId);
+      if (index === -1) return null;
+      const photos = photosOf(shots[index]);
+      const chosen = photos.find((p) => p.id === photoId);
+      if (!chosen) return null;
+      const updated = withPhotos(shots[index], [chosen, ...photos.filter((p) => p.id !== photoId)]);
+      shots[index] = updated;
+      await writeJsonFileAtomic(this.jsonPath(projectId), { projectId, shots });
+      return updated;
+    });
+  }
+
+  async savePhotoThumb(projectId: string, photo: ShotPhoto, thumb: Buffer): Promise<void> {
+    await mkdir(this.dirOf(projectId), { recursive: true });
+    await writeFileAtomic(this.photoThumbPathOf(projectId, photo), thumb);
+  }
+
+  async readPhotoThumb(projectId: string, photo: ShotPhoto): Promise<Buffer | null> {
+    try {
+      return await readFile(this.photoThumbPathOf(projectId, photo));
+    } catch {
+      return null;
+    }
+  }
+
+  async readPhotoFile(projectId: string, photo: ShotPhoto): Promise<Buffer | null> {
+    try {
+      return await readFile(this.photoPathOf(projectId, photo));
+    } catch {
+      return null;
+    }
   }
 
   async saveThumb(projectId: string, shot: Shot, thumb: Buffer): Promise<void> {

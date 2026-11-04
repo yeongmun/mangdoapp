@@ -48,7 +48,7 @@ describe('expandRequired', () => {
       '난간(좌측)', '난간(우측)',
       '장비',
     ]);
-    expect(out[1]).toEqual({ member: '바닥판(S1)', label: '하면' });
+    expect(out[1]).toEqual({ member: '바닥판(S1)', label: '하면', key: '바닥판|하면' });
   });
 
   it('점검 종류로 거른다: 정밀점검은 가로보 없음, 정기는 3종만 가로보·장비 없음. 옛 숫자 종별(3)도 맞는다', () => {

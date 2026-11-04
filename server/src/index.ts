@@ -15,6 +15,7 @@ import { OriginalsStore } from './originalsStore.js';
 import { PhotosStore } from './photosStore.js';
 import { ProjectsStore } from './projectsStore.js';
 import { loadRequiredTemplate, ShotsStore } from './shotsStore.js';
+import { ExamplesStore } from './examplesStore.js';
 import { ViewerBundle } from './viewerBundle.js';
 
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
     ),
     projects,
     shots: new ShotsStore(join(config.dataDir, 'shots')),
+    examples: new ExamplesStore(join(config.dataDir, 'examples')),
     requiredTemplate: await loadRequiredTemplate(join(serverRoot, 'config', 'requiredShots.json')),
     offline: new OfflineFilesStore(join(config.dataDir, 'cache', 'derivatives'), aps),
     viewerBundle: new ViewerBundle(join(serverRoot, 'public'), join(config.dataDir, 'cache', 'viewer'), fetchCdn),

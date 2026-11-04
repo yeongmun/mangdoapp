@@ -281,7 +281,7 @@ export function expandRequired(template: RequiredTemplateItem[], ctx: ExpandCont
     if (item.optional && !chosen.has(templateKey(item))) continue;
     const positions = positionsOf(item.repeat ?? 'once', ctx.info) ?? [''];
     for (const pos of positions) {
-      const shot: ShotTemplateItem = { member: pos ? `${item.member}(${pos})` : item.member, label: item.label };
+      const shot: ShotTemplateItem = { member: pos ? `${item.member}(${pos})` : item.member, label: item.label, key: templateKey(item) };
       if (item.aliases) shot.aliases = item.aliases;
       const key = `${shot.member}\u0000${shot.label}`;
       if (seen.has(key)) continue; // 같은 칸이 둘이면 mergeRequired가 id를 겹쳐 쓴다

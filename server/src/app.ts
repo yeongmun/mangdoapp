@@ -1,5 +1,5 @@
 import { extname, join } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import archiver from 'archiver';
 import express, { type ErrorRequestHandler, type Request, type RequestHandler, type Response } from 'express';
 import multer from 'multer';
@@ -35,7 +35,8 @@ import { baseNameOf, drawingFoldersFor, safeSegment, uniqueNames, type DrawingFo
 import { isProjectId, ProjectRuleError, type ProjectRuleCode, type ProjectsStore } from './projectsStore.js';
 import { buildProjectViews, effectiveProjectId, type ProjectView } from './projectTree.js';
 import { extractPhotoBlocks } from './hwpxPhotos.js';
-import { shotFileName, ShotRuleError, type Shot, type ShotsStore } from './shotsStore.js';
+import { PHOTO_ID_PATTERN, photosOf, shotFileName, ShotRuleError, type Shot, type ShotPhoto, type ShotsStore } from './shotsStore.js';
+import { EXAMPLE_ID_PATTERN, exampleIdOf, type ExamplesStore } from './examplesStore.js';
 import { effectiveInfo, expandRequired, FacilityInfoError, optionalChoices, pickInfo, templateNeedsInfo, validateFacilityInfo, type FacilityTemplate } from './requiredShots.js';
 import type { ViewerBundle } from './viewerBundle.js';
 
@@ -65,6 +66,8 @@ export interface AppDeps {
   projects: ProjectsStore;
   // 촬영 항목(필수 사진·전차 사진). requiredTemplate = 시설물 종류 → 필수 목록(config/requiredShots.json)
   shots: ShotsStore;
+  /** 예시 사진(시설물 종류 + 템플릿 항목마다 한 장, 2026-11-05). 없으면 예시 기능이 꺼진다 */
+  examples?: ExamplesStore;
   requiredTemplate: Record<string, FacilityTemplate>;
   // 오프라인 모드(설계 3.1): 도면 파생 파일(f2d 등) 캐시와 뷰어 꾸러미 캐시.
   offline: OfflineFilesStore;
@@ -762,8 +765,12 @@ export function createApp(deps: AppDeps) {
     for (const record of [project, ...projectRecords.filter((p) => p.parentId === id)]) {
       const folder = record.id === id ? '' : `${safeSegment(record.name)}/`;
       for (const shot of await deps.shots.list(record.id)) {
-        if (!shot.photo || !(await deps.shots.hasPhotoFile(record.id, shot))) continue;
-        shotFiles.push({ name: `${folder}${shotFileName(record.name, shot)}`, path: deps.shots.pathOf(record.id, shot) });
+        // 한 칸의 사진 전부: 대표는 …_017.jpg, 둘째 장부터 …_017-2.jpg
+        for (const photo of photosOf(shot)) {
+          const path = deps.shots.photoPathOf(record.id, photo);
+          if (!(await stat(path).then(() => true, () => false))) continue;
+          shotFiles.push({ name: `${folder}${shotFileName(record.name, shot, photo)}`, path });
+        }
       }
     }
     if (items.length === 0 && shotFiles.length === 0) {
@@ -828,6 +835,12 @@ export function createApp(deps: AppDeps) {
     const info = effectiveInfo(saved, template.info, inspectionType ?? undefined);
     const ctx = { inspectionType: inspectionType ?? undefined, info, chosenOptional: project.optionalShots };
     const shots = facilityType !== null ? await deps.shots.ensureRequired(project.id, expandRequired(template.shots, ctx)) : await deps.shots.list(project.id);
+    // 예시 사진: 이 시설물 종류에서 템플릿 항목별로 지정된 것
+    const examples = facilityType !== null && deps.examples ? await deps.examples.forFacility(facilityType) : new Map();
+    const exampleFields = (shot: Shot) => {
+      const ex = shot.kind === 'required' && shot.templateKey ? examples.get(shot.templateKey) : undefined;
+      return ex ? { exampleUrl: `/api/examples/${ex.id}`, exampleThumbUrl: `/api/examples/${ex.id}/thumb`, exampleSavedAt: ex.savedAt } : {};
+    };
     res.json({
       projectId: project.id,
       projectName: project.name,
@@ -842,6 +855,9 @@ export function createApp(deps: AppDeps) {
       needsFacilityInfo: (saved === undefined || Object.keys(saved).length === 0) && templateNeedsInfo(template),
       shots: shots.map((shot) => ({
         ...shot,
+        // 한 칸 여러 장(2026-11-05): 첫 장이 대표(url·thumbUrl은 대표 — 웹·옛 앱 호환)
+        photos: photosOf(shot).map((p) => ({ id: p.id, savedAt: p.savedAt, url: `${shotPhotoUrl(project.id, shot.id)}s/${encodeURIComponent(p.id)}`, thumbUrl: `${shotPhotoUrl(project.id, shot.id)}s/${encodeURIComponent(p.id)}/thumb` })),
+        ...exampleFields(shot),
         url: shot.photo ? shotPhotoUrl(project.id, shot.id) : null,
         thumbUrl: shot.photo ? `${shotPhotoUrl(project.id, shot.id)}/thumb` : null,
         refUrl: shot.ref ? `/api/projects/${project.id}/shots/${shot.id}/ref` : null,
@@ -992,17 +1008,24 @@ export function createApp(deps: AppDeps) {
       res.status(400).json({ error: 'JPEG·PNG·HEIC 사진만 올릴 수 있습니다.' });
       return;
     }
-    const shot = await deps.shots.savePhoto(project.id, req.params.shotId as string, extension, file.buffer, new Date(now()).toISOString());
-    if (!shot) {
+    // 기기가 만든 사진 id(2026-11-05): 같은 id로 다시 오면 덮어쓴다(재전송), 새 id면 이 칸에 한 장 더. 없으면 옛 앱 — 대표를 바꾼다
+    const rawPhotoId = (req.body as Record<string, unknown> | undefined)?.photoId;
+    if (rawPhotoId !== undefined && (typeof rawPhotoId !== 'string' || !PHOTO_ID_PATTERN.test(rawPhotoId))) {
+      res.status(400).json({ error: '사진 id가 올바르지 않습니다.' });
+      return;
+    }
+    const saved = await deps.shots.savePhoto(project.id, req.params.shotId as string, extension, file.buffer, new Date(now()).toISOString(), rawPhotoId as string | undefined);
+    if (!saved) {
       res.status(404).json({ error: '촬영 항목을 찾을 수 없습니다.' });
       return;
     }
+    const { shot, photo } = saved;
     try {
-      await deps.shots.saveThumb(project.id, shot, await makeThumbnail(file.buffer));
+      await deps.shots.savePhotoThumb(project.id, photo, await makeThumbnail(file.buffer));
     } catch (err) {
       console.error('[shots] 썸네일을 만들지 못했습니다', project.id, shot.id, messageOf(err));
     }
-    res.status(201).json({ shot, number: shot.number, url: shotPhotoUrl(project.id, shot.id), thumbUrl: `${shotPhotoUrl(project.id, shot.id)}/thumb` });
+    res.status(201).json({ shot, photo, number: shot.number, url: shotPhotoUrl(project.id, shot.id), thumbUrl: `${shotPhotoUrl(project.id, shot.id)}/thumb` });
   });
 
   async function findShot(req: Request, res: Response): Promise<{ project: { id: string }; shot: Shot } | null> {
@@ -1051,6 +1074,152 @@ export function createApp(deps: AppDeps) {
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('Content-Type', 'image/jpeg');
     res.send(thumb);
+  });
+
+  // ── 한 칸 여러 장(2026-11-05): 사진 한 장씩 보기·지우기·대표로 + 예시로 지정 ──────────────────────────
+  async function findShotPhoto(req: Request, res: Response): Promise<{ project: { id: string; facilityType?: string }; shot: Shot; photo: ShotPhoto } | null> {
+    const project = await findShotProject(req, res);
+    if (!project) return null;
+    const shot = (await deps.shots.list(project.id)).find((s) => s.id === req.params.shotId);
+    const photo = shot ? photosOf(shot).find((p) => p.id === req.params.photoId) : undefined;
+    if (!shot || !photo) {
+      res.status(404).json({ error: '사진을 찾을 수 없습니다.' });
+      return null;
+    }
+    return { project, shot, photo };
+  }
+
+  api.get('/projects/:id/shots/:shotId/photos/:photoId', async (req, res) => {
+    const found = await findShotPhoto(req, res);
+    if (!found) return;
+    const data = await deps.shots.readPhotoFile(found.project.id, found.photo);
+    if (!data) {
+      res.status(404).json({ error: '사진 파일이 없습니다.' });
+      return;
+    }
+    res.setHeader('Content-Type', PHOTO_MIME_TYPES[extname(found.photo.file)] ?? 'image/jpeg');
+    res.send(data);
+  });
+
+  api.get('/projects/:id/shots/:shotId/photos/:photoId/thumb', async (req, res) => {
+    const found = await findShotPhoto(req, res);
+    if (!found) return;
+    let thumb = await deps.shots.readPhotoThumb(found.project.id, found.photo);
+    if (!thumb) {
+      const data = await deps.shots.readPhotoFile(found.project.id, found.photo);
+      if (!data) {
+        res.status(404).json({ error: '사진 파일이 없습니다.' });
+        return;
+      }
+      try {
+        thumb = await makeThumbnail(data);
+        await deps.shots.savePhotoThumb(found.project.id, found.photo, thumb);
+      } catch {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.send(data);
+        return;
+      }
+    }
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(thumb);
+  });
+
+  api.delete('/projects/:id/shots/:shotId/photos/:photoId', async (req, res) => {
+    const found = await findShotPhoto(req, res);
+    if (!found) return;
+    const shot = await deps.shots.deletePhoto(found.project.id, found.shot.id, found.photo.id);
+    res.json({ shot });
+  });
+
+  // { primary: true } — 대표 사진으로(맨 앞으로)
+  api.patch('/projects/:id/shots/:shotId/photos/:photoId', async (req, res) => {
+    const found = await findShotPhoto(req, res);
+    if (!found) return;
+    if ((req.body as { primary?: unknown } | undefined)?.primary !== true) {
+      res.status(400).json({ error: 'primary: true만 받습니다.' });
+      return;
+    }
+    const shot = await deps.shots.setPrimaryPhoto(found.project.id, found.shot.id, found.photo.id);
+    res.json({ shot });
+  });
+
+  // 이 사진을 이 항목(시설물 종류 + 템플릿 항목)의 예시로. 필수 사진 칸만
+  api.post('/projects/:id/shots/:shotId/photos/:photoId/example', async (req, res) => {
+    const found = await findShotPhoto(req, res);
+    if (!found) return;
+    const facilityType = found.project.facilityType;
+    if (!deps.examples || !facilityType || found.shot.kind !== 'required' || !found.shot.templateKey) {
+      res.status(400).json({ error: '필수 사진 칸의 사진만 예시로 지정할 수 있습니다.' });
+      return;
+    }
+    const data = await deps.shots.readPhotoFile(found.project.id, found.photo);
+    if (!data) {
+      res.status(404).json({ error: '사진 파일이 없습니다.' });
+      return;
+    }
+    let thumb: Buffer | null = null;
+    try {
+      thumb = await makeThumbnail(data);
+    } catch {
+      thumb = null;
+    }
+    const record = await deps.examples.set({
+      facilityType,
+      templateKey: found.shot.templateKey,
+      extension: extname(found.photo.file) || '.jpg',
+      data,
+      thumb,
+      savedAt: new Date(now()).toISOString(),
+      source: { projectId: found.project.id, shotId: found.shot.id, photoId: found.photo.id },
+    });
+    res.status(201).json({ example: record, exampleUrl: `/api/examples/${record.id}`, exampleThumbUrl: `/api/examples/${record.id}/thumb` });
+  });
+
+  // 이 칸 항목의 예시를 뺀다
+  api.delete('/projects/:id/shots/:shotId/example', async (req, res) => {
+    const project = await findShotProject(req, res);
+    if (!project) return;
+    const shot = (await deps.shots.list(project.id)).find((s) => s.id === req.params.shotId);
+    if (!deps.examples || !shot || !project.facilityType || !shot.templateKey) {
+      res.status(404).json({ error: '예시를 찾을 수 없습니다.' });
+      return;
+    }
+    res.json({ removed: await deps.examples.remove(exampleIdOf(project.facilityType, shot.templateKey)) });
+  });
+
+  async function findExample(req: Request, res: Response) {
+    const id = req.params.exampleId as string;
+    const record = deps.examples && EXAMPLE_ID_PATTERN.test(id) ? await deps.examples.get(id) : null;
+    if (!record || !deps.examples) {
+      res.status(404).json({ error: '예시 사진을 찾을 수 없습니다.' });
+      return null;
+    }
+    return record;
+  }
+
+  api.get('/examples/:exampleId', async (req, res) => {
+    const record = await findExample(req, res);
+    if (!record) return;
+    const data = await deps.examples!.read(record);
+    if (!data) {
+      res.status(404).json({ error: '예시 사진 파일이 없습니다.' });
+      return;
+    }
+    res.setHeader('Content-Type', PHOTO_MIME_TYPES[extname(record.file)] ?? 'image/jpeg');
+    res.send(data);
+  });
+
+  api.get('/examples/:exampleId/thumb', async (req, res) => {
+    const record = await findExample(req, res);
+    if (!record) return;
+    const data = (await deps.examples!.readThumb(record)) ?? (await deps.examples!.read(record));
+    if (!data) {
+      res.status(404).json({ error: '예시 사진 파일이 없습니다.' });
+      return;
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(data);
   });
 
   // 프로젝트(와 하위 프로젝트)의 모든 도면 산출 DXF를 zip 하나로 묶는다(설계 4장). 산출은

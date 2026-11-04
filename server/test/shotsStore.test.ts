@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeFile } from 'node:fs/promises';
-import { loadRequiredTemplate, mergeRequired, shotFileName, ShotsStore, type Shot } from '../src/shotsStore.js';
+import { loadRequiredTemplate, mergeRequired, photosOf, shotFileName, ShotsStore, type Shot } from '../src/shotsStore.js';
 
 const T = '2026-10-24T00:00:00.000Z';
 const base: Shot = { id: 's0', kind: 'required', member: '전경', label: '상류측', number: '001' };
@@ -99,14 +99,56 @@ describe('ShotsStore', () => {
     expect(await store.list('p_1')).toEqual([base]);
   });
 
-  it('savePhoto는 파일을 쓰고 photo를 채우며 두 번째는 덮어쓴다', async () => {
+  it('savePhoto: photoId 없이(옛 앱)는 대표를 덮어쓴다', async () => {
     await store.replace('p_1', [base]);
     const first = await store.savePhoto('p_1', 's0', '.jpg', Buffer.from('one'), T);
-    expect(first?.photo).toEqual({ file: '001.jpg', savedAt: T });
+    expect(first?.shot.photo).toEqual({ file: '001.jpg', savedAt: T });
     const second = await store.savePhoto('p_1', 's0', '.jpg', Buffer.from('two'), '2026-10-24T01:00:00.000Z');
-    expect(second?.photo?.file).toBe('001.jpg');
-    expect(await readFile(store.pathOf('p_1', second!), 'utf8')).toBe('two');
+    expect(second?.shot.photo?.file).toBe('001.jpg');
+    expect(second?.shot.photos).toHaveLength(1);
+    expect(await readFile(store.pathOf('p_1', second!.shot), 'utf8')).toBe('two');
     expect((await store.list('p_1'))[0].photo?.savedAt).toBe('2026-10-24T01:00:00.000Z');
+  });
+
+  it('한 칸 여러 장(11-05): 새 photoId는 덧붙이고(-2, -3), 같은 photoId는 덮어쓰며, 지우기·대표 바꾸기', async () => {
+    await store.replace('p_1', [base]);
+    await store.savePhoto('p_1', 's0', '.jpg', Buffer.from('a'), T, 'ph_a');
+    await store.savePhoto('p_1', 's0', '.jpg', Buffer.from('b'), T, 'ph_b');
+    const again = await store.savePhoto('p_1', 's0', '.jpg', Buffer.from('b2'), T, 'ph_b'); // 재전송 → 덮어쓰기
+    await store.savePhoto('p_1', 's0', '.png', Buffer.from('c'), T, 'ph_c');
+    let shot = (await store.list('p_1'))[0];
+    expect(photosOf(shot).map((p) => [p.id, p.file])).toEqual([
+      ['ph_a', '001.jpg'],
+      ['ph_b', '001-2.jpg'],
+      ['ph_c', '001-3.png'],
+    ]);
+    expect(await readFile(store.photoPathOf('p_1', again!.photo), 'utf8')).toBe('b2');
+    expect(shot.photo?.file).toBe('001.jpg');
+    expect(shotFileName('A교', shot, photosOf(shot)[1])).toBe('A교_전경_001-2.jpg');
+    expect(shotFileName('A교', shot, photosOf(shot)[0])).toBe('A교_전경_001.jpg');
+    shot = (await store.setPrimaryPhoto('p_1', 's0', 'ph_c'))!;
+    expect(shot.photo?.file).toBe('001-3.png');
+    shot = (await store.deletePhoto('p_1', 's0', 'ph_c'))!;
+    expect(photosOf(shot).map((p) => p.id)).toEqual(['ph_a', 'ph_b']);
+    expect(shot.photo?.file).toBe('001.jpg');
+    // 지운 뒤 새로 찍어도 남은 파일과 이름이 안 겹친다
+    const d = await store.savePhoto('p_1', 's0', '.jpg', Buffer.from('d'), T, 'ph_d');
+    expect(d?.photo.file).toBe('001-3.jpg');
+    await store.deletePhoto('p_1', 's0', 'ph_a');
+    await store.deletePhoto('p_1', 's0', 'ph_b');
+    shot = (await store.deletePhoto('p_1', 's0', 'ph_d'))!;
+    expect(shot.photo).toBeUndefined();
+    expect(shot.photos).toBeUndefined();
+    expect(await store.deletePhoto('p_1', 's0', 'nope')).toBeNull();
+  });
+
+  it('옛 기록(photo만)은 p0 한 장으로 읽고, 새 사진을 덧붙일 수 있다', async () => {
+    await store.replace('p_1', [{ ...base, photo: { file: '001.jpg', savedAt: T } }]);
+    const r = await store.savePhoto('p_1', 's0', '.jpg', Buffer.from('x'), T, 'ph_new');
+    expect(photosOf(r!.shot).map((p) => [p.id, p.file])).toEqual([
+      ['p0', '001.jpg'],
+      ['ph_new', '001-2.jpg'],
+    ]);
   });
 
   it('없는 shot이면 null', async () => {

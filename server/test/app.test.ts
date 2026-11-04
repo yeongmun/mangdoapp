@@ -17,6 +17,7 @@ import { OriginalsStore } from '../src/originalsStore.js';
 import { PhotosStore } from '../src/photosStore.js';
 import { FILE_URL_SHIM } from '../src/viewerBundle.js';
 import { newProjectId, ProjectsStore } from '../src/projectsStore.js';
+import { ExamplesStore } from '../src/examplesStore.js';
 import { ShotsStore } from '../src/shotsStore.js';
 import { makeZip } from './hwpxPhotos.test.js';
 import { AUTODESK_VIEWER_FILES, AUTODESK_VIEWER_VERSION, ViewerBundle } from '../src/viewerBundle.js';
@@ -113,6 +114,7 @@ function setup(
   const photos = new PhotosStore(join(dir, 'data', 'photos'));
   const projects = new ProjectsStore(join(dir, 'data', 'projects.json'));
   const shots = new ShotsStore(join(dir, 'data', 'shots'));
+  const examples = new ExamplesStore(join(dir, 'data', 'examples'));
   const requiredTemplate = {
     교량: {
       info: [
@@ -156,6 +158,7 @@ function setup(
     trash,
     projects,
     shots,
+    examples,
     requiredTemplate,
     offline,
     viewerBundle,
@@ -165,7 +168,7 @@ function setup(
     maxPhotoBytes,
     maxReportBytes,
   });
-  return { app, aps, drawings, damages, originals, photos, trash, projects, shots, offlineAps, offline, fetchCdn, viewerBundle };
+  return { app, aps, drawings, damages, originals, photos, trash, projects, shots, examples, offlineAps, offline, fetchCdn, viewerBundle };
 }
 
 async function seed(drawings: DrawingsStore, patch: Partial<DrawingRecord> = {}): Promise<DrawingRecord> {
@@ -1842,6 +1845,47 @@ describe('촬영 항목 API (/api/projects/:id/shots)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ facilityType: null, shots: [] });
     expect((await request(app).get(`/api/projects/${newProjectId()}/shots`).set('x-access-key', KEY)).status).toBe(404);
+  });
+
+  it('한 칸 여러 장 + 예시 사진 (11-05)', async () => {
+    const { app } = setup();
+    const { child } = await bridge(app);
+    const list = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body;
+    const shot = list.shots.find((s: { member: string }) => s.member === '전경');
+    expect(shot.templateKey).toBe('전경|상류측');
+    const up = (photoId: string, body: string) =>
+      request(app)
+        .post(`/api/projects/${child.id}/shots/${shot.id}/photo`)
+        .set('x-access-key', KEY)
+        .field('photoId', photoId)
+        .attach('file', Buffer.from(body), { filename: 'x.jpg', contentType: 'image/jpeg' });
+    expect((await up('ph_one', 'one')).status).toBe(201);
+    expect((await up('ph_two', 'two')).status).toBe(201);
+    expect((await up('ph_two', 'two!')).status).toBe(201); // 재전송은 덮어쓰기
+    expect((await up('bad id!', 'x')).status).toBe(400);
+    let got = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body.shots.find((s: { id: string }) => s.id === shot.id);
+    expect(got.photos.map((p: { id: string }) => p.id)).toEqual(['ph_one', 'ph_two']);
+    const second = await request(app).get(got.photos[1].url).set('x-access-key', KEY).buffer(true).parse((r, cb) => {
+      const chunks: Buffer[] = [];
+      r.on('data', (c: Buffer) => chunks.push(c));
+      r.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+    expect(second.body.toString()).toBe('two!');
+    // 대표 바꾸기 → 지우기
+    expect((await request(app).patch(`/api/projects/${child.id}/shots/${shot.id}/photos/ph_two`).set('x-access-key', KEY).send({ primary: true })).body.shot.photos[0].id).toBe('ph_two');
+    expect((await request(app).delete(`/api/projects/${child.id}/shots/${shot.id}/photos/ph_two`).set('x-access-key', KEY)).body.shot.photos.map((p: { id: string }) => p.id)).toEqual(['ph_one']);
+    // 예시로 지정 → 같은 시설물의 다른 구조물 같은 칸에도 보인다
+    const ex = await request(app).post(`/api/projects/${child.id}/shots/${shot.id}/photos/ph_one/example`).set('x-access-key', KEY);
+    expect(ex.status).toBe(201);
+    const top = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: '다른과업' })).body;
+    const other = (await request(app).post('/api/projects').set('x-access-key', KEY).send({ name: 'B교', parentId: top.id, facilityType: '교량' })).body;
+    const otherShot = (await request(app).get(`/api/projects/${other.id}/shots`).set('x-access-key', KEY)).body.shots.find((s: { member: string }) => s.member === '전경');
+    expect(otherShot.exampleUrl).toBe(ex.body.exampleUrl);
+    expect((await request(app).get(otherShot.exampleThumbUrl).set('x-access-key', KEY)).status).toBe(200);
+    // 예시 빼기
+    expect((await request(app).delete(`/api/projects/${other.id}/shots/${otherShot.id}/example`).set('x-access-key', KEY)).body.removed).toBe(true);
+    got = (await request(app).get(`/api/projects/${child.id}/shots`).set('x-access-key', KEY)).body.shots.find((s: { id: string }) => s.id === shot.id);
+    expect(got.exampleUrl).toBeUndefined();
   });
 
   it('POST …/shots/:shotId/photo 두 번 → photo 하나, 두 번째 내용', async () => {
